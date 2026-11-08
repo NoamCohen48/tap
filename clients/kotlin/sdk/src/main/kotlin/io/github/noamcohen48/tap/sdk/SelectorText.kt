@@ -1,13 +1,14 @@
 package io.github.noamcohen48.tap.sdk
 
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Match
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Relation
+import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.api.v1.Error as ErrorProto
-import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
 
 /*
@@ -252,6 +253,32 @@ private fun observed(
 
         else -> null
     }
+
+/**
+ * [ErrorProto.getNarrowing] described against the command's [selectors] (`selector`, then drag's
+ * `target`); null when absent or when it does not fit them.
+ */
+internal fun ErrorProto.narrowingOrNull(selectors: List<SelectorProto>): SelectorNarrowing? {
+    if (!hasNarrowing()) return null
+    val selector = selectors.getOrNull(narrowing.selectorIndex) ?: return null
+    val operands = if (selector.node.kindCase == Node.KindCase.ALL_OF) selector.node.allOf.nodesList else emptyList()
+    if (narrowing.partsCount > 0 && narrowing.partsCount != operands.size) return null
+    return SelectorNarrowing(
+        selector = describe(selector),
+        matches = narrowing.matches,
+        needed = if (selector.pickCase == SelectorProto.PickCase.AT) selector.at.index + 1 else 1,
+        parts =
+            operands.zip(narrowing.partsList) { operand, part ->
+                NarrowingPart(describe(operand), part.alone, part.without, part.nearMissesList.toList())
+            },
+    )
+}
+
+/** The selectors a sent [command] carries, in `Error.narrowing` order; [target] when it has no drag. */
+internal fun commandSelectors(
+    command: Command,
+    target: SelectorProto?,
+): List<SelectorProto> = if (command.hasDrag()) listOf(command.drag.selector, command.drag.target) else listOfNotNull(target)
 
 private fun operand(node: Node): String =
     if (node.kindCase == Node.KindCase.ALL_OF || node.kindCase == Node.KindCase.ANY_OF) "(${describe(node)})" else describe(node)

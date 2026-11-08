@@ -531,6 +531,32 @@ message Error {
   // whether each operand of the condition's top-level all_of (or any_of) holds, in order; one
   // entry when the condition is neither.
   repeated bool condition_holds = 6;
+  // NOT_FOUND of a targeted command, and WAIT_TIMEOUT / NO_MATCH of wait_visible / wait_state:
+  // which part of the selector ruled the nodes out, read once after the failure.
+  optional SelectorNarrowing narrowing = 7;
+}
+
+// Why a selector resolved no node. Diagnostic only: read once after the command failed, from the
+// screen as it was then, and never used to choose a node.
+message SelectorNarrowing {
+  // Which of the command's selectors this is: 0 for `selector`, 1 for drag's `target`.
+  int32 selector_index = 1;
+  // Nodes the selector's node matches, its pick ignored (capped at 1000). Above zero, the pick
+  // is what failed: `at { index }` needs index + 1 matches.
+  int32 matches = 2;
+  // When `matches` is 0 and the node is an `all_of`: one entry per operand, in order. Otherwise
+  // empty.
+  repeated NarrowingPart parts = 3;
+}
+
+// One operand of a selector's top-level `all_of`.
+message NarrowingPart {
+  int32 alone = 1; // nodes this operand matches by itself (capped at 1000)
+  int32 without = 2; // nodes every other operand matches (capped at 1000)
+  // Up to 3 distinct values that nodes matching every other operand have for this operand's
+  // property (text, content description, hint, class, package or resource name), at most 100
+  // characters each. Empty for flags and relations, and when `without` is 0.
+  repeated string near_misses = 3;
 }
 
 // One protocol response: exactly one `outcome`, named like the protocol result `kind`.

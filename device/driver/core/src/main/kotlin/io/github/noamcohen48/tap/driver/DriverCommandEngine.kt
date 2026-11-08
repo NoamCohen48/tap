@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.Count
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
@@ -16,6 +17,7 @@ import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.GetClipboard
@@ -23,6 +25,7 @@ import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.OpenNotification
@@ -55,6 +58,7 @@ import io.github.noamcohen48.tap.api.v1.WaitVisible
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.CommandHandler
+import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.InvalidCommandException
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.dispatch
@@ -91,6 +95,7 @@ internal class DriverCommandEngine(
     private val screen = ScreenCommands(instrumentation)
     private val permissions = PermissionCommands(device)
     private val waits = WaitCommands(device, objects)
+    private val narrowing = SelectorNarrowingReader(compiler, objects)
     private val keyboard = KeyboardCommands(instrumentation, device, objects)
     private val accessibilityActions = AccessibilityActionCommands(objects)
     private val clipboard = ClipboardCommands(instrumentation)
@@ -107,15 +112,44 @@ internal class DriverCommandEngine(
         request: Request,
         generation: Long,
     ): Response {
+        // A selector that does not compile has nothing to explain.
+        var compiledOk = false
         val response =
             try {
-                val selectors = compileSelectors(request)
+                val compiled = compileSelectors(request).also { compiledOk = true }
                 context.checkpoint()
-                mappingStaleElements({ context.mutationStarted }) { request.dispatch(Handlers(context, selectors)) }
+                mappingStaleElements({ context.mutationStarted }) { request.dispatch(Handlers(context, compiled)) }
             } catch (failure: CommandFailure) {
-                Responses.failure(failure.code, detail = failure.detail, message = failure.remoteMessage, matchCount = failure.matchCount, lastState = failure.lastState, conditionHolds = failure.conditionHolds)
+                Responses.failure(
+                    failure.code,
+                    detail = failure.detail,
+                    message = failure.remoteMessage,
+                    matchCount = failure.matchCount,
+                    lastState = failure.lastState,
+                    conditionHolds = failure.conditionHolds,
+                    narrowing = if (compiledOk) explainMiss(context, request, failure) else null,
+                )
             }
         return response.stamped(context.elapsed(), context.requestId, generation)
+    }
+
+    /**
+     * Why the command's selector resolved no node, for a `NOT_FOUND` or a `NO_MATCH` wait timeout
+     * before any input was sent. Read once from the screen as it is now, within the narrowing's
+     * time budget; never fails the response. Not for `snapshot`: a host loop polling a node into
+     * existence gets `NOT_FOUND` on every poll and would pay the lookups each time.
+     */
+    private fun explainMiss(
+        context: CommandContext,
+        request: Request,
+        failure: CommandFailure,
+    ): SelectorNarrowing? {
+        val missed =
+            failure.code == ErrorCode.ERR_NOT_FOUND ||
+                (failure.code == ErrorCode.ERR_WAIT_TIMEOUT && failure.detail == ErrorDetail.NO_MATCH)
+        if (!missed || context.mutationStarted || request.bodyCase != Request.BodyCase.COMMAND) return null
+        if (request.command.opCase == Command.OpCase.SNAPSHOT) return null
+        return narrowing.explain(request.command.selectors, context::nowMs)
     }
 
     /**

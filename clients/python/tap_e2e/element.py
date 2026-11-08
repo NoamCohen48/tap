@@ -435,9 +435,13 @@ class ElementWait:
             return
         if result.error.code == pb.ERR_WAIT_TIMEOUT:
             condition = op["wait_state"].condition if "wait_state" in op else None
-            raise WaitTimeoutError._from_result(result, description, self.device.serial, condition=condition)
+            raise WaitTimeoutError._from_result(
+                result, description, self.device.serial, condition=condition, selectors=_proto.command_selectors(op)
+            )
         (name,) = op
-        raise CommandError._from_result(result, name, self.device.serial, self.selector.render())
+        raise CommandError._from_result(
+            result, name, self.device.serial, self.selector.render(), _proto.command_selectors(op)
+        )
 
     def _until(self, condition: pb.Node) -> Element:
         self._device_wait(

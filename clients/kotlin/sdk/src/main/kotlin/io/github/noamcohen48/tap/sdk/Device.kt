@@ -247,8 +247,9 @@ class Device internal constructor(
     ): CommandResult {
         ensureTapBound("Device.executeOrThrow")
         return admitted("Device.executeOrThrow") {
-            val result = rpcExecute(timeout ?: timeouts.action, build)
-            if (result.hasError()) throw CommandException(result, "execute", serial, selector?.render())
+            val sent = command(timeout ?: timeouts.action, build)
+            val result = rpcExecute(sent)
+            if (result.hasError()) throw CommandException(result, "execute", serial, selector?.render(), commandSelectors(sent, selector?.proto))
             result
         }
     }
@@ -1344,13 +1345,19 @@ class Device internal constructor(
     private suspend fun rpcExecute(
         timeout: Duration,
         build: Command.Builder.() -> Unit,
-    ): CommandResult {
-        val command =
-            Command
-                .newBuilder()
-                .setTimeoutMs(timeout.inWholeMilliseconds)
-                .apply(build)
-                .build()
+    ): CommandResult = rpcExecute(command(timeout, build))
+
+    private fun command(
+        timeout: Duration,
+        build: Command.Builder.() -> Unit,
+    ): Command =
+        Command
+            .newBuilder()
+            .setTimeoutMs(timeout.inWholeMilliseconds)
+            .apply(build)
+            .build()
+
+    private suspend fun rpcExecute(command: Command): CommandResult {
         return mapped(serial) {
             client.devices
                 .withDeadlineAfter(command.timeoutMs + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)

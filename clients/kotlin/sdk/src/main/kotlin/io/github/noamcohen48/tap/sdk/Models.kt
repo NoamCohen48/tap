@@ -416,6 +416,56 @@ data class ConditionPart(
 )
 
 /**
+ * Why a selector found no node ([CommandException.narrowing], [WaitTimeoutException.narrowing]),
+ * read once on the device right after the failure.
+ */
+data class SelectorNarrowing(
+    /** The selector in builder syntax. */
+    val selector: String,
+    /** Nodes the selector matches with its `first()` / `at(n)` ignored (capped at 1000). */
+    val matches: Int,
+    /** Matches the pick needs: `n + 1` for `at(n)`, otherwise 1. */
+    val needed: Int,
+    /** With no match and several parts: each part, in order. Otherwise empty. */
+    val parts: List<NarrowingPart>,
+) {
+    /** The narrowing as indented lines, as exception messages show it. */
+    fun explain(): String =
+        if (matches > 0) {
+            val nodes = if (matches == 1) "1 node matches" else "$matches nodes match"
+            "only $nodes $selector; its pick needs $needed"
+        } else {
+            buildString {
+                append("no node matches ").append(selector)
+                if (parts.isNotEmpty()) append("; each part:")
+                parts.forEach { part ->
+                    append("\n  ").append(part.part).append(": ${part.alone} alone, ${part.without} without it")
+                    if (part.nearMisses.isNotEmpty()) append(" (seen: ").append(part.nearMisses.joinToString(", ") { quoted(it) }).append(')')
+                }
+            }
+        }
+}
+
+/**
+ * One part of a selector that matched nothing ([SelectorNarrowing.parts]): an operand of its
+ * top-level and, such as `text("Pay")`, `clickable()` or the `app("com.shop")` scope
+ * [App.element] adds.
+ */
+data class NarrowingPart(
+    /** The part in builder syntax. */
+    val part: String,
+    /** Nodes this part matches by itself (capped at 1000). */
+    val alone: Int,
+    /** Nodes every other part matches (capped at 1000). Above zero, this part rules those nodes out. */
+    val without: Int,
+    /**
+     * Up to 3 values those nodes have for this part's property (text, description, hint, class,
+     * package or resource name); empty for flags and relations.
+     */
+    val nearMisses: List<String>,
+)
+
+/**
  * The state of one node at one instant ([Element.snapshot]). Text properties are null when the
  * node has none. [text] is the raw accessibility text: on API 26+ an empty field reports its hint
  * there and [showingHint] is true.

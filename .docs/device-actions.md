@@ -451,6 +451,23 @@ the listener fix above; opening a notification's activity intent from the driver
 without background-start options. The run on emulator-5554 (API 34, where the options apply) is
 pending.
 
+## Waits on an element's state, and why a selector matched nothing (implemented)
+
+- `ElementWait.until(condition)`: one `wait_state { selector, condition }` command. The selector
+  picks the node and the condition (any selector predicate) is checked on it every 50 ms. The
+  seven state methods and `type_text`'s focus wait are shortcuts for it. A stale lookup or read,
+  or a missing node, keeps polling; several matches without a pick fail at once with `AMBIGUOUS`.
+  On a timeout, one final read (retried once when stale) supplies `last_state` and
+  `condition_holds` for the same node. The rules are `StateWait`, unit-tested with a fake screen
+  (`StateWaitTest`).
+- `Error.narrowing` after a `NOT_FOUND` or a `NO_MATCH` timeout, except after `snapshot`: per-part
+  leave-one-out counts and near misses. At most 8 parts and a 1 s budget, since it runs after the
+  deadline and the watchdog poisons a session 10 s past it. The rules are
+  `SelectorNarrowingRules` (`SelectorNarrowingRulesTest`).
+- Device checks: `ObservationTest` (both), and the Kotlin and Python fixture suites (the
+  shortcuts and `type_text`). They passed on emulator-5554 on 2026-11-09. The SM-J810G run is
+  pending.
+
 ## Later (backlog, rough priority)
 
 **Fixed on the CI device lane (API 34 emulator)**: three `DeviceActionsTest` failures that only a

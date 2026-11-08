@@ -25,9 +25,11 @@ import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
+import io.github.noamcohen48.tap.api.v1.NarrowingPart
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
@@ -67,6 +69,7 @@ import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertSame
 import kotlin.test.assertTrue
@@ -1063,6 +1066,63 @@ class TapClientTest {
         val many = waitMappingWith({ CommandResult.newBuilder().setError(ambiguous).build() }) { it.screen.await(text("Row")).checked() }
         assertIs<CommandException>(many)
         assertEquals(ErrorCode.ERR_AMBIGUOUS.toModel(), many.code)
+    }
+
+    @Test
+    fun `NOT_FOUND carries the narrowing of each selector part`() {
+        val narrowing =
+            SelectorNarrowing
+                .newBuilder()
+                .addParts(NarrowingPart.newBuilder().setAlone(0).setWithout(2).addNearMisses("Pay now").addNearMisses("Pay later"))
+                .addParts(NarrowingPart.newBuilder().setAlone(14))
+                .addParts(NarrowingPart.newBuilder().setAlone(40))
+        val notFound =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_NOT_FOUND)
+                .setNarrowing(narrowing)
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(notFound).build() }) { it.app("com.shop").element(text("Pay").clickable()).tap() }
+        assertIs<CommandException>(failure)
+        val explained = assertNotNull(failure.narrowing)
+        assertEquals(listOf("text(\"Pay\")", "clickable()", "app(\"com.shop\")"), explained.parts.map { it.part })
+        assertTrue(
+            failure.message!!.endsWith(
+                "\nno node matches text(\"Pay\") and clickable() and app(\"com.shop\"); each part:\n" +
+                    "  text(\"Pay\"): 0 alone, 2 without it (seen: \"Pay now\", \"Pay later\")\n" +
+                    "  clickable(): 14 alone, 0 without it\n" +
+                    "  app(\"com.shop\"): 40 alone, 0 without it",
+            ),
+            failure.message,
+        )
+
+        val pick = notFound.clone().setNarrowing(SelectorNarrowing.newBuilder().setMatches(2))
+        val picked = waitMappingWith({ CommandResult.newBuilder().setError(pick).build() }) { it.screen.element(text("Row").at(3)).tap() }
+        assertIs<CommandException>(picked)
+        assertTrue(picked.message!!.endsWith("\nonly 2 nodes match text(\"Row\").at(3); its pick needs 4"), picked.message)
+
+        val drag = notFound.clone().setNarrowing(SelectorNarrowing.newBuilder().setSelectorIndex(1))
+        val dragged = waitMappingWith({ CommandResult.newBuilder().setError(drag).build() }) { it.screen.element(text("Card")).dragTo(res("bin")) }
+        assertIs<CommandException>(dragged)
+        assertEquals("res(\"bin\")", dragged.narrowing?.selector)
+
+        val misfit = notFound.clone().setNarrowing(SelectorNarrowing.newBuilder().addParts(NarrowingPart.getDefaultInstance()))
+        val dropped = waitMappingWith({ CommandResult.newBuilder().setError(misfit).build() }) { it.screen.element(text("Pay").clickable()).tap() }
+        assertIs<CommandException>(dropped)
+        assertNull(dropped.narrowing)
+    }
+
+    @Test
+    fun `a NO_MATCH wait timeout carries the narrowing`() {
+        val noMatch =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("NO_MATCH")
+                .setNarrowing(SelectorNarrowing.newBuilder().addParts(NarrowingPart.newBuilder().setAlone(1)).addParts(NarrowingPart.newBuilder().setWithout(1)))
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(noMatch).build() }) { it.screen.await(res("terms").enabled()).checked() }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(listOf("res(\"terms\")", "enabled()"), failure.narrowing?.parts?.map { it.part })
+        assertTrue(failure.message!!.contains("\n  enabled(): 0 alone, 1 without it"), failure.message)
     }
 
     @Test

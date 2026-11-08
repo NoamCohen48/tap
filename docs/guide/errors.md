@@ -57,7 +57,7 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `NOT_FOUND` | zero matches |
+| `NOT_FOUND` | zero matches, or fewer than `at(n)` needs. For an action, `narrowing` says which part of the selector ruled the nodes out ([below](#why-nothing-matched)) |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()` / `at(n)` |
 | `STALE_BEFORE_INPUT` | the one match was re-rendered (its view detached or replaced) between the lookup and the input, or while a query such as `snapshot()` read it, so nothing was sent. Running the action again looks the node up afresh; state waits (`enabled()`, `checked()`, …) keep polling through it on the device |
 | `NOT_INTERACTABLE` | the one match cannot take the gesture: `OBSCURED` when another window (a keyboard, a popup, another app's overlay) covers the point the gesture would touch while part of the node still shows (a node covered completely is `NOT_FOUND`), or when the node is under an open navigation drawer (`DrawerLayout`). Nothing was sent; close or move what covers it |
@@ -129,7 +129,46 @@ device runs (`visible()`, `one()`, `gone()`, `until` and its shortcuts, `app.awa
 `app.await_screen_stable`) and `None` for the ones the client polls (`count()`,
 `device.await_until`). A state wait that found its node but not the state carries that node's
 `ElementSnapshot` as `last_state`, and `condition_parts` says for each part of its condition
-whether it held, read from that same node.
+whether it held, read from that same node. A `NO_MATCH` from `visible()`, `one()` or a state
+wait also carries `narrowing`, as `NOT_FOUND` does.
+
+## Why nothing matched
+
+When a selector finds no node (`NOT_FOUND`, or a wait that times out with `NO_MATCH`), the device
+looks at the screen once more and works out which part of the selector is to blame. The error's
+`narrowing` field holds the result, and the message shows it on the lines after the first:
+
+```
+NOT_FOUND during tap … on emulator-5554 (request 41, generation 1, 12 ms)
+no node matches text("Pay") & clickable() & app("com.shop"); each part:
+  text("Pay"): 0 alone, 2 without it (seen: "Pay now", "Pay later")
+  clickable(): 14 alone, 0 without it
+  app("com.shop"): 40 alone, 0 without it
+```
+
+Each line is one part of the selector's top-level and, written the way a test builds it. The
+`app(...)` part is the package scope that `app.element` adds. *Alone* is how many nodes match that
+part by itself. *Without it* is how many match all the other parts. A part with nodes *without
+it* is the one ruling them out, and for a text, description, hint, class, package or resource
+part, *seen* lists up to three values those nodes really have. Here the button says "Pay now",
+not "Pay". When every part shows 0 *without it*, no single part is to blame: the parts disagree
+two or more at a time.
+
+A pick that asks for more matches than there are reads `only 2 nodes match text("Row").at(3);
+its pick needs 4`. A selector with a single part has nothing to compare, so its line is just
+`no node matches text("Pay")`.
+
+The narrowing is read after the failure, from the screen as it is then, so on a screen that is
+still changing it can disagree with the failure itself. It is diagnostic only: it never chooses a
+node, and nothing runs again because of it.
+
+It is also bounded, because it runs after the failure:
+
+- A selector with more than eight parts gets only the first line.
+- The device spends at most about a second on it. On a slow device with a large screen the
+  per-part lines or the *seen* values can be missing.
+- `element.snapshot()` (and `text()`, `is_enabled()` and the other reads built on it) has no
+  narrowing: a loop that polls a node into existence with it would pay for it on every poll.
 
 What a failed test leaves behind to look at (a screenshot, the hierarchy, the driver log) is on
 [Screenshots and artifacts](artifacts.md#failure-artifacts).

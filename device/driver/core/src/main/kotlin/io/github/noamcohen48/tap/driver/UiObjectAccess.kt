@@ -55,6 +55,15 @@ internal class UiObjectAccess(
         }
 
     /**
+     * Up to [limit] matches in accessibility order, for diagnostics; the caller recycles them. A
+     * stale tree throws `StaleObjectException`.
+     */
+    fun matches(
+        target: CompiledSelector,
+        limit: Int,
+    ): List<UiObject2> = findObjects(target, limit)
+
+    /**
      * Presence of [target] among the descendants of an already resolved container; the
      * container itself never counts. Both plans agree on this: `UiObject2.hasObject` searches
      * from (and matches) its own node, so the native plan asks each child instead.

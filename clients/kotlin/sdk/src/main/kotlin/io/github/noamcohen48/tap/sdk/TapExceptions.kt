@@ -37,6 +37,8 @@ class CommandException(
     val requestId: Long,
     val generation: Long,
     val durationMs: Long,
+    /** Why the selector found no node, read on the device after a `NOT_FOUND`; null otherwise. */
+    val narrowing: SelectorNarrowing? = null,
 ) : TapException(
         buildString {
             append(code.name)
@@ -46,6 +48,7 @@ class CommandException(
             append(" on ").append(serial)
             append(" (request $requestId, generation $generation, $durationMs ms)")
             if (driverMessage != null) append(": ").append(driverMessage)
+            if (narrowing != null) append('\n').append(narrowing.explain())
         },
     ) {
     internal constructor(
@@ -53,6 +56,7 @@ class CommandException(
         operation: String,
         serial: String,
         selector: String?,
+        selectors: List<io.github.noamcohen48.tap.api.v1.Selector> = emptyList(),
     ) : this(
         code = result.error.code.toModel(),
         detail = if (result.error.hasDetail()) result.error.detail else null,
@@ -63,6 +67,7 @@ class CommandException(
         requestId = result.requestId,
         generation = result.sessionGeneration,
         durationMs = result.durationMs,
+        narrowing = result.error.narrowingOrNull(selectors),
     )
 }
 
@@ -87,6 +92,11 @@ class WaitTimeoutException(
     val lastState: ElementSnapshot? = null,
     /** With [WaitReason.STATE_NOT_REACHED]: each part of the condition on that same node, and whether it held. */
     val conditionParts: List<ConditionPart> = emptyList(),
+    /**
+     * With [reason] [WaitReason.NO_MATCH] from `visible` / `one` / a state wait: which part of the
+     * selector ruled the nodes out, read after the deadline. Null otherwise.
+     */
+    val narrowing: SelectorNarrowing? = null,
 ) : TapException(
         buildString {
             append("Timed out after ${elapsedMs}ms waiting for $description on $serial")
@@ -97,6 +107,7 @@ class WaitTimeoutException(
                 append("\n  ").append(part.part).append(if (part.holds) ": yes" else ": no")
                 if (!part.holds && part.observed != null) append(" (").append(part.observed).append(')')
             }
+            if (narrowing != null) append('\n').append(narrowing.explain())
         },
         cause,
     ) {
@@ -108,6 +119,7 @@ class WaitTimeoutException(
             serial: String,
             lastObservation: String? = null,
             condition: io.github.noamcohen48.tap.api.v1.Node? = null,
+            selectors: List<io.github.noamcohen48.tap.api.v1.Selector> = emptyList(),
         ): WaitTimeoutException {
             val state = if (result.error.hasLastState()) result.error.lastState.toModel() else null
             return WaitTimeoutException(
@@ -119,6 +131,7 @@ class WaitTimeoutException(
                 matchCount = if (result.error.hasMatchCount()) result.error.matchCount else null,
                 lastState = state,
                 conditionParts = condition?.let { conditionParts(it, result.error) }.orEmpty(),
+                narrowing = result.error.narrowingOrNull(selectors),
             )
         }
     }

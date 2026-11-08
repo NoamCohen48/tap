@@ -325,6 +325,57 @@ class Bounds:
         return (self.left + self.right) // 2, (self.top + self.bottom) // 2
 
 
+def _quote(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+@dataclass(frozen=True)
+class NarrowingPart:
+    """One part of a selector that matched nothing (``SelectorNarrowing.parts``): an operand of
+    its top-level and, such as ``text("Pay")``, ``clickable()`` or the ``app("com.shop")`` scope
+    ``App.element`` adds."""
+
+    part: str
+    """The part in builder syntax."""
+    alone: int
+    """Nodes this part matches by itself (capped at 1000)."""
+    without: int
+    """Nodes every other part matches (capped at 1000). Above zero, this part is what rules those
+    nodes out."""
+    near_misses: tuple[str, ...]
+    """Up to 3 values those nodes have for this part's property (text, description, hint, class,
+    package or resource name); empty for flags and relations."""
+
+
+@dataclass(frozen=True)
+class SelectorNarrowing:
+    """Why a selector found no node (``CommandError.narrowing``, ``WaitTimeoutError.narrowing``),
+    read once on the device right after the failure."""
+
+    selector: str
+    """The selector in builder syntax."""
+    matches: int
+    """Nodes the selector matches with its ``first()`` / ``at(n)`` ignored (capped at 1000)."""
+    needed: int
+    """Matches the pick needs: ``n + 1`` for ``at(n)``, otherwise 1."""
+    parts: tuple[NarrowingPart, ...]
+    """With no match and several parts: each part, in order. Otherwise empty."""
+
+    def explain(self) -> str:
+        """The narrowing as indented lines, as error messages show it."""
+        if self.matches > 0:
+            nodes = "1 node matches" if self.matches == 1 else f"{self.matches} nodes match"
+            return f"only {nodes} {self.selector}; its pick needs {self.needed}"
+        lines = [f"no node matches {self.selector}"]
+        if self.parts:
+            lines[0] += "; each part:"
+        for part in self.parts:
+            seen = ", ".join(_quote(value) for value in part.near_misses)
+            line = f"  {part.part}: {part.alone} alone, {part.without} without it"
+            lines.append(line + (f" (seen: {seen})" if seen else ""))
+        return "\n".join(lines)
+
+
 @dataclass(frozen=True)
 class ConditionPart:
     """One part of a state wait's condition at its timeout (``WaitTimeoutError.condition_parts``):

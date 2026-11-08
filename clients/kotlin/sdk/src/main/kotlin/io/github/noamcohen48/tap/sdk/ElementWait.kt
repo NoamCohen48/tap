@@ -119,9 +119,9 @@ class ElementWait internal constructor(
         val result = device.execute(timeout, build)
         if (!result.hasError()) return
         if (result.error.code == ErrorCodeProto.ERR_WAIT_TIMEOUT) {
-            throw WaitTimeoutException.of(result, description, device.serial, condition = condition)
+            throw WaitTimeoutException.of(result, description, device.serial, condition = condition, selectors = listOf(selector.proto))
         }
-        throw CommandException(result, operation, device.serial, selector.render())
+        throw CommandException(result, operation, device.serial, selector.render(), listOf(selector.proto))
     }
 
     private suspend fun state(condition: Node): Element {
