@@ -8,7 +8,7 @@ waits, selectors, `App`).
 ## Install
 
 ```sh
-pip install -e clients/python            # from the repository; or `pip install tap-e2e` once published
+pip install -e clients/python            # from the repository; releases ship the wheel (docs/sdk/python.md)
 ```
 
 Runtime requirements: a `tap` daemon binary (`./gradlew :host:daemon:nativeCompile` →

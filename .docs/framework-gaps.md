@@ -1,6 +1,6 @@
 # Framework Gaps
 
-Last updated: 2026-09-28 (first release, 0.0.1 alpha)
+Last updated: 2026-11-08 (0.1.0, the first unified release)
 
 This is the honest delta between what `.docs/android-e2e-framework-implementation-plan.md`
 specifies and what the repository implements and proves on devices today. It is the
@@ -229,9 +229,9 @@ read-back; passing on API 29, emulator run pending).
 
 Done (2026-09-19, `release-engineering.md`): GitHub Actions CI (API contract lint/breaking +
 stub check, JVM unit tests and artifacts, Python build, API 34 emulator sample suites, native
-image on `main`) and tag-driven releases per artifact family (daemon binaries + `tap-api`,
-Kotlin client, Python wheel, agent tools, sync-sdk) with per-family versions. First run on
-GitHub with the 0.0.1 release (2026-09-28).
+image on `main`). Releases: per-family tags from 0.0.1 (2026-09-28); from 0.1.0
+(2026-11-08) one `vX.Y.Z` release of every component and the platform bundles, created by
+`release.yml` after main CI passes.
 
 Not started: sharding across devices at the JUnit platform level (device locks handle
 concurrency; nothing distributes classes across devices), a physical-device / API 29 CI lane, soak lane, benchmark
