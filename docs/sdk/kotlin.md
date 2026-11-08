@@ -269,16 +269,18 @@ app.element(text("Add to cart").clickable()).tap()
 app.element(className("android.widget.EditText").andHint("Search"))
     .setText("socks")
 
-// an unchecked checkbox labelled "Remember me"
-text("Remember me").checkable().checked(false)
-
 // the permission button, whichever wording this Android version uses
 val allow = text("Allow") or
     text("Allow only while using the app") or
     text("While using the app")
 device.screen.element(allow).tap()
-// both on the same node: the same as text("Add").clickable()
+// both on the same node
 app.element(text("Add") and clickable()).tap()
+
+// refinements: the same selector as `text("Add") and clickable()`, shorter
+app.element(text("Add").clickable()).tap()
+// an unchecked checkbox labelled "Remember me"
+text("Remember me").checkable().checked(false)
 
 // the "Delete" button inside the row whose title is "Socks"
 val row = className("android.view.ViewGroup").hasDescendant(text("Socks"))

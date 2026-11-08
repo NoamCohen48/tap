@@ -24,20 +24,29 @@ Where the selector looks, one app's nodes or the whole screen, is chosen by what
 
 ## Entry points
 
-| Builder | Matches |
-|---|---|
-| `res(name)` | resource id `name` in any package: a View id `<pkg>:id/name`, or a Compose `testTag` `name` when the app sets `testTagsAsResourceId`. Under `app.element` only that app's nodes match, so this is the app's own id |
-| `res_id(pkg, name)` | exactly the View id `pkg:id/name`, for an id a library or the system defines under another package (`res_id("android", "button1")`) |
-| `text(value)` | exact text |
-| `text_contains(v)`, `text_starts_with(v)` | substring / prefix |
-| `text_matches(re2)` | RE2 regular expression (full match) |
-| `desc(value)` | content description |
-| `hint(value)` | hint of an empty text field |
-| `class_name(value)` | widget class name |
-| `clickable()`, `scrollable()` | any node with that property |
+| Builder | Matches | Match modes |
+|---|---|---|
+| `res(name)` | resource id `name` in any package: a View id `<pkg>:id/name`, or a Compose `testTag` `name` when the app sets `testTagsAsResourceId`. Under `app.element` only that app's nodes match, so this is the app's own id | exact only |
+| `res_id(pkg, name)` | exactly the View id `pkg:id/name`, for an id a library or the system defines under another package (`res_id("android", "button1")`) | exact only |
+| `text(value, mode)` | text | all five |
+| `text_contains(v)`, `text_starts_with(v)`, `text_matches(re2)` | shortcuts for `text(v, CONTAINS)`, `text(v, STARTS_WITH)`, `text(re2, REGEX)` | |
+| `desc(value, mode)` | content description | all five |
+| `hint(value, mode)` | hint of an empty text field | all five |
+| `class_name(value, mode)` | widget class name | all five |
+| `clickable()`, `scrollable()` | any node with that property | |
 
-`text`, `desc`, `hint` and `class_name` take a `MatchMode` (`EXACT`, `CONTAINS`,
-`STARTS_WITH`, `ENDS_WITH`, `REGEX`, also exported as plain constants). A name passed to
+The five match modes are `EXACT` (the default), `CONTAINS`, `STARTS_WITH`, `ENDS_WITH` and
+`REGEX`, also exported as plain constants:
+
+```python
+from tap_e2e import CONTAINS, ENDS_WITH, REGEX, class_name, desc, text
+
+desc("Close", CONTAINS)                     # "Close", "Close dialog", ...
+class_name("Button", ENDS_WITH)             # android.widget.Button, ...ImageButton, ...
+text(r"\d+ items", REGEX)                   # the RE2 pattern matches the whole text
+```
+
+The same modes apply to the refinements (`.and_desc("Close", CONTAINS)`). A name passed to
 `res` / `and_res` is the bare name: `res("pkg:id/name")` is rejected
 (`QUALIFIED_RESOURCE_NAME`); write `res_id("pkg", "name")`. Regexes are RE2: linear-time, no
 backreferences or lookaround, and an invalid pattern is rejected before it reaches the device.
@@ -47,19 +56,6 @@ backreferences or lookaround, and an invalid pattern is rejected before it reach
     unchanged: text selectors match it and `element.text()` returns it, while
     `snapshot().showing_hint` says the text is the hint. Use `hint(...)` to find an empty field
     by its hint.
-
-## Refinements
-
-Everything after the entry point narrows the same node:
-
-- `.and_text(v)`, `.and_desc(v)`, `.and_hint(v)`, `.and_class_name(v)`, `.and_res(name)`,
-  `.and_res(pkg, name)`
-- `.clickable()`, `.long_clickable()`, `.scrollable()`, `.checkable()`, `.checked()`,
-  `.enabled()`, `.focusable()`, `.focused()`, `.selected()`, each with an optional `bool`
-
-```python
-text("Remember me").checkable().checked(False)   # an unchecked checkbox labelled "Remember me"
-```
 
 ## Combining selectors
 
@@ -73,7 +69,7 @@ allow = text("Allow") | text("Allow only while using the app") | text("While usi
 device.screen.element(allow).tap()
 
 # both on the same node
-app.element(text("Add") & clickable()).tap()     # same as text("Add").clickable()
+app.element(text("Add") & clickable()).tap()
 ```
 
 Combinators nest freely (`(a | b) & clickable()`), including inside relations
@@ -85,6 +81,25 @@ A selector with an or is evaluated by walking the window's node tree rather than
 UiAutomator lookup. It returns exactly the same matches and never dumps the hierarchy, but on a
 very large screen it is a little slower: prefer a single distinguishing property when one
 exists.
+
+### Refinements: a shorter way to write `&`
+
+To add one property to the node you are describing, chain it instead of writing `&`. It reads
+better, and it builds exactly the same selector: `text("Add").clickable()` is
+`text("Add") & clickable()`.
+
+- `.and_text(v)`, `.and_desc(v)`, `.and_hint(v)`, `.and_class_name(v)`, `.and_res(name)`,
+  `.and_res(pkg, name)`
+- `.clickable()`, `.long_clickable()`, `.scrollable()`, `.checkable()`, `.checked()`,
+  `.enabled()`, `.focusable()`, `.focused()`, `.selected()`, each with an optional `bool`
+
+```python
+text("Remember me").checkable().checked(False)   # an unchecked checkbox labelled "Remember me"
+```
+
+Use refinements to describe one node, and `&` when an operand is itself a combination
+(`(a | b) & clickable()`) or a selector you keep in a variable (`ok_button & enabled()`). There is
+no refinement for `|`.
 
 ## Relations
 
