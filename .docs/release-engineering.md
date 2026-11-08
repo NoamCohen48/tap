@@ -11,12 +11,12 @@ not the release source of truth.
 Why: these components are developed together, share the same protocol and should be one
 installable product. Independent tags forced dependency-order orchestration and allowed the
 website to advertise a bundle that nobody had published. The 0.1.0 version-preparation commit
-changed numbers and links but created no tags or release runs. No 0.1.0 artifacts were
-published, so the first unified release can use that number without replacing anything.
+changed numbers and links but created no tags or release runs, so the first unified release
+used that number without replacing anything. 0.1.0 shipped on 2026-11-08 (record below).
 
 Earlier `daemon/v*`, `client-*/v*` and `sync-sdk/v*` tags/releases remain immutable history.
-New releases use only `vX.Y.Z`. Remove the obsolete Release set and Bundle workflows; they
-must not create a second release or combine different component versions.
+New releases use only `vX.Y.Z`. The Release set and Bundle workflows are removed; only
+`release.yml` creates releases, so nothing can combine different component versions.
 
 ## Version sources
 
@@ -78,9 +78,9 @@ A repository-wide release concurrency group prevents two runs from mutating rele
 at once. External actions in CI, Docs and Release are pinned to immutable commits. Release
 builds disable shared Gradle/Bun caches (including the docs composite action's release mode)
 rather than consuming cache entries from ordinary CI. A failed CI run never tags or publishes
-anything. The prior 0.1.0 main CI failure
-was rotation restoration; the fix subsequently landed and main CI passed. Do not hide or
-skip that test to release.
+anything. Before 0.1.0, main CI failed on rotation restoration (SystemUI rewriting the
+rotation lock after restore) and a hierarchy-dump test race; both were fixed, not skipped,
+before the release. Do not hide or skip a failing test to release.
 
 Jobs after the resolver:
 
@@ -179,7 +179,19 @@ are **Tap agent** and **Tap watcher**; CLI/package names stay unchanged.
 - GitHub Packages readers need `read:packages`; bundled/local Maven repositories do not.
 - PyPI remains opt-in; registering trusted publishers is required before enabling it.
 - Windows uses the JVM bundle; no Windows native build is provided.
-- Native builds and registry uploads require hosted CI. Local verification does not claim
-  a production publication or downloaded live 0.1.0 artifacts before the PR merges.
+- Native builds and registry uploads require hosted CI.
 - Maven Central, Windows native builds, signed binaries and an offline installer remain
   outside this change.
+
+## Release record: 0.1.0 (2026-11-08)
+
+- Release run 42424130991 succeeded on `main` CI's success for 397afd49; it created tag
+  `v0.1.0` there and made the release public (latest, not a pre-release).
+- 16 assets: native `linux-x86_64` and `macos-aarch64` servers, `server-jvm.zip`, the three
+  platform bundles, `maven.zip`, wheel + sdist for `tap-e2e`, `tap-agent`, `tap-studio` and
+  `tap-watcher`, and `SHA256SUMS`. Checksums verified after download; the Linux binary
+  reports `tap daemon 0.1.0`.
+- GitHub Packages: `tap-schema`, `tap-api`, `tap-client`, `tap-junit5` and `tap-sync-sdk` at 0.1.0.
+- PyPI: not published (`PUBLISH_TO_PYPI` unset; trusted publishers not registered).
+- Docs run 42425277388, dispatched by Release, deployed the site; every Download-page and
+  install-snippet link to `v0.1.0` returns 200.

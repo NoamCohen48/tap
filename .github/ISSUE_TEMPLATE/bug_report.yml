@@ -32,7 +32,7 @@ body:
     attributes:
       label: Tap versions
       description: "`tap version`, and the client version (tap-client / tap-e2e / tap-agent)."
-      placeholder: "tap 0.0.1, tap-e2e 0.0.1"
+      placeholder: "tap 0.1.0, tap-e2e 0.1.0"
     validations:
       required: true
   - type: input
