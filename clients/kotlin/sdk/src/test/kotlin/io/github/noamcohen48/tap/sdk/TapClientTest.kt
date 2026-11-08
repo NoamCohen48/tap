@@ -1003,31 +1003,28 @@ class TapClientTest {
     }
 
     @Test
-    fun `a property wait polls through a node that went stale`() {
+    fun `a state wait is one device command on the picked selector`() {
         runBlocking {
-            var snapshots = 0
-            fakeDevices.executeResponder = { request ->
-                if (!request.command.hasSnapshot()) {
-                    null
-                } else if (snapshots++ == 0) {
-                    CommandResult
-                        .newBuilder()
-                        .setError(
-                            io.github.noamcohen48.tap.api.v1.Error
-                                .newBuilder()
-                                .setCode(ErrorCode.ERR_STALE_BEFORE_INPUT),
-                        ).build()
-                } else {
-                    CommandResult.newBuilder().setSnapshot(ElementSnapshot.newBuilder().setEnabled(true)).build()
-                }
-            }
+            val sent = mutableListOf<Command>()
+            fakeDevices.executeResponder = { request -> null.also { if (request.command.hasWaitState()) sent += request.command } }
             val connection = client().connect("test")
             try {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554")
                     try {
-                        device.screen.element(text("Save")).await().enabled()
-                        assertEquals(2, snapshots)
+                        val picked = text("Row").at(2)
+                        val wait = device.screen.await(picked)
+                        assertEquals(picked, wait.enabled().selector)
+                        wait.unchecked()
+                        wait.textContains("Pa")
+                        wait.until(enabled() and text("Pay", MatchMode.STARTS_WITH))
+                        assertEquals(List(4) { picked.proto }, sent.map { it.waitState.selector })
+                        assertEquals(enabled().proto.node, sent[0].waitState.condition)
+                        assertEquals(checked(false).proto.node, sent[1].waitState.condition)
+                        assertEquals(text("Pa", MatchMode.CONTAINS).proto.node, sent[2].waitState.condition)
+                        assertEquals((enabled() and text("Pay", MatchMode.STARTS_WITH)).proto.node, sent[3].waitState.condition)
+                        assertFailsWith<IllegalArgumentException> { wait.until(enabled().first()) }
+                        assertEquals(4, sent.size)
                     } finally {
                         device.detach()
                     }
@@ -1037,6 +1034,35 @@ class TapClientTest {
                 connection.close()
             }
         }
+    }
+
+    @Test
+    fun `a state wait timeout carries the last state, and AMBIGUOUS is a command failure`() {
+        val notReached =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
+                .setDetail("STATE_NOT_REACHED")
+                .setLastState(ElementSnapshot.newBuilder().setText("Placing order").setEnabled(false))
+        val failure = waitMappingWith({ CommandResult.newBuilder().setError(notReached).build() }) { it.screen.await(res("pay")).enabled() }
+        assertIs<WaitTimeoutException>(failure)
+        assertEquals(WaitReason.STATE_NOT_REACHED, failure.reason)
+        assertEquals("Placing order", failure.lastState?.text)
+        assertTrue(failure.message!!.contains("text=Placing order enabled=false"), failure.message)
+
+        val parts = notReached.clone().addConditionHolds(true).addConditionHolds(false)
+        val partly = waitMappingWith({ CommandResult.newBuilder().setError(parts).build() }) { it.screen.await(res("pay")).until(enabled(false) and text("Pay")) }
+        assertIs<WaitTimeoutException>(partly)
+        assertEquals(listOf("enabled(false)" to true, "text(\"Pay\")" to false), partly.conditionParts.map { it.part to it.holds })
+        assertTrue(partly.message!!.endsWith("\n  enabled(false): yes\n  text(\"Pay\"): no (\"Placing order\")"), partly.message)
+
+        val ambiguous =
+            io.github.noamcohen48.tap.api.v1.Error
+                .newBuilder()
+                .setCode(ErrorCode.ERR_AMBIGUOUS)
+        val many = waitMappingWith({ CommandResult.newBuilder().setError(ambiguous).build() }) { it.screen.await(text("Row")).checked() }
+        assertIs<CommandException>(many)
+        assertEquals(ErrorCode.ERR_AMBIGUOUS.toModel(), many.code)
     }
 
     @Test
@@ -1579,14 +1605,9 @@ class TapClientTest {
     @Test
     fun `typeText taps the field, waits for its focus, then types into the focus`() {
         runBlocking {
-            var snapshots = 0
             fakeDevices.executeResponder = { request ->
                 when {
-                    request.command.hasSnapshot() -> {
-                        CommandResult.newBuilder().setSnapshot(ElementSnapshot.newBuilder().setFocused(++snapshots == 2)).build()
-                    }
-
-                    request.command.hasTap() || request.command.hasTypeText() -> {
+                    request.command.hasTap() || request.command.hasWaitState() || request.command.hasTypeText() -> {
                         CommandResult.newBuilder().setDone(Done.getDefaultInstance()).build()
                     }
 
@@ -1603,13 +1624,14 @@ class TapClientTest {
                         device.screen.element(res("email")).typeText("abc")
                         val ops =
                             fakeDevices.executeRequests.map { it.command }.filter {
-                                it.hasTap() || it.hasSnapshot() ||
+                                it.hasTap() || it.hasSnapshot() || it.hasWaitState() ||
                                     it.hasTypeText()
                             }
                         assertEquals(
-                            listOf(Command.OpCase.TAP, Command.OpCase.SNAPSHOT, Command.OpCase.SNAPSHOT, Command.OpCase.TYPE_TEXT),
+                            listOf(Command.OpCase.TAP, Command.OpCase.WAIT_STATE, Command.OpCase.TYPE_TEXT),
                             ops.map { it.opCase },
                         )
+                        assertEquals(focused().proto.node, ops[1].waitState.condition)
                         assertEquals("abc", ops.last().typeText.text)
 
                         fakeDevices.executeRequests.clear()

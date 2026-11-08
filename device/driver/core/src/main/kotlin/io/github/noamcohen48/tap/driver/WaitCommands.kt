@@ -2,13 +2,17 @@ package io.github.noamcohen48.tap.driver
 
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
+import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.ErrorDetail
 
-/** Condition waits that poll the device until the deadline (`wait_visible`, `wait_gone`, `wait_app_visible`). */
+/** Condition waits that poll the device until the deadline (`wait_visible`, `wait_gone`, `wait_state`, `wait_app_visible`). */
 internal class WaitCommands(
     private val device: UiDevice,
     private val objects: UiObjectAccess,
@@ -53,6 +57,36 @@ internal class WaitCommands(
         if (pollUntil(context) { objects.presence(target) == false }) return
         val count = objects.count(target)?.takeIf { it > 0 }
         throw CommandFailure(ErrorCode.ERR_WAIT_TIMEOUT, detail = ErrorDetail.STILL_PRESENT, matchCount = count)
+    }
+
+    /**
+     * Polls until the one node [target] resolves to (its pick applied first) satisfies
+     * [command]'s condition, evaluated on that node alone with the traversal predicate; the rules
+     * (stale and missing keep polling, `AMBIGUOUS` at once, one final read) are [StateWait]'s.
+     */
+    fun waitState(
+        context: CommandContext,
+        target: CompiledSelector,
+        command: WaitState,
+        snapshot: (UiObject2) -> ElementSnapshot,
+    ) {
+        val condition = NodePredicate(command.condition)
+        val operands =
+            when (command.condition.kindCase) {
+                Node.KindCase.ALL_OF -> command.condition.allOf.nodesList
+                Node.KindCase.ANY_OF -> command.condition.anyOf.nodesList
+                else -> listOf(command.condition)
+            }.map(::NodePredicate)
+        val wait =
+            StateWait(
+                resolve = { objects.resolve(target).let { it.element to it.errorCode } },
+                holds = condition::matches,
+                parts = { element -> operands.map { it.matches(element) } },
+                snapshot = snapshot,
+                recycle = UiObject2::recycle,
+            )
+        if (pollUntil(context) { wait.poll() }) return
+        wait.timedOut()
     }
 
     /** Waits until the named package owns a focused window; a timeout is `APP_NOT_VISIBLE`. */

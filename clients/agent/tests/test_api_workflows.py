@@ -90,11 +90,11 @@ def test_gesture_distance_and_targeted_typing(fake, agent):
     assert fake.devices.commands[-1].swipe.distance_percent == 35
     agent.fling("id=list", "up", timeout=2)
     assert fake.devices.commands[-1].timeout_ms == 2000
-    fake.devices.responder = lambda c: pb.CommandResult(snapshot=pb.ElementSnapshot(focused=True)) if c.WhichOneof("op") == "snapshot" else None
     before = len(fake.devices.commands)
     agent.type("secret", target="id=input", timeout=5, focus_timeout=2, sensitive=True)
     commands = fake.devices.commands[before:]
-    assert [c.WhichOneof("op") for c in commands] == ["tap", "snapshot", "type_text"]
+    assert [c.WhichOneof("op") for c in commands] == ["tap", "wait_state", "type_text"]
+    assert commands[1].wait_state.condition.flag.property == pb.FLAG_FOCUSED and commands[1].timeout_ms == 2000
     assert commands[0].tap.selector.node == res("input")._proto.node
     assert commands[-1].type_text.sensitive
     assert commands[0].timeout_ms == commands[-1].timeout_ms == 5000
@@ -170,6 +170,11 @@ def test_recording_start_failure_is_not_replayed(agent, recorder):
 
 def test_targeted_typing_does_not_type_after_failed_focus(fake, agent):
     agent.attach("first")
+    fake.devices.responder = lambda c: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="STATE_NOT_REACHED", last_state=pb.ElementSnapshot()))
+        if c.WhichOneof("op") == "wait_state"
+        else None
+    )
     with pytest.raises(AgentError, match="focused"):
         agent.type("not injected", target="id=input", focus_timeout=.02)
     assert sum(c.WhichOneof("op") == "tap" for c in fake.devices.commands) == 1

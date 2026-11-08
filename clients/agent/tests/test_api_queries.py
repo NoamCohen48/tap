@@ -83,7 +83,10 @@ def test_queries_and_property_waits_use_sdk_operations(fake, agent):
     agent.wait("text=Saved", state="text", value="Saved")
     agent.wait("text=Saved", state="text-contains", value="ave")
     agent.wait("text=Saved", state="count", value=3)
-    assert all(command.WhichOneof("op") in {"exists", "count", "snapshot"} for command in fake.devices.commands)
+    assert all(command.WhichOneof("op") in {"exists", "count", "snapshot", "wait_state"} for command in fake.devices.commands)
+    conditions = [command.wait_state.condition for command in fake.devices.commands if command.HasField("wait_state")]
+    assert [c.WhichOneof("kind") for c in conditions] == ["flag", "flag", "flag", "match", "match"]
+    assert [c.match.mode for c in conditions[3:]] == [pb.MATCH_EXACT, pb.MATCH_CONTAINS]
 
 
 @pytest.mark.parametrize("options", [

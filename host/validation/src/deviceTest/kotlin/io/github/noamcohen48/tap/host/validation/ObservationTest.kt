@@ -1,15 +1,21 @@
 package io.github.noamcohen48.tap.host.validation
 
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.ErrorDetail
 import io.github.noamcohen48.tap.protocol.KEYCODE_BACK
+import io.github.noamcohen48.tap.protocol.Nodes
 import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.errorCode
+import io.github.noamcohen48.tap.protocol.errorOrNull
 import io.github.noamcohen48.tap.protocol.ok
+import io.github.noamcohen48.tap.protocol.pickFirst
 
 /**
  * Query and key operations: `COUNT` against duplicates, `SNAPSHOT` state (and `AMBIGUOUS` on
- * duplicates), `DEVICE_INFO`, `WAIT_APP_VISIBLE`, a host-refused key code, and `PRESS_KEY`
+ * duplicates), `WAIT_STATE` (reached, not reached with the last state and per-part results, `AMBIGUOUS` without a pick,
+ * a picked duplicate, no match), `DEVICE_INFO`, `WAIT_APP_VISIBLE`, a host-refused key code, and `PRESS_KEY`
  * back leaving the activity, proven by `WAIT_GONE`.
  */
 @DeviceTest
@@ -34,6 +40,27 @@ class ObservationTest {
                 check(state.resourceName == "$FIXTURE_PACKAGE:id/gesture_target") { "Unexpected resource: $state" }
                 val ambiguousSnapshot = client.send(Commands.snapshot(Selectors.text("Duplicate action")))
                 check(ambiguousSnapshot.errorCode == ErrorCode.ERR_AMBIGUOUS) { "SNAPSHOT should be AMBIGUOUS: $ambiguousSnapshot" }
+
+                val enabled = client.send(Commands.waitState(GESTURE_TARGET, Nodes.flag(NodeFlag.FLAG_ENABLED)), timeoutMs = 5_000)
+                check(enabled.ok) { "WAIT_STATE enabled should hold at once: $enabled" }
+                val disabled = client.send(Commands.waitState(GESTURE_TARGET, Nodes.flag(NodeFlag.FLAG_ENABLED, false)), timeoutMs = 500)
+                val notReached = disabled.errorOrNull
+                check(
+                    notReached?.code == ErrorCode.ERR_WAIT_TIMEOUT && notReached.detail == ErrorDetail.STATE_NOT_REACHED &&
+                        notReached.lastState.enabled && notReached.lastState.resourceName == state.resourceName,
+                ) { "WAIT_STATE disabled should time out with the last state: $disabled" }
+                // A combined condition: each top-level part's result comes from the same final read.
+                val combined = Nodes.allOf(Nodes.flag(NodeFlag.FLAG_ENABLED), Nodes.text("not its text"))
+                val partly = client.send(Commands.waitState(GESTURE_TARGET, combined), timeoutMs = 500).errorOrNull
+                check(partly?.detail == ErrorDetail.STATE_NOT_REACHED && partly.conditionHoldsList == listOf(true, false)) {
+                    "WAIT_STATE should report which condition part failed: $partly"
+                }
+                val unpicked = client.send(Commands.waitState(Selectors.text("Duplicate action"), Nodes.flag(NodeFlag.FLAG_ENABLED)), timeoutMs = 5_000)
+                check(unpicked.errorCode == ErrorCode.ERR_AMBIGUOUS) { "WAIT_STATE on duplicates should be AMBIGUOUS: $unpicked" }
+                val picked = client.send(Commands.waitState(Selectors.text("Duplicate action").pickFirst(), Nodes.flag(NodeFlag.FLAG_ENABLED)), timeoutMs = 5_000)
+                check(picked.ok) { "WAIT_STATE on a picked duplicate should hold: $picked" }
+                val missing = client.send(Commands.waitState(Selectors.text("never on screen"), Nodes.flag(NodeFlag.FLAG_ENABLED)), timeoutMs = 500)
+                check(missing.errorOrNull?.detail == ErrorDetail.NO_MATCH) { "WAIT_STATE with no match should be NO_MATCH: $missing" }
 
                 val info = client.execute(Commands.deviceInfo()).deviceInfo
                 check(info.apiLevel >= 26 && info.displayWidth > 0 && info.currentPackage == FIXTURE_PACKAGE) {

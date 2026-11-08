@@ -160,6 +160,6 @@ async def test_tool_replay_exclusion_and_error_cleanup(attached, monkeypatch):
 
 
 def test_every_execute_operation_has_an_explicit_studio_classification():
-    helpers = {"count", "device_info", "dump_hierarchy", "exists", "get_clipboard", "list_notifications", "set_location", "snapshot", "type_text", "wait_gone", "wait_visible"}
+    helpers = {"count", "device_info", "dump_hierarchy", "exists", "get_clipboard", "list_notifications", "set_location", "snapshot", "type_text", "wait_gone", "wait_state", "wait_visible"}
     actual = {f.name for f in tap.Command.DESCRIPTOR.oneofs_by_name["op"].fields}
     assert actual == set(ACTION_OPS) | set(APP_WAIT_OPS) | set(DEVICE_WAIT_OPS) | helpers

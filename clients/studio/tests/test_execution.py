@@ -83,7 +83,7 @@ def test_type_budgets_are_separate_and_defaults_are_restored(daemon, device):
     sent = daemon.devices.commands
     assert sent[0].timeout_ms == 700
     assert sent[1].timeout_ms == sent[-1].timeout_ms == 500
-    assert [c.WhichOneof("op") for c in sent] == ["wait_visible", "tap", "snapshot", "type_text"]
+    assert [c.WhichOneof("op") for c in sent] == ["wait_visible", "tap", "wait_state", "type_text"]
     assert device.timeouts is original
     assert revise(prepared, None) == prepared
 

@@ -909,6 +909,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.WaitState",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt",
     "allDeclaredFields": true
   },

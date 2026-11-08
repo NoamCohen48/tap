@@ -28,6 +28,7 @@ import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NotificationList
@@ -64,6 +65,7 @@ import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
 import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
 import io.github.noamcohen48.tap.wire.v1.CaptureScreenshot
@@ -125,7 +127,7 @@ val Command.isMutation: Boolean
             -> true
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
-            OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.WAIT_APP_VISIBLE, OpCase.WAIT_SCREEN_STABLE,
+            OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.WAIT_STATE, OpCase.WAIT_APP_VISIBLE, OpCase.WAIT_SCREEN_STABLE,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST,
             OpCase.AWAIT_NOTIFICATION, OpCase.LIST_NOTIFICATIONS, OpCase.OP_NOT_SET, null,
             -> false
@@ -143,6 +145,7 @@ val Command.targetSelector: Selector?
             OpCase.SNAPSHOT -> snapshot.selector
             OpCase.WAIT_VISIBLE -> waitVisible.selector
             OpCase.WAIT_GONE -> waitGone.selector
+            OpCase.WAIT_STATE -> waitState.selector
             OpCase.TAP -> tap.selector
             OpCase.LONG_TAP -> longTap.selector
             OpCase.MULTI_TAP -> multiTap.selector
@@ -263,6 +266,12 @@ object Commands {
         Command.newBuilder().setWaitVisible(WaitVisible.newBuilder().setSelector(selector)).build()
 
     fun waitGone(selector: Selector): Command = Command.newBuilder().setWaitGone(WaitGone.newBuilder().setSelector(selector)).build()
+
+    /** [WaitState]: wait until the one node [selector] resolves to satisfies [condition]. */
+    fun waitState(
+        selector: Selector,
+        condition: Node,
+    ): Command = Command.newBuilder().setWaitState(WaitState.newBuilder().setSelector(selector).setCondition(condition)).build()
 
     fun waitAppVisible(packageName: String): Command =
         Command.newBuilder().setWaitAppVisible(WaitAppVisible.newBuilder().setPackageName(packageName)).build()
@@ -469,6 +478,8 @@ object Responses {
         detail: String? = null,
         message: String? = null,
         matchCount: Int? = null,
+        lastState: ElementSnapshot? = null,
+        conditionHolds: List<Boolean> = emptyList(),
     ): Response {
         require(code != ErrorCode.UNRECOGNIZED && code != ErrorCode.ERR_UNSPECIFIED && code != ErrorCode.ERR_UNKNOWN) {
             "$code is a decode fallback and is never sent"
@@ -478,6 +489,8 @@ object Responses {
                 detail?.let { setDetail(it) }
                 message?.let { setMessage(it) }
                 matchCount?.let { setMatchCount(it) }
+                lastState?.let { setLastState(it) }
+                addAllConditionHolds(conditionHolds)
             }
         return of(CommandResult.newBuilder().setError(error), durationMs)
     }
@@ -524,6 +537,8 @@ interface CommandHandler {
     fun waitVisible(command: WaitVisible)
 
     fun waitGone(command: WaitGone)
+
+    fun waitState(command: WaitState)
 
     fun waitAppVisible(command: WaitAppVisible)
 
@@ -644,6 +659,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.SNAPSHOT -> result.setSnapshot(handler.snapshot(snapshot))
         OpCase.WAIT_VISIBLE -> result.setDone(done).also { handler.waitVisible(waitVisible) }
         OpCase.WAIT_GONE -> result.setDone(done).also { handler.waitGone(waitGone) }
+        OpCase.WAIT_STATE -> result.setDone(done).also { handler.waitState(waitState) }
         OpCase.WAIT_APP_VISIBLE -> result.setDone(done).also { handler.waitAppVisible(waitAppVisible) }
         OpCase.WAIT_SCREEN_STABLE -> result.setDone(done).also { handler.waitScreenStable(waitScreenStable) }
         OpCase.TAP -> result.setDone(done).also { handler.tap(tap) }

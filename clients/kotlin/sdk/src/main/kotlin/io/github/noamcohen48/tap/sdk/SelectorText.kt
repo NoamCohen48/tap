@@ -1,7 +1,12 @@
 package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.Match
+import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.Relation
+import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.api.v1.Error as ErrorProto
 import io.github.noamcohen48.tap.api.v1.ResourceId
 import io.github.noamcohen48.tap.api.v1.Selector as SelectorProto
 
@@ -124,3 +129,134 @@ private class TextWriter {
             }
         }
 }
+
+/**
+ * [node] in the builder syntax a test writes (`text("Pay")`, `clickable()`,
+ * `hasAncestor(res("list"))`). An exact package predicate reads as the `app(...)` it came from.
+ */
+internal fun describe(node: Node): String =
+    when (node.kindCase) {
+        Node.KindCase.MATCH -> {
+            val match = node.match
+            val exact = match.mode == MatchMode.MATCH_EXACT || match.mode == MatchMode.MATCH_UNSPECIFIED
+            if (match.property == TextProperty.PROPERTY_PACKAGE_NAME && exact) {
+                "app(${quoted(match.value)})"
+            } else {
+                val name =
+                    when (match.property) {
+                        TextProperty.PROPERTY_TEXT -> "text"
+                        TextProperty.PROPERTY_CONTENT_DESCRIPTION -> "desc"
+                        TextProperty.PROPERTY_HINT -> "hint"
+                        TextProperty.PROPERTY_CLASS_NAME -> "className"
+                        TextProperty.PROPERTY_PACKAGE_NAME -> "packageName"
+                        else -> "match"
+                    }
+                val mode = if (exact) "" else ", MatchMode.${match.mode.name.removePrefix("MATCH_")}"
+                "$name(${quoted(match.value)}$mode)"
+            }
+        }
+
+        Node.KindCase.FLAG -> {
+            val name = camel(node.flag.property.name.removePrefix("FLAG_"))
+            if (node.flag.value) "$name()" else "$name(false)"
+        }
+
+        Node.KindCase.RESOURCE -> {
+            val resource = node.resource
+            if (resource.hasPackageName()) "resId(${quoted(resource.packageName)}, ${quoted(resource.name)})" else "res(${quoted(resource.name)})"
+        }
+
+        Node.KindCase.RELATED -> {
+            val name =
+                when (node.related.relation) {
+                    Relation.RELATION_PARENT -> "hasParent"
+                    Relation.RELATION_ANCESTOR -> "hasAncestor"
+                    Relation.RELATION_CHILD -> "hasChild"
+                    Relation.RELATION_DESCENDANT -> "hasDescendant"
+                    else -> "related"
+                }
+            "$name(${describe(node.related.node)})"
+        }
+
+        Node.KindCase.ALL_OF -> node.allOf.nodesList.joinToString(" and ") { operand(it) }
+
+        Node.KindCase.ANY_OF -> node.anyOf.nodesList.joinToString(" or ") { operand(it) }
+
+        Node.KindCase.KIND_NOT_SET, null -> "?"
+    }
+
+/** [selector] in builder syntax, with its pick. */
+internal fun describe(selector: SelectorProto): String {
+    val pick =
+        when (selector.pickCase) {
+            SelectorProto.PickCase.FIRST -> ".first()"
+            SelectorProto.PickCase.AT -> ".at(${selector.at.index})"
+            else -> ""
+        }
+    val base = describe(selector.node)
+    val combined = selector.node.kindCase == Node.KindCase.ALL_OF || selector.node.kindCase == Node.KindCase.ANY_OF
+    return if (pick.isNotEmpty() && combined) "($base)$pick" else base + pick
+}
+
+/**
+ * [ErrorProto.getConditionHoldsList] against the [condition] the state wait sent, with what the
+ * node ([ErrorProto.getLastState]) had for each property or flag part; empty when they do not fit.
+ */
+internal fun conditionParts(
+    condition: Node,
+    error: ErrorProto,
+): List<ConditionPart> {
+    val operands =
+        when (condition.kindCase) {
+            Node.KindCase.ALL_OF -> condition.allOf.nodesList
+            Node.KindCase.ANY_OF -> condition.anyOf.nodesList
+            else -> listOf(condition)
+        }
+    if (operands.size != error.conditionHoldsCount) return emptyList()
+    val state = if (error.hasLastState()) error.lastState else null
+    return operands.zip(error.conditionHoldsList) { node, holds -> ConditionPart(describe(node), holds, state?.let { observed(node, it) }) }
+}
+
+private fun observed(
+    node: Node,
+    state: io.github.noamcohen48.tap.api.v1.ElementSnapshot,
+): String? =
+    when (node.kindCase) {
+        Node.KindCase.MATCH -> {
+            when (node.match.property) {
+                TextProperty.PROPERTY_TEXT -> if (state.hasText()) quoted(state.text) else "null"
+                TextProperty.PROPERTY_CONTENT_DESCRIPTION -> if (state.hasContentDescription()) quoted(state.contentDescription) else "null"
+                TextProperty.PROPERTY_HINT -> if (state.hasHint()) quoted(state.hint) else "null"
+                TextProperty.PROPERTY_CLASS_NAME -> if (state.hasClassName()) quoted(state.className) else "null"
+                TextProperty.PROPERTY_PACKAGE_NAME -> if (state.hasPackageName()) quoted(state.packageName) else "null"
+                else -> null
+            }
+        }
+
+        Node.KindCase.FLAG -> {
+            when (node.flag.property) {
+                NodeFlag.FLAG_ENABLED -> state.enabled
+                NodeFlag.FLAG_CHECKED -> state.checked
+                NodeFlag.FLAG_CHECKABLE -> state.checkable
+                NodeFlag.FLAG_CLICKABLE -> state.clickable
+                NodeFlag.FLAG_FOCUSED -> state.focused
+                NodeFlag.FLAG_FOCUSABLE -> state.focusable
+                NodeFlag.FLAG_LONG_CLICKABLE -> state.longClickable
+                NodeFlag.FLAG_SCROLLABLE -> state.scrollable
+                NodeFlag.FLAG_SELECTED -> state.selected
+                else -> null
+            }?.toString()
+        }
+
+        Node.KindCase.RESOURCE -> if (state.hasResourceName()) quoted(state.resourceName) else "null"
+
+        else -> null
+    }
+
+private fun operand(node: Node): String =
+    if (node.kindCase == Node.KindCase.ALL_OF || node.kindCase == Node.KindCase.ANY_OF) "(${describe(node)})" else describe(node)
+
+private fun camel(name: String): String =
+    name.lowercase().split('_').mapIndexed { i, word -> if (i == 0) word else word.replaceFirstChar(Char::uppercase) }.joinToString("")
+
+internal fun quoted(value: String): String = "\"" + value.replace("\\", "\\\\").replace("\"", "\\\"") + "\""

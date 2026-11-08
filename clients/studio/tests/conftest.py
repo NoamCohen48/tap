@@ -28,6 +28,20 @@ def anyio_backend() -> str:
     return "asyncio"
 
 
+def _holds(condition: tap.Node, node: tap.ElementSnapshot) -> bool:
+    """The fake device's evaluation of a state-wait condition: flags, and text by match mode."""
+    kind = condition.WhichOneof("kind")
+    if kind == "all_of":
+        return all(_holds(n, node) for n in condition.all_of.nodes)
+    if kind == "flag":
+        name = tap.NodeFlag.Name(condition.flag.property).removeprefix("FLAG_").lower()
+        return getattr(node, name) == condition.flag.value
+    match = condition.match
+    if match.mode == tap.MATCH_CONTAINS:
+        return match.value in node.text
+    return node.text == match.value
+
+
 def device_answers(command: tap.Command) -> tap.CommandResult | None:
     """A device where everything is there, focused, enabled and checked, with the text
     "Wool socks", and every selector matches one node."""
@@ -38,8 +52,15 @@ def device_answers(command: tap.Command) -> tap.CommandResult | None:
                 api_level=34, manufacturer="Google", model="sdk_gphone64", display_width=1080, display_height=2400
             )
         )
+    node = tap.ElementSnapshot(text="Wool socks", enabled=True, checked=True, focused=True)
     if op == "snapshot":
-        return tap.CommandResult(snapshot=tap.ElementSnapshot(text="Wool socks", enabled=True, checked=True, focused=True))
+        return tap.CommandResult(snapshot=node)
+    if op == "wait_state":
+        if _holds(command.wait_state.condition, node):
+            return tap.CommandResult(done=tap.Done())
+        return tap.CommandResult(
+            error=tap.Error(code=tap.ERR_WAIT_TIMEOUT, detail="STATE_NOT_REACHED", last_state=node, condition_holds=[False])
+        )
     if op == "count":
         return tap.CommandResult(count=1)
     if op == "exists":

@@ -2,6 +2,7 @@ package io.github.noamcohen48.tap.driver
 
 import android.os.Build
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
@@ -35,6 +36,15 @@ internal class QueryCommands(
     fun snapshot(target: CompiledSelector): ElementSnapshot {
         val element = objects.resolveTarget(target)
         return try {
+            snapshotOf(element)
+        } finally {
+            element.recycle()
+        }
+    }
+
+    /** [snapshot] of an element the caller already resolved and recycles. */
+    fun snapshotOf(element: UiObject2): ElementSnapshot =
+        run {
             val node = element.accessibilityNodeInfo
             val bounds = visibleBounds.of(node)
             ElementSnapshot
@@ -70,10 +80,7 @@ internal class QueryCommands(
                     addAllCustomActions(custom)
                     AccessibilityActionCommands.range(node)?.let(::setRange)
                 }.build()
-        } finally {
-            element.recycle()
         }
-    }
 
     fun deviceInfo(): DeviceInfo =
         DeviceInfo

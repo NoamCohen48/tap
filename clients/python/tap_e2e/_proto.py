@@ -44,6 +44,7 @@ from .models import (
     ScreenSnapshot,
     SelectorCandidate,
     SelectorKind,
+    ConditionPart,
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
@@ -131,6 +132,98 @@ def wait_reason(detail: str) -> WaitReason | None:
         return WaitReason[detail]
     except KeyError:
         return None
+
+
+_PROPERTY_BUILDERS = {
+    pb.PROPERTY_TEXT: "text",
+    pb.PROPERTY_CONTENT_DESCRIPTION: "desc",
+    pb.PROPERTY_HINT: "hint",
+    pb.PROPERTY_CLASS_NAME: "class_name",
+    pb.PROPERTY_PACKAGE_NAME: "package",
+}
+_RELATION_BUILDERS = {
+    pb.RELATION_PARENT: "has_parent",
+    pb.RELATION_ANCESTOR: "has_ancestor",
+    pb.RELATION_CHILD: "has_child",
+    pb.RELATION_DESCENDANT: "has_descendant",
+}
+
+
+def describe_node(node: pb.Node) -> str:
+    """``node`` in the builder syntax a test writes (``text("Pay")``, ``clickable()``,
+    ``has_ancestor(res("list"))``). An exact package predicate reads as the ``app(...)`` it came
+    from."""
+    kind = node.WhichOneof("kind")
+    if kind == "match":
+        match = node.match
+        if match.property == pb.PROPERTY_PACKAGE_NAME and match.mode in (pb.MATCH_EXACT, pb.MATCH_UNSPECIFIED):
+            return f"app({_quoted(match.value)})"
+        name = _PROPERTY_BUILDERS.get(match.property, "match")
+        mode = "" if match.mode in (pb.MATCH_EXACT, pb.MATCH_UNSPECIFIED) else ", " + pb.MatchMode.Name(match.mode).removeprefix("MATCH_")
+        return f"{name}({_quoted(match.value)}{mode})"
+    if kind == "flag":
+        name = pb.NodeFlag.Name(node.flag.property).removeprefix("FLAG_").lower()
+        return f"{name}()" if node.flag.value else f"{name}(False)"
+    if kind == "resource":
+        resource = node.resource
+        if resource.HasField("package_name"):
+            return f"res_id({_quoted(resource.package_name)}, {_quoted(resource.name)})"
+        return f"res({_quoted(resource.name)})"
+    if kind == "related":
+        return f"{_RELATION_BUILDERS.get(node.related.relation, 'related')}({describe_node(node.related.node)})"
+    if kind in ("all_of", "any_of"):
+        joiner = " & " if kind == "all_of" else " | "
+        operands = getattr(node, kind).nodes
+        return joiner.join(
+            f"({describe_node(n)})" if n.WhichOneof("kind") in ("all_of", "any_of") else describe_node(n) for n in operands
+        )
+    return "?"
+
+
+def describe_selector(selector: pb.Selector) -> str:
+    """``selector`` in builder syntax, with its pick."""
+    pick = selector.WhichOneof("pick")
+    suffix = ".first()" if pick == "first" else f".at({selector.at.index})" if pick == "at" else ""
+    base = describe_node(selector.node)
+    return f"({base}){suffix}" if suffix and selector.node.WhichOneof("kind") in ("all_of", "any_of") else base + suffix
+
+
+def _quoted(value: str) -> str:
+    return '"' + value.replace("\\", "\\\\").replace('"', '\\"') + '"'
+
+
+_SNAPSHOT_PROPERTIES = {
+    pb.PROPERTY_TEXT: "text",
+    pb.PROPERTY_CONTENT_DESCRIPTION: "content_description",
+    pb.PROPERTY_HINT: "hint",
+    pb.PROPERTY_CLASS_NAME: "class_name",
+    pb.PROPERTY_PACKAGE_NAME: "package_name",
+}
+
+
+def condition_parts(condition: pb.Node, holds, state: pb.ElementSnapshot | None) -> tuple[ConditionPart, ...]:
+    """``Error.condition_holds`` against the condition the wait sent, with what ``state`` (the
+    same node) had for each property or flag part; empty when they do not fit."""
+    kind = condition.WhichOneof("kind")
+    operands = list(getattr(condition, kind).nodes) if kind in ("all_of", "any_of") else [condition]
+    if len(holds) != len(operands):
+        return ()
+    return tuple(ConditionPart(describe_node(node), bool(held), _observed(node, state)) for node, held in zip(operands, holds))
+
+
+def _observed(node: pb.Node, state: pb.ElementSnapshot | None) -> str | None:
+    if state is None:
+        return None
+    kind = node.WhichOneof("kind")
+    if kind == "match" and node.match.property in _SNAPSHOT_PROPERTIES:
+        field = _SNAPSHOT_PROPERTIES[node.match.property]
+        return _quoted(getattr(state, field)) if state.HasField(field) else "None"
+    if kind == "flag":
+        name = pb.NodeFlag.Name(node.flag.property).removeprefix("FLAG_").lower()
+        return repr(getattr(state, name)) if hasattr(state, name) else None
+    if kind == "resource":
+        return _quoted(state.resource_name) if state.HasField("resource_name") else "None"
+    return None
 
 
 def _optional(message, field: str):

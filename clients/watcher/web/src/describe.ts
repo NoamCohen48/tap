@@ -107,6 +107,8 @@ function command(value: Command): Pick<Described, "verb" | "target" | "input"> {
       return { verb, target: selector(op.value.selector), input: "" };
     case "waitVisible":
       return { verb: "Wait for", target: selector(op.value.selector), input: "" };
+    case "waitState":
+      return { verb: "Wait for", target: selector(op.value.selector), input: node(op.value.condition) };
     case "setText":
       return { verb, target: selector(op.value.selector), input: op.value.sensitive ? HIDDEN : quote(op.value.text) };
     case "typeText":

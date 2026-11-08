@@ -19,7 +19,7 @@ Protocol 5.1 encodes every control payload as protobuf (3.0 introduced that; 4.0
 wait-timeout details; 5.0 removed selector scopes and `ResourceId.aut_package` — package
 ownership is a `PROPERTY_PACKAGE_NAME` predicate and every lookup searches all windows — made
 gestures refuse a covered touch point (`NOT_INTERACTABLE` / `OBSCURED`), and moved the sync
-package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added the
+package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added `wait_state` with `Error.last_state` and `Error.condition_holds`, and the
 `STALE_BEFORE_INPUT` error code). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
@@ -199,6 +199,7 @@ result type.
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count, the `StandardAction`s and custom action labels the node offers, and a range node's `range` {type, min, max, current} |
 | `wait_visible` | `WaitVisible` | `selector`, `exactly_one` (default false) | `done` once one or more nodes match (exactly one with `exactly_one`); `WAIT_TIMEOUT` with detail `NO_MATCH`, or `AMBIGUOUS` (only with `exactly_one`), and `match_count` from the last non-stale poll (no detail when every poll was stale) |
 | `wait_gone` | `WaitGone` | `selector` | `done` once no match exists; `WAIT_TIMEOUT` with detail `STILL_PRESENT` and `match_count` counted once after the deadline (absent if that count was stale or zero) |
+| `wait_state` | `WaitState` | `selector`, `condition` (a required `Node`: any selector predicate) | `done` once the one node the selector resolves to (its `first` / `at` applied first) satisfies `condition`, evaluated on that node alone by the traversal predicate (an absent property never matches; ancestors up to 32 levels). No match and a stale read keep polling; several matches without a pick are `AMBIGUOUS` at once. After the deadline one lookup supplies `WAIT_TIMEOUT` / `STATE_NOT_REACHED` with `last_state` (the node's `ElementSnapshot`) and `condition_holds` (each operand of a top-level `all_of` / `any_of`, or the whole condition), or `NO_MATCH` when it finds no node. The condition gets the selector checks (`EMPTY_NODE` when absent, `EMPTY_VALUE`, `INVALID_REGEX`, depth); the selector and the condition share the 256-node limit |
 | `wait_app_visible` | `WaitAppVisible` | `package_name` | `done` once that package owns the focused window; `WAIT_TIMEOUT` with detail `APP_NOT_VISIBLE` |
 | `wait_screen_stable` | `WaitScreenStable` | `package_name`, `stable_for_ms` 1..30 000 (default 500), `signal` `TREE`/`PIXELS`/`ALL` (default `ALL`) | `done` once that package's focused window has not changed (per `signal`) for `stable_for_ms`; `WAIT_TIMEOUT` with detail `SCREEN_CHANGING` (never quiet long enough) or `APP_NOT_VISIBLE` (the package never owned the focused window) |
 | `tap`, `long_tap` | `Tap`, `LongTap` (mutations) | `selector` (exactly one match) | `done` after the touch (long tap: held 1.5 × the long-press timeout), at the visible centre the occlusion check used; the node is not read again after the gate (a node on another display keeps `UiObject2.click`/`longClick`). `ACTION_REJECTED` if the touch was not injected. No enabled pre-check |
@@ -235,7 +236,7 @@ accessibility text with `isShowingHintText` set. `SNAPSHOT.text` carries that ra
 `showing_hint` says so; text selectors match the same raw text (`By.text` and the traversal
 predicate agree).
 
-Waits (`wait_visible`, `wait_gone`, `wait_app_visible`) poll on the driver at 50 ms until the
+Waits (`wait_visible`, `wait_gone`, `wait_state`, `wait_app_visible`) poll on the driver at 50 ms until the
 condition holds or the request deadline passes, and honour cancellation between polls. A
 timeout is a `WAIT_TIMEOUT` error response, never an exception path.
 
@@ -283,7 +284,8 @@ Response {
 ```
 
 Each operation produces exactly one `outcome` case on success (the table above) and `error`
-(`code`, optional `detail`, optional `message`, optional `match_count` for the element waits)
+(`code`, optional `detail`, optional `message`, optional `match_count` for the element waits,
+optional `last_state` and `condition_holds` for `wait_state`)
 on failure. The daemon hands `result` to the
 client as it is.
 
@@ -475,7 +477,7 @@ policy; Tap itself never retries.
 | `STALE_BEFORE_INPUT` | no | yes | The resolved node went stale (UiAutomator could not refresh it: its view was detached or replaced) before the mutation gate, or while a query (`snapshot`, `get_text`, …) read it; nothing was sent. A fresh lookup may succeed. |
 | `STALE_DURING_COMMAND` | yes | no | Target changed after the mutation began. `TARGET_GONE`, `TARGET_AMBIGUOUS`; also `TARGET_GONE` when a node went stale after the gate: `swipe`, `scroll`, `fling` and `pinch`, a `tap`/`long_tap` on another display, and `choose_permission`'s clicks all let `UiObject2` refresh it once more (for `choose_permission` the accuracy radio may already have been clicked). |
 | `ACTION_REJECTED` | yes | no | Android refused issued input (`ACTION_SET_TEXT` returned false, a key event was not injected) or refused a rotation. `PARTIAL_INPUT` (deadline mid-typing; the second tap of a double tap or a drag stroke not injected), `KEYGUARD_SECURE` (`dismiss_keyguard` on a PIN/pattern/password keyguard, before input), `ACTION_NOT_OFFERED` (`perform_accessibility_action` / `set_progress` on a node that does not list the action, before input), `OUT_OF_RANGE` (`set_progress` outside the node's range, before input), `ACTION_NOT_OFFERED` also for `open_notification` (no content intent, or no button with that title) and `NOT_CLEARABLE` (`dismiss_notification` of an ongoing notification), both before anything is sent. `perform_ime_action` on a node that does not offer the action is refused before input, without a detail. Effects are never read back: text, rotation and gestures are for the test to observe. |
-| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `APP_NOT_VISIBLE` (`wait_app_visible`); `NO_PERMISSION_PROMPT` (`wait_permission_prompt`); `NO_TOAST` (`await_toast`); `NO_NOTIFICATION` (`await_notification`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
+| `WAIT_TIMEOUT` | no | yes | The waited condition stayed false until the timeout. `NO_MATCH`, `AMBIGUOUS` (`wait_visible`), `STILL_PRESENT` (`wait_gone`), all with `match_count`; `STATE_NOT_REACHED` with `last_state` and `condition_holds`, or `NO_MATCH` (`wait_state`); `APP_NOT_VISIBLE` (`wait_app_visible`); `NO_PERMISSION_PROMPT` (`wait_permission_prompt`); `NO_TOAST` (`await_toast`); `NO_NOTIFICATION` (`await_notification`); `SCREEN_CHANGING`, `APP_NOT_VISIBLE` for `WAIT_SCREEN_STABLE`. |
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
 | `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |

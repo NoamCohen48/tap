@@ -59,7 +59,7 @@ The codes, grouped by what they tell you:
 |---|---|
 | `NOT_FOUND` | zero matches |
 | `AMBIGUOUS` | more than one match; add a constraint or use `first()` / `at(n)` |
-| `STALE_BEFORE_INPUT` | the one match was re-rendered (its view detached or replaced) between the lookup and the input, or while a query such as `snapshot()` read it, so nothing was sent. Running the action again looks the node up afresh; property waits (`enabled()`, `checked()`, …) keep polling through it |
+| `STALE_BEFORE_INPUT` | the one match was re-rendered (its view detached or replaced) between the lookup and the input, or while a query such as `snapshot()` read it, so nothing was sent. Running the action again looks the node up afresh; state waits (`enabled()`, `checked()`, …) keep polling through it on the device |
 | `NOT_INTERACTABLE` | the one match cannot take the gesture: `OBSCURED` when another window (a keyboard, a popup, another app's overlay) covers the point the gesture would touch while part of the node still shows (a node covered completely is `NOT_FOUND`), or when the node is under an open navigation drawer (`DrawerLayout`). Nothing was sent; close or move what covers it |
 | `INVALID_SELECTOR` | rejected before lookup: `QUALIFIED_RESOURCE_NAME` (a `res` name with `:id/` in it; use `res_id(pkg, name)`), `SELECTOR_TOO_DEEP`, `SELECTOR_TOO_LARGE`, `STRING_TOO_LONG`, `INVALID_REGEX`, `EMPTY_NODE`, `EMPTY_VALUE` |
 | `INVALID_REQUEST` | out-of-range argument; `UNSUPPORTED_CHARACTERS` when `type_text` has no key mapping for a character |
@@ -76,7 +76,7 @@ The codes, grouped by what they tell you:
 
 | Code | Meaning / details |
 |---|---|
-| `WAIT_TIMEOUT` | the condition stayed false. The detail is the wait's `reason`: `NO_MATCH`, `AMBIGUOUS`, `STILL_PRESENT`, `SCREEN_CHANGING` or `APP_NOT_VISIBLE` |
+| `WAIT_TIMEOUT` | the condition stayed false. The detail is the wait's `reason`: `NO_MATCH`, `AMBIGUOUS`, `STILL_PRESENT`, `STATE_NOT_REACHED`, `SCREEN_CHANGING` or `APP_NOT_VISIBLE` |
 | `DEADLINE_EXCEEDED` | the command's deadline passed outside a normal wait (`EXPIRED_IN_QUEUE`) |
 | `CANCELLED` | stopped before mutation (`CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`) |
 
@@ -119,13 +119,17 @@ waiting stays a plain timeout. The logs of the crash are in the
 ```
 Timed out after 10012ms waiting for text("Order placed") to be visible on emulator-5554; NO_MATCH (0 matches)
 Timed out after 10008ms waiting for text("Buy") to match exactly one node on emulator-5554; AMBIGUOUS (3 matches)
-Timed out after 5003ms waiting for resId(com.shop:id/pay) to be enabled on emulator-5554 (48 polls); last observed: text=Pay enabled=false …
+Timed out after 5003ms waiting for resId(com.shop:id/pay) to satisfy enabled() on emulator-5554; STATE_NOT_REACHED; last observed: text='Pay' enabled=False …
+  enabled(): no (False)
 ```
 
-`description`, `serial`, `elapsed_ms`, `reason`, `match_count`, `polls` and `last_observation`
-are fields on the exception. `reason` is a `WaitReason` for the waits the device runs
-(`visible()`, `one()`, `gone()`, `app.await_visible`, `app.await_screen_stable`) and `None` for
-the ones the client polls.
+`description`, `serial`, `elapsed_ms`, `reason`, `match_count`, `last_state`,
+`condition_parts`, `polls` and `last_observation` are fields on the exception. `reason` is a `WaitReason` for the waits the
+device runs (`visible()`, `one()`, `gone()`, `until` and its shortcuts, `app.await_visible`,
+`app.await_screen_stable`) and `None` for the ones the client polls (`count()`,
+`device.await_until`). A state wait that found its node but not the state carries that node's
+`ElementSnapshot` as `last_state`, and `condition_parts` says for each part of its condition
+whether it held, read from that same node.
 
 What a failed test leaves behind to look at (a screenshot, the hierarchy, the driver log) is on
 [Screenshots and artifacts](artifacts.md#failure-artifacts).

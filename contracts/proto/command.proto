@@ -187,6 +187,18 @@ message WaitVisible {
   bool exactly_one = 2;
 }
 message WaitGone { Selector selector = 1; }
+// Waits until the one node `selector` resolves to satisfies `condition`: the selector picks the
+// node (exactly one match, or its `first` / `at` pick), then `condition` is evaluated on that node
+// alone, as a selector predicate would evaluate it, so a pick keeps choosing among the selector's
+// matches and never among the nodes that satisfy the condition. No match yet, or a tree changing
+// under the read, keeps polling; several matches without a pick fail at once with AMBIGUOUS
+// (there is no one node to wait for). A timeout is WAIT_TIMEOUT with STATE_NOT_REACHED,
+// `Error.last_state` and `Error.condition_holds` (both read from one final lookup), or NO_MATCH
+// when that lookup resolved no node. The selector and the condition share the selector size limit.
+message WaitState {
+  Selector selector = 1;
+  Node condition = 2; // required; a predicate on the chosen node (it has no pick of its own)
+}
 message WaitAppVisible { string package_name = 1; }
 message WaitScreenStable {
   string package_name = 1;
@@ -388,6 +400,7 @@ message Command {
     DismissNotification dismiss_notification = 46;
     MultiTap multi_tap = 47;
     TimedPress hold = 48;
+    WaitState wait_state = 49;
   }
 }
 
@@ -512,6 +525,12 @@ message Error {
   optional string message = 3; // human-readable context; never branch on it
   // WAIT_TIMEOUT of wait_visible / wait_gone: matches at the last poll (capped at 1000).
   optional int32 match_count = 4;
+  // WAIT_TIMEOUT / STATE_NOT_REACHED of wait_state: the waited-on node after the deadline.
+  optional ElementSnapshot last_state = 5;
+  // WAIT_TIMEOUT / STATE_NOT_REACHED of wait_state, read from the same node as `last_state`:
+  // whether each operand of the condition's top-level all_of (or any_of) holds, in order; one
+  // entry when the condition is neither.
+  repeated bool condition_holds = 6;
 }
 
 // One protocol response: exactly one `outcome`, named like the protocol result `kind`.

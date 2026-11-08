@@ -48,6 +48,7 @@ import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import io.github.noamcohen48.tap.api.v1.WaitVisible
@@ -112,7 +113,7 @@ internal class DriverCommandEngine(
                 context.checkpoint()
                 mappingStaleElements({ context.mutationStarted }) { request.dispatch(Handlers(context, selectors)) }
             } catch (failure: CommandFailure) {
-                Responses.failure(failure.code, detail = failure.detail, message = failure.remoteMessage, matchCount = failure.matchCount)
+                Responses.failure(failure.code, detail = failure.detail, message = failure.remoteMessage, matchCount = failure.matchCount, lastState = failure.lastState, conditionHolds = failure.conditionHolds)
             }
         return response.stamped(context.elapsed(), context.requestId, generation)
     }
@@ -224,6 +225,8 @@ internal class DriverCommandEngine(
         override fun waitVisible(command: WaitVisible) = waits.waitVisible(context, selectors[command.selector], exactlyOne = command.exactlyOne)
 
         override fun waitGone(command: WaitGone) = waits.waitGone(context, selectors[command.selector])
+
+        override fun waitState(command: WaitState) = waits.waitState(context, selectors[command.selector], command, queries::snapshotOf)
 
         override fun waitAppVisible(command: WaitAppVisible) = waits.waitAppVisible(context, command)
 

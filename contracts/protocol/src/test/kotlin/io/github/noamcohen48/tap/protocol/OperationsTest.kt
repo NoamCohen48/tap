@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.ListNotifications
@@ -58,6 +59,7 @@ import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
 import io.github.noamcohen48.tap.api.v1.WaitVisible
@@ -321,6 +323,8 @@ class OperationsTest {
 
         override fun waitGone(command: WaitGone) = record("wait_gone", Unit)
 
+        override fun waitState(command: WaitState) = record("wait_state", Unit)
+
         override fun waitAppVisible(command: WaitAppVisible) = record("wait_app_visible", Unit)
 
         override fun waitScreenStable(command: WaitScreenStable) = record("wait_screen_stable", Unit)
@@ -409,6 +413,7 @@ class OperationsTest {
                 "snapshot" to Commands.snapshot(Selectors.of(Nodes.resource("status"))),
                 "wait_visible" to Commands.waitVisible(Selectors.text("Welcome")),
                 "wait_gone" to Commands.waitGone(Selectors.resource("spinner")),
+                "wait_state" to Commands.waitState(button, Nodes.flag(NodeFlag.FLAG_ENABLED)),
                 "wait_app_visible" to Commands.waitAppVisible(AUT),
                 "wait_screen_stable" to Commands.waitScreenStable(AUT, stableForMs = 750, signal = StabilitySignal.STABILITY_PIXELS),
                 "tap" to Commands.tap(button),

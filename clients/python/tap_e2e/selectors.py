@@ -346,6 +346,42 @@ def scrollable() -> Selector:
     return _selector(_flag(pb.FLAG_SCROLLABLE, True))
 
 
+def enabled(value: bool = True) -> Selector:
+    """A node that is enabled (or not, with ``False``). Mostly a condition:
+    ``app.wait(res("pay")).until(enabled() & text("Pay"))``."""
+    return _selector(_flag(pb.FLAG_ENABLED, value))
+
+
+def checked(value: bool = True) -> Selector:
+    """A node that is checked (or not); a node that is not checkable reads unchecked."""
+    return _selector(_flag(pb.FLAG_CHECKED, value))
+
+
+def checkable(value: bool = True) -> Selector:
+    """A node that can be checked (or not)."""
+    return _selector(_flag(pb.FLAG_CHECKABLE, value))
+
+
+def focused(value: bool = True) -> Selector:
+    """A node that has input focus (or not)."""
+    return _selector(_flag(pb.FLAG_FOCUSED, value))
+
+
+def focusable(value: bool = True) -> Selector:
+    """A node that can take input focus (or not)."""
+    return _selector(_flag(pb.FLAG_FOCUSABLE, value))
+
+
+def long_clickable(value: bool = True) -> Selector:
+    """A node that takes a long click (or not)."""
+    return _selector(_flag(pb.FLAG_LONG_CLICKABLE, value))
+
+
+def selected(value: bool = True) -> Selector:
+    """A node that is selected (or not)."""
+    return _selector(_flag(pb.FLAG_SELECTED, value))
+
+
 def any_of(first: Selector, *rest: Selector) -> Selector:
     """Any of the selectors may match: ``any_of(text("OK"), text("Allow"), desc("Accept"))``.
     Scope and match choice come from ``first``; the others follow the operand rules of ``|``."""

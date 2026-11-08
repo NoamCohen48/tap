@@ -243,7 +243,7 @@ class Selector internal constructor(
 
 // --- Node constructors (the proto tree, normalised) ------------------------------------------
 
-private fun match(
+internal fun match(
     property: TextProperty,
     value: String,
     mode: MatchMode,
@@ -258,7 +258,7 @@ private fun match(
                 .setMode(mode.toProto()),
         ).build()
 
-private fun flag(
+internal fun flag(
     property: NodeFlag,
     value: Boolean,
 ): Node = Node.newBuilder().setFlag(Flag.newBuilder().setProperty(property).setValue(value)).build()
@@ -340,6 +340,27 @@ fun clickable(): Selector = selector(flag(NodeFlag.FLAG_CLICKABLE, true))
 
 /** Any scrollable node; combine with the `and*` builders. */
 fun scrollable(): Selector = selector(flag(NodeFlag.FLAG_SCROLLABLE, true))
+
+/** A node that is enabled (or not). Mostly a condition: `app.await(res("pay")).until(enabled() and text("Pay"))`. */
+fun enabled(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_ENABLED, value))
+
+/** A node that is checked (or not); a node that is not checkable reads unchecked. */
+fun checked(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_CHECKED, value))
+
+/** A node that can be checked (or not). */
+fun checkable(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_CHECKABLE, value))
+
+/** A node that has input focus (or not). */
+fun focused(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_FOCUSED, value))
+
+/** A node that can take input focus (or not). */
+fun focusable(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_FOCUSABLE, value))
+
+/** A node that takes a long click (or not). */
+fun longClickable(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_LONG_CLICKABLE, value))
+
+/** A node that is selected (or not). */
+fun selected(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_SELECTED, value))
 
 /**
  * Any of the selectors may match: `anyOf(text("OK"), text("Allow"), desc("Accept"))`. Match

@@ -124,7 +124,7 @@ text=Dark theme is visible
 `inspect <target>` returns the exact node's SDK state as JSON (text, bounds, flags, actions and
 range); no match or ambiguity remains an error. This explicitly reads accessibility text,
 which may contain sensitive data: do not copy it to shared logs. `exists` and `count` are
-immediate read-only queries. For property waits use:
+immediate read-only queries. To wait for a node's state use:
 
 ```sh
 tap-agent wait id=save --state enabled
@@ -134,8 +134,9 @@ tap-agent wait class=Button --state count --value 3
 ```
 
 States also include disabled, unchecked, focused and text-contains. Text/count states require
-`--value`; other states reject it. Property/count waits use the existing SDK host polling;
-visibility/gone/one stay device-polled. CLI/core/MCP command budgets share the protocol's
+`--value`; other states reject it. Every wait polls on the device except `--state count`,
+which the SDK polls from the host. A state wait whose node never reached the state reports how
+the node looked at the end. CLI/core/MCP command budgets share the protocol's
 120-second maximum. Standalone MCP `settle` accepts `timeout_seconds`, matching CLI `--timeout`.
 
 ## When a step fails

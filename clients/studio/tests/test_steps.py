@@ -185,7 +185,7 @@ def test_a_type_step_is_the_sdk_type_text_flow(daemon, device):
     daemon.devices.commands.clear()
     run(device, prepared)
     ops = [c.WhichOneof("op") for c in sent(daemon)]
-    assert ops == ["wait_visible", "tap", "snapshot", "type_text"]
+    assert ops == ["wait_visible", "tap", "wait_state", "type_text"]
     assert sent(daemon)[-1] == command({"type_text": {"text": "jonson"}})
     daemon.devices.commands.clear()
     run(device, prepare(step(type={"selector": SEARCH, "secret": "pin", "skip_focus_wait": True}), "1234"), "1234")
@@ -212,11 +212,11 @@ def test_secret_typing_marks_input_sensitive_on_every_run(daemon, device, skip_f
         ("CONDITION_VISIBLE", {}, ["wait_visible"]),
         ("CONDITION_ONE", {}, ["wait_visible"]),
         ("CONDITION_GONE", {}, ["wait_gone"]),
-        ("CONDITION_ENABLED", {}, ["snapshot"]),
-        ("CONDITION_CHECKED", {}, ["snapshot"]),
-        ("CONDITION_FOCUSED", {}, ["snapshot"]),
-        ("CONDITION_TEXT_EQUALS", {"text": "Wool socks"}, ["snapshot"]),
-        ("CONDITION_TEXT_CONTAINS", {"text": "Wool"}, ["snapshot"]),
+        ("CONDITION_ENABLED", {}, ["wait_state"]),
+        ("CONDITION_CHECKED", {}, ["wait_state"]),
+        ("CONDITION_FOCUSED", {}, ["wait_state"]),
+        ("CONDITION_TEXT_EQUALS", {"text": "Wool socks"}, ["wait_state"]),
+        ("CONDITION_TEXT_CONTAINS", {"text": "Wool"}, ["wait_state"]),
         ("CONDITION_COUNT", {"count": 1}, ["count"]),
     ],
 )
