@@ -20,6 +20,7 @@ import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
@@ -480,6 +481,7 @@ object Responses {
         matchCount: Int? = null,
         lastState: ElementSnapshot? = null,
         conditionHolds: List<Boolean> = emptyList(),
+        narrowing: SelectorNarrowing? = null,
     ): Response {
         require(code != ErrorCode.UNRECOGNIZED && code != ErrorCode.ERR_UNSPECIFIED && code != ErrorCode.ERR_UNKNOWN) {
             "$code is a decode fallback and is never sent"
@@ -491,6 +493,7 @@ object Responses {
                 matchCount?.let { setMatchCount(it) }
                 lastState?.let { setLastState(it) }
                 addAllConditionHolds(conditionHolds)
+                narrowing?.let { setNarrowing(it) }
             }
         return of(CommandResult.newBuilder().setError(error), durationMs)
     }

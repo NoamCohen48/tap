@@ -3,10 +3,11 @@ CommandError; server-level failures arrive as gRPC status codes and are mapped i
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from . import _proto
-from .models import ConditionPart, ElementSnapshot, ErrorCode, FailureReason, WaitReason
+from .models import ConditionPart, ElementSnapshot, ErrorCode, FailureReason, SelectorNarrowing, WaitReason
 
 if TYPE_CHECKING:
     from . import _gen as pb
@@ -33,7 +34,9 @@ class ServerError(TapError):
 
 class CommandError(TapError):
     """A driver command's outcome was ``error``. ``code`` is an ErrorCode; ``detail`` refines it
-    (e.g. NOT_FOUND/END_REACHED); TRANSPORT_LOST/INDETERMINATE carry the transmission state."""
+    (e.g. NOT_FOUND/END_REACHED); TRANSPORT_LOST/INDETERMINATE carry the transmission state. A
+    ``NOT_FOUND`` from a selector also carries ``narrowing``: which part of the selector ruled the
+    nodes out, which the message shows on the lines after the first."""
 
     def __init__(
         self,
@@ -46,6 +49,7 @@ class CommandError(TapError):
         request_id: int,
         generation: int,
         duration_ms: int,
+        narrowing: SelectorNarrowing | None = None,
     ):
         self.code = code
         self.detail = detail
@@ -56,12 +60,16 @@ class CommandError(TapError):
         self.request_id = request_id
         self.generation = generation
         self.duration_ms = duration_ms
+        self.narrowing = narrowing
+        """Why the selector found no node, read on the device after a ``NOT_FOUND``; None
+        otherwise."""
         where = f" {selector}" if selector else ""
         detail = f"/{self.detail}" if self.detail else ""
         message = f": {self.driver_message}" if self.driver_message else ""
         super().__init__(
             f"{self.code.name}{detail} during {operation}{where} on {serial} "
             f"(request {self.request_id}, generation {self.generation}, {self.duration_ms} ms){message}"
+            + _explained(narrowing)
         )
 
 
@@ -72,7 +80,10 @@ class CommandError(TapError):
         operation: str,
         serial: str,
         selector: str | None,
+        selectors: Sequence[pb.Selector] = (),
     ) -> CommandError:
+        """From a driver error result; ``selectors`` are the command's own, which its
+        ``narrowing`` refers to."""
         error = result.error
         return cls(
             _proto.error_code(error.code),
@@ -84,6 +95,7 @@ class CommandError(TapError):
             result.request_id,
             result.session_generation,
             result.duration_ms,
+            _proto.selector_narrowing(error, selectors),
         )
 
 
@@ -105,6 +117,7 @@ class WaitTimeoutError(TapError):
         match_count: int | None = None,
         last_state: ElementSnapshot | None = None,
         condition_parts: tuple[ConditionPart, ...] = (),
+        narrowing: SelectorNarrowing | None = None,
     ):
         self.description = description
         self.serial = serial
@@ -122,6 +135,9 @@ class WaitTimeoutError(TapError):
         self.condition_parts = condition_parts
         """With ``STATE_NOT_REACHED``: each part of the condition on that same node, and whether it
         held. Empty otherwise."""
+        self.narrowing = narrowing
+        """With ``reason`` ``NO_MATCH`` from ``visible`` / ``one`` / a state wait: which part of
+        the selector ruled the nodes out, read after the deadline. None otherwise."""
         why = ""
         if reason is not None:
             why = f"; {reason.value}" + (f" ({match_count} matches)" if match_count is not None else "")
@@ -133,6 +149,7 @@ class WaitTimeoutError(TapError):
                 f"\n  {p.part}: {'yes' if p.holds else 'no'}" + (f" ({p.observed})" if p.observed is not None and not p.holds else "")
                 for p in condition_parts
             )
+            + _explained(narrowing)
         )
 
     @classmethod
@@ -143,6 +160,7 @@ class WaitTimeoutError(TapError):
         serial: str,
         last: str | None = None,
         condition: pb.Node | None = None,
+        selectors: Sequence[pb.Selector] = (),
     ) -> WaitTimeoutError:
         """From a device ``WAIT_TIMEOUT`` result: its ``detail``, ``match_count``, ``last_state``
         and, for the ``condition`` a state wait sent, ``condition_holds``."""
@@ -165,7 +183,12 @@ class WaitTimeoutError(TapError):
                 if condition is not None
                 else ()
             ),
+            narrowing=_proto.selector_narrowing(error, selectors),
         )
+
+
+def _explained(narrowing: SelectorNarrowing | None) -> str:
+    return "" if narrowing is None else "\n" + narrowing.explain()
 
 
 class AppDataError(TapError):

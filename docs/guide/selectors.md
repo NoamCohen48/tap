@@ -169,6 +169,8 @@ be visual order; prefer a distinguishing relation (`has_descendant(text(...))`) 
 
 ## Debugging a selector
 
+- A `NOT_FOUND` error says which part of the selector ruled the nodes out, with the values the
+  nearest nodes really have ([Why nothing matched](errors.md#why-nothing-matched)).
 - `selector.render()` (or `str(selector)`) prints the exact expression tree the device will
   see; it also appears in every `CommandError`.
 - `app.element(sel).count()` tells you how many nodes match right now.

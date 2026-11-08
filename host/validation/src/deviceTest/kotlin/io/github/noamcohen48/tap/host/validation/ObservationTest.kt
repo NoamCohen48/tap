@@ -10,12 +10,14 @@ import io.github.noamcohen48.tap.protocol.Selectors
 import io.github.noamcohen48.tap.protocol.errorCode
 import io.github.noamcohen48.tap.protocol.errorOrNull
 import io.github.noamcohen48.tap.protocol.ok
+import io.github.noamcohen48.tap.protocol.pickAt
 import io.github.noamcohen48.tap.protocol.pickFirst
 
 /**
  * Query and key operations: `COUNT` against duplicates, `SNAPSHOT` state (and `AMBIGUOUS` on
- * duplicates), `WAIT_STATE` (reached, not reached with the last state and per-part results, `AMBIGUOUS` without a pick,
- * a picked duplicate, no match), `DEVICE_INFO`, `WAIT_APP_VISIBLE`, a host-refused key code, and `PRESS_KEY`
+ * duplicates), `WAIT_STATE` (reached, not reached with the last state and per-part results, `AMBIGUOUS`
+ * without a pick, a picked duplicate, no match), the `NOT_FOUND` narrowing (per-part counts, near
+ * misses, a pick past the matches), `DEVICE_INFO`, `WAIT_APP_VISIBLE`, a host-refused key code, and `PRESS_KEY`
  * back leaving the activity, proven by `WAIT_GONE`.
  */
 @DeviceTest
@@ -61,6 +63,25 @@ class ObservationTest {
                 check(picked.ok) { "WAIT_STATE on a picked duplicate should hold: $picked" }
                 val missing = client.send(Commands.waitState(Selectors.text("never on screen"), Nodes.flag(NodeFlag.FLAG_ENABLED)), timeoutMs = 500)
                 check(missing.errorOrNull?.detail == ErrorDetail.NO_MATCH) { "WAIT_STATE with no match should be NO_MATCH: $missing" }
+
+                // Two "Duplicate action" buttons, neither scrollable: the flag is what rules them out.
+                val unscrollable = Nodes.allOf(Nodes.text("Duplicate action"), Nodes.flag(NodeFlag.FLAG_SCROLLABLE, true))
+                val narrowed = client.send(Commands.tap(Selectors.of(unscrollable)))
+                val parts = narrowed.errorOrNull?.narrowing?.partsList.orEmpty()
+                check(
+                    narrowed.errorCode == ErrorCode.ERR_NOT_FOUND && narrowed.errorOrNull?.narrowing?.matches == 0 && parts.size == 2 &&
+                        parts[0].alone == 2 && parts[1].without == 2 && parts[1].nearMissesCount == 0,
+                ) { "NOT_FOUND should narrow to the scrollable flag: $narrowed" }
+                // A wrong text on the gesture target: the text part rules it out, and its real text is a near miss.
+                val wrongText = Nodes.allOf(GESTURE_TARGET.node, Nodes.text("not its text"))
+                val near = client.send(Commands.tap(Selectors.of(wrongText))).errorOrNull?.narrowing?.partsList.orEmpty()
+                check(near.size == 2 && near[1].alone == 0 && near[1].without == 1 && near[1].nearMissesCount <= 3) {
+                    "NOT_FOUND should narrow to the text part: $near"
+                }
+                val pastTheEnd = client.send(Commands.tap(Selectors.text("Duplicate action").pickAt(5)))
+                check(pastTheEnd.errorCode == ErrorCode.ERR_NOT_FOUND && pastTheEnd.errorOrNull?.narrowing?.matches == 2) {
+                    "A pick past the matches should report them: $pastTheEnd"
+                }
 
                 val info = client.execute(Commands.deviceInfo()).deviceInfo
                 check(info.apiLevel >= 26 && info.displayWidth > 0 && info.currentPackage == FIXTURE_PACKAGE) {

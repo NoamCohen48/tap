@@ -801,20 +801,42 @@ class Done(_message.Message):
     def __init__(self) -> None: ...
 
 class Error(_message.Message):
-    __slots__ = ("code", "detail", "message", "match_count", "last_state", "condition_holds")
+    __slots__ = ("code", "detail", "message", "match_count", "last_state", "condition_holds", "narrowing")
     CODE_FIELD_NUMBER: _ClassVar[int]
     DETAIL_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     MATCH_COUNT_FIELD_NUMBER: _ClassVar[int]
     LAST_STATE_FIELD_NUMBER: _ClassVar[int]
     CONDITION_HOLDS_FIELD_NUMBER: _ClassVar[int]
+    NARROWING_FIELD_NUMBER: _ClassVar[int]
     code: ErrorCode
     detail: str
     message: str
     match_count: int
     last_state: ElementSnapshot
     condition_holds: _containers.RepeatedScalarFieldContainer[bool]
-    def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., match_count: _Optional[int] = ..., last_state: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., condition_holds: _Optional[_Iterable[bool]] = ...) -> None: ...
+    narrowing: SelectorNarrowing
+    def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., match_count: _Optional[int] = ..., last_state: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., condition_holds: _Optional[_Iterable[bool]] = ..., narrowing: _Optional[_Union[SelectorNarrowing, _Mapping]] = ...) -> None: ...
+
+class SelectorNarrowing(_message.Message):
+    __slots__ = ("selector_index", "matches", "parts")
+    SELECTOR_INDEX_FIELD_NUMBER: _ClassVar[int]
+    MATCHES_FIELD_NUMBER: _ClassVar[int]
+    PARTS_FIELD_NUMBER: _ClassVar[int]
+    selector_index: int
+    matches: int
+    parts: _containers.RepeatedCompositeFieldContainer[NarrowingPart]
+    def __init__(self, selector_index: _Optional[int] = ..., matches: _Optional[int] = ..., parts: _Optional[_Iterable[_Union[NarrowingPart, _Mapping]]] = ...) -> None: ...
+
+class NarrowingPart(_message.Message):
+    __slots__ = ("alone", "without", "near_misses")
+    ALONE_FIELD_NUMBER: _ClassVar[int]
+    WITHOUT_FIELD_NUMBER: _ClassVar[int]
+    NEAR_MISSES_FIELD_NUMBER: _ClassVar[int]
+    alone: int
+    without: int
+    near_misses: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, alone: _Optional[int] = ..., without: _Optional[int] = ..., near_misses: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class CommandResult(_message.Message):
     __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications")

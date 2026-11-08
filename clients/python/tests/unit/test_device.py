@@ -783,3 +783,67 @@ def test_an_app_binds_its_package_into_the_selector_and_the_screen_binds_none(fa
     bound, plain = [c.tap.selector for c in fake.devices.commands if c.HasField("tap")]
     assert bound == text("OK")._in_package("com.test")._proto
     assert plain == text("OK")._proto
+
+
+def _answer(op: str, error: pb.Error):
+    return lambda command: pb.CommandResult(error=error) if command.HasField(op) else None
+
+
+def test_not_found_carries_the_narrowing_of_each_part(fake, device):
+    narrowing = pb.SelectorNarrowing(
+        matches=0,
+        parts=[
+            pb.NarrowingPart(alone=0, without=2, near_misses=["Pay now", "Pay later"]),
+            pb.NarrowingPart(alone=14, without=0),
+            pb.NarrowingPart(alone=40, without=0),
+        ],
+    )
+    fake.devices.responder = _answer("tap", pb.Error(code=pb.ERR_NOT_FOUND, narrowing=narrowing))
+    with pytest.raises(CommandError) as info:
+        device.app("com.shop").element(text("Pay").clickable()).tap()
+    explained = info.value.narrowing
+    assert explained.selector == 'text("Pay") & clickable() & app("com.shop")'
+    assert [p.part for p in explained.parts] == ['text("Pay")', "clickable()", 'app("com.shop")']
+    assert explained.parts[0].without == 2 and explained.parts[0].near_misses == ("Pay now", "Pay later")
+    assert str(info.value).endswith(
+        "\nno node matches text(\"Pay\") & clickable() & app(\"com.shop\"); each part:\n"
+        '  text("Pay"): 0 alone, 2 without it (seen: "Pay now", "Pay later")\n'
+        "  clickable(): 14 alone, 0 without it\n"
+        '  app("com.shop"): 40 alone, 0 without it'
+    )
+
+
+def test_a_failed_pick_says_how_many_matched(fake, device):
+    fake.devices.responder = _answer("tap", pb.Error(code=pb.ERR_NOT_FOUND, narrowing=pb.SelectorNarrowing(matches=2)))
+    with pytest.raises(CommandError) as info:
+        device.screen.element(text("Row").at(3)).tap()
+    assert info.value.narrowing.needed == 4
+    assert str(info.value).endswith('\nonly 2 nodes match text("Row").at(3); its pick needs 4')
+
+
+def test_a_drag_narrowing_names_the_selector_that_missed(fake, device):
+    fake.devices.responder = _answer(
+        "drag", pb.Error(code=pb.ERR_NOT_FOUND, narrowing=pb.SelectorNarrowing(selector_index=1, matches=0))
+    )
+    with pytest.raises(CommandError) as info:
+        device.screen.element(text("Card")).drag_to(res("bin"))
+    assert info.value.narrowing.selector == 'res("bin")'
+
+
+def test_a_no_match_wait_timeout_carries_the_narrowing(fake, device):
+    narrowing = pb.SelectorNarrowing(matches=0, parts=[pb.NarrowingPart(alone=1, without=0), pb.NarrowingPart(alone=0, without=1)])
+    error = pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="NO_MATCH", narrowing=narrowing)
+    for op, wait in (("wait_visible", lambda w: w.visible()), ("wait_state", lambda w: w.checked())):
+        fake.devices.responder = _answer(op, error)
+        with pytest.raises(WaitTimeoutError) as info:
+            wait(device.screen.wait(res("terms").enabled(), timeout=1))
+        assert [p.part for p in info.value.narrowing.parts] == ['res("terms")', "enabled()"]
+        assert "\n  enabled(): 0 alone, 1 without it" in str(info.value)
+
+
+def test_a_narrowing_that_does_not_fit_the_selector_is_dropped(fake, device):
+    wrong = pb.SelectorNarrowing(matches=0, parts=[pb.NarrowingPart(), pb.NarrowingPart(), pb.NarrowingPart()])
+    fake.devices.responder = _answer("tap", pb.Error(code=pb.ERR_NOT_FOUND, narrowing=wrong))
+    with pytest.raises(CommandError) as info:
+        device.screen.element(text("Pay").clickable()).tap()
+    assert info.value.narrowing is None and "\n" not in str(info.value)

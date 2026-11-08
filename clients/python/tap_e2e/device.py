@@ -193,7 +193,7 @@ class Device:
         if result.HasField("error"):
             (name,) = op
             raise CommandError._from_result(
-                result, name, self.serial, selector.render() if selector else None
+                result, name, self.serial, selector.render() if selector else None, _proto.command_selectors(op)
             )
         return result
 

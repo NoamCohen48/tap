@@ -45,6 +45,8 @@ from .models import (
     SelectorCandidate,
     SelectorKind,
     ConditionPart,
+    SelectorNarrowing,
+    NarrowingPart,
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
@@ -224,6 +226,42 @@ def _observed(node: pb.Node, state: pb.ElementSnapshot | None) -> str | None:
     if kind == "resource":
         return _quoted(state.resource_name) if state.HasField("resource_name") else "None"
     return None
+
+
+def selector_narrowing(error: pb.Error, selectors) -> SelectorNarrowing | None:
+    """``error.narrowing`` described against the command's selectors (``selector``, then drag's
+    ``target``); None when absent or when it names a selector the command did not send."""
+    if not error.HasField("narrowing"):
+        return None
+    narrowing = error.narrowing
+    if not 0 <= narrowing.selector_index < len(selectors):
+        return None
+    selector = selectors[narrowing.selector_index]
+    operands = selector.node.all_of.nodes if selector.node.HasField("all_of") else []
+    if narrowing.parts and len(narrowing.parts) != len(operands):
+        return None
+    return SelectorNarrowing(
+        selector=describe_selector(selector),
+        matches=narrowing.matches,
+        needed=selector.at.index + 1 if selector.WhichOneof("pick") == "at" else 1,
+        parts=tuple(
+            NarrowingPart(describe_node(operand), part.alone, part.without, tuple(part.near_misses))
+            for operand, part in zip(operands, narrowing.parts)
+        ),
+    )
+
+
+def command_selectors(op: Mapping[str, object]) -> list[pb.Selector]:
+    """The selectors of a one-entry ``{name: message}`` command: ``selector``, then ``target``."""
+    (message,) = op.values()
+    return [getattr(message, f) for f in ("selector", "target") if _has(message, f)]
+
+
+def _has(message, field: str) -> bool:
+    try:
+        return message.HasField(field)
+    except ValueError:
+        return False
 
 
 def _optional(message, field: str):

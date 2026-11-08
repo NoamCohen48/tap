@@ -40,6 +40,12 @@ name the components affected. Earlier releases used independent version lines. T
   part held), or `NO_MATCH`. `text_contains("")` is now rejected, as `text("", CONTAINS)` is in
   a selector. Protocol 5.1 adds the `wait_state` operation, `Error.last_state` and
   `Error.condition_holds`.
+- A selector that matches nothing says why. `NOT_FOUND` and a `NO_MATCH` wait timeout carry
+  `narrowing`: for each part of the selector, how many nodes match it alone and how many match
+  everything else. Text-like parts also list up to three values the nearest nodes really have.
+  A failed pick reports how many nodes there were. The error message shows the same on its
+  following lines, and so does `tap-agent`. It is bounded (at most eight parts, about a second
+  on the device) and left out after `snapshot()`. Protocol 5.1 adds `Error.narrowing`.
 
 ### Clients and tools
 

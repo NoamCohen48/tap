@@ -19,7 +19,7 @@ Protocol 5.1 encodes every control payload as protobuf (3.0 introduced that; 4.0
 wait-timeout details; 5.0 removed selector scopes and `ResourceId.aut_package` — package
 ownership is a `PROPERTY_PACKAGE_NAME` predicate and every lookup searches all windows — made
 gestures refuse a covered touch point (`NOT_INTERACTABLE` / `OBSCURED`), and moved the sync
-package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added `wait_state` with `Error.last_state` and `Error.condition_holds`, and the
+package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added `wait_state` with `Error.last_state` and `Error.condition_holds`, `Error.narrowing`, and the
 `STALE_BEFORE_INPUT` error code). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
@@ -236,6 +236,20 @@ accessibility text with `isShowingHintText` set. `SNAPSHOT.text` carries that ra
 `showing_hint` says so; text selectors match the same raw text (`By.text` and the traversal
 predicate agree).
 
+`Error.narrowing` (`SelectorNarrowing`) explains a `NOT_FOUND` of a targeted command other than
+`snapshot` and a `WAIT_TIMEOUT` / `NO_MATCH` of `wait_visible` / `wait_state`, unless input had
+started. (`snapshot` is left out because host loops poll a node into existence with it.) After
+the failure the driver takes the first of the command's selectors (`selector_index`: 0, or 1 for
+drag's `target`) that has fewer matches than its pick needs. It reports `matches`, the count with
+the pick ignored. When that is 0 and the node is an `all_of` of at most 8 operands, it adds one `NarrowingPart` per
+operand: `alone` (that operand by itself), `without` (every other operand) and, for match and
+resource operands with `without > 0`, up to 3 distinct `near_misses`. These are the values that
+operand's property has on the first 50 nodes matching the rest, each at most 100 characters.
+Every count is the ordinary capped lookup, run once. The whole narrowing has a 1 s budget, since
+it runs after the failure, often past the deadline: near misses are read only in its first half,
+and once it is spent the parts are left out and only `matches` is sent. A stale tree or any other
+error leaves the field out. It is diagnostic only and never affects the outcome.
+
 Waits (`wait_visible`, `wait_gone`, `wait_state`, `wait_app_visible`) poll on the driver at 50 ms until the
 condition holds or the request deadline passes, and honour cancellation between polls. A
 timeout is a `WAIT_TIMEOUT` error response, never an exception path.
@@ -285,7 +299,7 @@ Response {
 
 Each operation produces exactly one `outcome` case on success (the table above) and `error`
 (`code`, optional `detail`, optional `message`, optional `match_count` for the element waits,
-optional `last_state` and `condition_holds` for `wait_state`)
+optional `last_state` and `condition_holds` for `wait_state`, optional `narrowing` for a selector that resolved no node)
 on failure. The daemon hands `result` to the
 client as it is.
 
