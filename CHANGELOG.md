@@ -25,6 +25,21 @@ name the components affected. Earlier releases used independent version lines. T
   meanwhile; ListDevices shows it `under_inspection`.
 - Writing a private app file or importing a database works on Android 10 and older: the write
   used `mv -T`, which their toybox lacks, so every write failed with `IO_ERROR`.
+- Wait until an element satisfies a condition, on the device. `app.wait(sel).until(condition)`
+  (Kotlin `await(sel).until(...)`) waits until the one node the selector picks satisfies a
+  condition written with the selector builders, for example `enabled() & text("Pay")`,
+  `checked(False)` or `text(r"\d+ €", REGEX)`. All parts are checked on that node at the same
+  moment, polled by the driver every 50 ms. New top-level builders: `enabled`, `checked`,
+  `checkable`, `focused`, `focusable`, `long_clickable` / `longClickable`, `selected`.
+  `enabled()`, `disabled()`, `checked()`, `unchecked()`, `focused()`, `text_equals()` and
+  `text_contains()` are now shortcuts for `until` and run on the device, instead of a host
+  snapshot every 100 ms. Their meaning is unchanged: the selector's `first()` / `at(n)` picks
+  the node first, a missing or re-rendering node keeps the wait polling, and several matches
+  without a pick fail at once with `AMBIGUOUS`. A timeout now has a `reason`:
+  `STATE_NOT_REACHED`, with `last_state` (the node at the end) and `condition_parts` (which
+  part held), or `NO_MATCH`. `text_contains("")` is now rejected, as `text("", CONTAINS)` is in
+  a selector. Protocol 5.1 adds the `wait_state` operation, `Error.last_state` and
+  `Error.condition_holds`.
 
 ### Clients and tools
 

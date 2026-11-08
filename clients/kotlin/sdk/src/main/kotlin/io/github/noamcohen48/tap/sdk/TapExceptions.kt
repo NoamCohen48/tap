@@ -68,9 +68,9 @@ class CommandException(
 
 /**
  * A wait ran out of time. Carries what was observed so the failure is diagnosable without a
- * rerun: [reason] and [matchCount] for the waits the device runs (`visible`, `one`, `gone`,
- * `App.awaitVisible`, `App.awaitScreenStable`), [lastObservation] and [polls] for the ones the client
- * polls.
+ * rerun: [reason] and [matchCount] for the waits the device runs (`visible`, `one`, `gone`, the
+ * state waits, `App.awaitVisible`, `App.awaitScreenStable`), [lastState] for a state wait whose node
+ * never reached the state, [lastObservation] and [polls] for the ones the client polls.
  */
 class WaitTimeoutException(
     val description: String,
@@ -83,30 +83,44 @@ class WaitTimeoutException(
     val reason: WaitReason? = null,
     /** Matches at the last poll of `visible` / `one` / `gone` (capped at 1000). */
     val matchCount: Int? = null,
+    /** A state wait's node as the device read it at the end ([WaitReason.STATE_NOT_REACHED]); null otherwise. */
+    val lastState: ElementSnapshot? = null,
+    /** With [WaitReason.STATE_NOT_REACHED]: each part of the condition on that same node, and whether it held. */
+    val conditionParts: List<ConditionPart> = emptyList(),
 ) : TapException(
         buildString {
             append("Timed out after ${elapsedMs}ms waiting for $description on $serial")
             if (polls > 0) append(" ($polls polls)")
             if (reason != null) append("; ").append(reason.name).append(matchCount?.let { " ($it matches)" } ?: "")
             if (lastObservation != null) append("; last observed: $lastObservation")
+            conditionParts.forEach { part ->
+                append("\n  ").append(part.part).append(if (part.holds) ": yes" else ": no")
+                if (!part.holds && part.observed != null) append(" (").append(part.observed).append(')')
+            }
         },
         cause,
     ) {
     internal companion object {
-        /** From a device `WAIT_TIMEOUT` result: its `detail` and `match_count`. */
+        /** From a device `WAIT_TIMEOUT` result: its `detail`, `match_count` and `last_state`. */
         fun of(
             result: CommandResult,
             description: String,
             serial: String,
             lastObservation: String? = null,
-        ) = WaitTimeoutException(
-            description,
-            serial,
-            result.durationMs,
-            lastObservation = lastObservation,
-            reason = if (result.error.hasDetail()) WaitReason.of(result.error.detail) else null,
-            matchCount = if (result.error.hasMatchCount()) result.error.matchCount else null,
-        )
+            condition: io.github.noamcohen48.tap.api.v1.Node? = null,
+        ): WaitTimeoutException {
+            val state = if (result.error.hasLastState()) result.error.lastState.toModel() else null
+            return WaitTimeoutException(
+                description,
+                serial,
+                result.durationMs,
+                lastObservation = lastObservation ?: state?.let { "text=${it.text} enabled=${it.enabled} checked=${it.checked} focused=${it.focused}" },
+                reason = if (result.error.hasDetail()) WaitReason.of(result.error.detail) else null,
+                matchCount = if (result.error.hasMatchCount()) result.error.matchCount else null,
+                lastState = state,
+                conditionParts = condition?.let { conditionParts(it, result.error) }.orEmpty(),
+            )
+        }
     }
 }
 

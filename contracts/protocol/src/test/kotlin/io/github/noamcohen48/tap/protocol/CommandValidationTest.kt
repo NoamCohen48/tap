@@ -31,6 +31,7 @@ import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.LocationAccuracy
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -216,6 +217,26 @@ class CommandValidationTest {
     }
 
     @Test
+    fun waitStateConditionIsValidatedLikeASelector() {
+        val enabled = Nodes.flag(NodeFlag.FLAG_ENABLED)
+        CommandValidation.validate(Commands.waitState(button, Nodes.allOf(enabled, Nodes.text("Pay"))))
+        val noCondition = Command.newBuilder().setWaitState(WaitState.newBuilder().setSelector(button)).build()
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_NODE) { CommandValidation.validate(noCondition) }
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_VALUE) {
+            CommandValidation.validate(Commands.waitState(button, Nodes.text("", MatchMode.MATCH_CONTAINS)))
+        }
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.INVALID_REGEX) {
+            CommandValidation.validate(Commands.waitState(button, Nodes.text("(", MatchMode.MATCH_REGEX)))
+        }
+        // One size limit for the selector and the condition together.
+        val half = Nodes.anyOf((1 until MAX_SELECTOR_NODES / 2).map { Nodes.text("$it") })
+        CommandValidation.validate(Commands.waitState(Selectors.of(half), half))
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.SELECTOR_TOO_LARGE) {
+            CommandValidation.validate(Commands.waitState(Selectors.of(half), Nodes.allOf(half, half)))
+        }
+    }
+
+    @Test
     fun everyTargetedCommandNeedsASelector() {
         val missing = Selector.getDefaultInstance()
         listOf(
@@ -224,6 +245,7 @@ class CommandValidationTest {
             Commands.snapshot(missing),
             Commands.waitVisible(missing),
             Commands.waitGone(missing),
+            Commands.waitState(missing, Nodes.flag(NodeFlag.FLAG_CHECKED)),
             Commands.tap(missing),
             Commands.longTap(missing),
             Commands.setText(missing, "x"),

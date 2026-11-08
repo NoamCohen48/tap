@@ -229,11 +229,14 @@ class WaitReason(enum.Enum):
     """Why a device-side wait timed out (``WaitTimeoutError.reason``)."""
 
     NO_MATCH = "NO_MATCH"
-    """``visible`` / ``one``: nothing matched."""
+    """``visible`` / ``one`` / a state wait: nothing matched."""
     AMBIGUOUS = "AMBIGUOUS"
     """``one``: several nodes matched (``WaitTimeoutError.match_count`` says how many)."""
     STILL_PRESENT = "STILL_PRESENT"
     """``gone``: the selector still matched."""
+    STATE_NOT_REACHED = "STATE_NOT_REACHED"
+    """A state wait (``enabled``, ``checked``, ``text_equals``, ...): the node was there but never
+    in that state (``WaitTimeoutError.last_state`` is how it was at the end)."""
     SCREEN_CHANGING = "SCREEN_CHANGING"
     """``await_screen_stable``: the screen kept changing."""
     APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
@@ -320,6 +323,20 @@ class Bounds:
     @property
     def center(self) -> tuple[int, int]:
         return (self.left + self.right) // 2, (self.top + self.bottom) // 2
+
+
+@dataclass(frozen=True)
+class ConditionPart:
+    """One part of a state wait's condition at its timeout (``WaitTimeoutError.condition_parts``):
+    an operand of the condition's top-level ``&`` / ``|``, or the whole condition."""
+
+    part: str
+    """The part in builder syntax, such as ``text("Pay")`` or ``enabled()``."""
+    holds: bool
+    """Whether it held on the node after the deadline."""
+    observed: str | None
+    """What the node had for a property or flag part, such as ``"Paying…"`` or ``False``; None
+    for relations and combinations."""
 
 
 @dataclass(frozen=True)

@@ -336,7 +336,7 @@ enum class FailureReason {
 
 /** Why a device-side wait timed out ([WaitTimeoutException.reason]). */
 enum class WaitReason {
-    /** `visible` / `one`: nothing matched. */
+    /** `visible` / `one` / a state wait: nothing matched. */
     NO_MATCH,
 
     /** `one`: several nodes matched ([WaitTimeoutException.matchCount] says how many). */
@@ -344,6 +344,12 @@ enum class WaitReason {
 
     /** `gone`: the selector still matched. */
     STILL_PRESENT,
+
+    /**
+     * A state wait (`enabled`, `checked`, `textEquals`, ...): the node was there but never in that
+     * state ([WaitTimeoutException.lastState] is how it was at the end).
+     */
+    STATE_NOT_REACHED,
 
     /** `awaitScreenStable`: the screen kept changing. */
     SCREEN_CHANGING,
@@ -395,6 +401,19 @@ data class Bounds(
     val centerX: Int get() = (left + right) / 2
     val centerY: Int get() = (top + bottom) / 2
 }
+
+/**
+ * One part of a state wait's condition at its timeout ([WaitTimeoutException.conditionParts]): an
+ * operand of the condition's top-level `and` / `or`, or the whole condition.
+ */
+data class ConditionPart(
+    /** The part in builder syntax, such as `text("Pay")` or `enabled()`. */
+    val part: String,
+    /** Whether it held on the node after the deadline. */
+    val holds: Boolean,
+    /** What the node had for a property or flag part, such as `"Paying…"` or `false`; null for relations and combinations. */
+    val observed: String?,
+)
 
 /**
  * The state of one node at one instant ([Element.snapshot]). Text properties are null when the

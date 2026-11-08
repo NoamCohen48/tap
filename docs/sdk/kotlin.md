@@ -339,6 +339,7 @@ are `suspend`.
 ```kotlin
 app.await(text("Order placed")).visible()
 app.await(res("pay")).enabled().tap()
+app.await(res("pay")).until(enabled() and text("Pay")).tap()
 app.await(res("spinner"), timeout = 30.seconds).gone()
 
 device.awaitUntil(

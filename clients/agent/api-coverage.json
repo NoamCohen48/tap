@@ -29,7 +29,7 @@
   "operations": {
     "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["logs", "capture"],
     "exists": ["exists", "scroll_until"], "count": ["count", "wait_for"], "snapshot": ["inspect", "wait_for", "accessibility_action"],
-    "wait_visible": ["wait_for"], "wait_gone": ["wait_for"], "wait_app_visible": ["app"], "wait_screen_stable": ["settle"],
+    "wait_visible": ["wait_for"], "wait_gone": ["wait_for"], "wait_state": ["wait_for"], "wait_app_visible": ["app"], "wait_screen_stable": ["settle"],
     "tap": ["tap", "type_text"], "long_tap": ["tap"], "double_tap": ["tap"], "multi_tap": ["tap"], "hold": ["tap"],
     "set_text": ["fill"], "type_text": ["type_text"], "clear_text": ["clear"], "swipe": ["swipe"], "scroll": ["scroll", "scroll_until"], "drag": ["drag"], "pinch": ["pinch"], "fling": ["fling"],
     "open_system_panel": ["open_panel"], "set_orientation": ["rotate"], "set_display_rotation": ["rotate"], "unfreeze_rotation": ["rotate"], "dismiss_keyguard": ["screen"],
@@ -69,7 +69,8 @@
       {"methods": ["wait", "descendant", "child", "first", "at"], "tools": ["wait_for", "tap"], "reason": "Targets support equivalent relational JSON and explicit first/index."}
     ],
     "ElementWait": [
-      {"methods": ["visible", "one", "gone", "enabled", "disabled", "checked", "unchecked", "focused", "text_equals", "text_contains", "count"], "tools": ["wait_for"]}
+      {"methods": ["visible", "one", "gone", "enabled", "disabled", "checked", "unchecked", "focused", "text_equals", "text_contains", "count"], "tools": ["wait_for"]},
+      {"methods": ["until"], "tools": [], "reason": "a general condition is not a wait_for state yet; --state covers the shortcuts"}
     ],
     "Screen": [
       {"methods": ["element", "wait"], "tools": ["tap", "wait_for"], "reason": "Whole-screen default, no implicit app scope."}

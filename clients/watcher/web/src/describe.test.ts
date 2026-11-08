@@ -3,7 +3,7 @@ import { describe as suite, expect, it } from "vitest";
 import { connectionLabel, describe, failed, summary } from "./describe";
 import { ErrorCode } from "./gen/command_pb";
 import { LoggedEventSchema, type LoggedEvent } from "./gen/event_log_pb";
-import { MatchMode, TextProperty } from "./gen/selector_pb";
+import { MatchMode, NodeFlag, TextProperty } from "./gen/selector_pb";
 
 const resource = (name: string) => ({ node: { kind: { case: "resource" as const, value: { name } } } });
 
@@ -25,6 +25,16 @@ suite("describe", () => {
     expect(summary(described)).toBe('Tap textContains("Archive").first · AMBIGUOUS');
     expect(described.detail).toBe("2 matches");
     expect(failed(event)).toBe(true);
+  });
+
+  it("names the condition a state wait waits for", () => {
+    const enabled = { kind: { case: "flag" as const, value: { property: NodeFlag.FLAG_ENABLED, value: true } } };
+    const event = command({ case: "waitState", value: { selector: resource("pay"), condition: enabled } });
+    expect(summary(describe(event))).toBe('Wait for res("pay") ← enabled');
+    const total = { kind: { case: "match" as const, value: { property: TextProperty.PROPERTY_TEXT, mode: MatchMode.MATCH_CONTAINS, value: "€" } } };
+    const both = { kind: { case: "allOf" as const, value: { nodes: [enabled, total] } } };
+    const text = command({ case: "waitState", value: { selector: resource("total"), condition: both } });
+    expect(summary(describe(text))).toBe('Wait for res("total") ← enabled & textContains("€")');
   });
 
   it("shows a sensitive text as hidden", () => {

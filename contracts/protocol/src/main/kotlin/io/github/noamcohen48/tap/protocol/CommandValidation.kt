@@ -261,6 +261,14 @@ object CommandValidation {
                 if (location.hasAltitudeM() && !location.altitudeM.isFinite()) invalidRequest("altitude_m must be finite")
             }
 
+            OpCase.WAIT_STATE -> {
+                val wait = command.waitState
+                if (!wait.hasCondition()) invalidSelector(ErrorDetail.EMPTY_NODE, "wait_state needs a condition")
+                // The condition is a selector predicate: the same checks, and one size limit for both.
+                val nodes = visit(wait.condition, depth = 1).nodeCount + (if (wait.selector.hasNode()) visit(wait.selector.node, depth = 1).nodeCount else 0)
+                if (nodes > MAX_SELECTOR_NODES) invalidSelector(ErrorDetail.SELECTOR_TOO_LARGE, "Selector and condition exceed $MAX_SELECTOR_NODES nodes")
+            }
+
             OpCase.OP_NOT_SET, null -> {
                 throw InvalidCommandException(ErrorCode.ERR_UNSUPPORTED, null, "No command op is set")
             }

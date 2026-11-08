@@ -107,6 +107,9 @@ object ErrorDetail {
     const val AMBIGUOUS = "AMBIGUOUS"
     const val STILL_PRESENT = "STILL_PRESENT"
 
+    // WAIT_TIMEOUT (wait_state): the node resolved but never reached the state; Error.last_state.
+    const val STATE_NOT_REACHED = "STATE_NOT_REACHED"
+
     // WAIT_TIMEOUT (screen stability, wait_app_visible)
     const val SCREEN_CHANGING = "SCREEN_CHANGING"
     const val APP_NOT_VISIBLE = "APP_NOT_VISIBLE"
@@ -186,6 +189,10 @@ class CommandFailure(
     message: String? = null,
     /** `Error.match_count`: matches at a wait's last poll. */
     val matchCount: Int? = null,
+    /** `Error.last_state`: the waited-on node after a `wait_state`'s deadline. */
+    val lastState: io.github.noamcohen48.tap.api.v1.ElementSnapshot? = null,
+    /** `Error.condition_holds`: each top-level condition operand on that same node. */
+    val conditionHolds: List<Boolean> = emptyList(),
 ) : RuntimeException(message ?: code.label) {
     val remoteMessage: String? = message
 }

@@ -6,7 +6,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from . import _proto
-from .models import ErrorCode, FailureReason, WaitReason
+from .models import ConditionPart, ElementSnapshot, ErrorCode, FailureReason, WaitReason
 
 if TYPE_CHECKING:
     from . import _gen as pb
@@ -90,9 +90,9 @@ class CommandError(TapError):
 class WaitTimeoutError(TapError):
     """A condition did not hold within its timeout; the message names the device, the
     condition and what was observed so a log line alone is diagnosable: ``reason`` and
-    ``match_count`` for the waits the device runs (``visible``, ``one``, ``gone``,
-    ``App.await_visible``, ``App.await_screen_stable``), ``last_observation`` and ``polls`` for the
-    ones the client polls."""
+    ``match_count`` for the waits the device runs (``visible``, ``one``, ``gone``, the state waits,
+    ``App.await_visible``, ``App.await_screen_stable``), ``last_state`` for a state wait whose node
+    never reached the state, ``last_observation`` and ``polls`` for the ones the client polls."""
 
     def __init__(
         self,
@@ -103,6 +103,8 @@ class WaitTimeoutError(TapError):
         last: str | None = None,
         reason: WaitReason | None = None,
         match_count: int | None = None,
+        last_state: ElementSnapshot | None = None,
+        condition_parts: tuple[ConditionPart, ...] = (),
     ):
         self.description = description
         self.serial = serial
@@ -114,6 +116,12 @@ class WaitTimeoutError(TapError):
         waits."""
         self.match_count = match_count
         """Matches at the last poll of ``visible`` / ``one`` / ``gone`` (capped at 1000)."""
+        self.last_state = last_state
+        """A state wait's node as the device read it at the end (``reason`` ``STATE_NOT_REACHED``);
+        None otherwise."""
+        self.condition_parts = condition_parts
+        """With ``STATE_NOT_REACHED``: each part of the condition on that same node, and whether it
+        held. Empty otherwise."""
         why = ""
         if reason is not None:
             why = f"; {reason.value}" + (f" ({match_count} matches)" if match_count is not None else "")
@@ -121,14 +129,29 @@ class WaitTimeoutError(TapError):
         polled = f" after {polls} polls" if polls else ""
         super().__init__(
             f"Timed out after {elapsed_ms} ms{polled} waiting for {description} on {serial}{why}{suffix}"
+            + "".join(
+                f"\n  {p.part}: {'yes' if p.holds else 'no'}" + (f" ({p.observed})" if p.observed is not None and not p.holds else "")
+                for p in condition_parts
+            )
         )
 
     @classmethod
     def _from_result(
-        cls, result: pb.CommandResult, description: str, serial: str, last: str | None = None
+        cls,
+        result: pb.CommandResult,
+        description: str,
+        serial: str,
+        last: str | None = None,
+        condition: pb.Node | None = None,
     ) -> WaitTimeoutError:
-        """From a device ``WAIT_TIMEOUT`` result: its ``detail`` and ``match_count``."""
+        """From a device ``WAIT_TIMEOUT`` result: its ``detail``, ``match_count``, ``last_state``
+        and, for the ``condition`` a state wait sent, ``condition_holds``."""
         error = result.error
+        state = _proto.element_snapshot(error.last_state) if error.HasField("last_state") else None
+        if last is None and state is not None:
+            last = (
+                f"text={state.text!r} enabled={state.enabled} checked={state.checked} focused={state.focused}"
+            )
         return cls(
             description,
             serial,
@@ -136,6 +159,12 @@ class WaitTimeoutError(TapError):
             last=last,
             reason=_proto.wait_reason(error.detail) if error.HasField("detail") else None,
             match_count=error.match_count if error.HasField("match_count") else None,
+            last_state=state,
+            condition_parts=(
+                _proto.condition_parts(condition, error.condition_holds, error.last_state if error.HasField("last_state") else None)
+                if condition is not None
+                else ()
+            ),
         )
 
 

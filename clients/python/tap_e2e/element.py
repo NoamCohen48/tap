@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import time
 import math
-from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
 from . import _proto
 from .errors import CommandError, WaitTimeoutError
-from .models import Direction, ElementSnapshot, ErrorCode, StandardAction
+from .models import Direction, ElementSnapshot, StandardAction
 from .selectors import Selector
 
 if TYPE_CHECKING:
@@ -328,8 +327,8 @@ class Element:
 
 
 class ElementWait:
-    """Returned by ``Device.wait`` / ``Element.wait``. ``visible`` and ``gone`` poll on the device
-    in a single RPC; property waits poll snapshots from the host."""
+    """Returned by ``Device.wait`` / ``Element.wait``. Every wait but ``count`` polls on the device
+    in a single RPC; ``count`` polls from the host."""
 
     def __init__(self, device: Device, selector: Selector, timeout: float):
         self.device: Device = device
@@ -366,37 +365,52 @@ class ElementWait:
             wait_gone=pb.WaitGone(selector=self.selector._proto),
         )
 
+    def until(self, condition: Selector) -> Element:
+        """Wait until the one node the selector picks satisfies ``condition``, then return it.
+
+        The selector says *which* node: exactly one match, or its ``first()`` / ``at(n)``. The
+        condition says what that node must become, written with the selector builders
+        (``enabled() & text("Pay")``, ``checked(False)``, ``text("Total", STARTS_WITH)``,
+        ``has_child(text("Done"))``) and checked on that node alone, every poll, all parts at
+        the same moment. Polled on the device in one RPC. With several matches and no pick the
+        wait fails at once with ``AMBIGUOUS``. A timeout's ``reason`` is ``STATE_NOT_REACHED``
+        (``last_state`` is the node at the end and ``condition_parts`` says which part failed) or
+        ``NO_MATCH``. A condition with its own ``first()`` / ``at(n)`` raises ``ValueError``."""
+        if condition._has_pick:
+            raise ValueError(
+                f"until: the condition {condition.render()} has a match choice (first()/at()); "
+                "a condition is checked on the one node the selector picks, so put the pick on the selector"
+            )
+        return self._until(condition._proto.node)
+
     def enabled(self) -> Element:
-        """Wait until the one matching node is enabled."""
-        return self._property("enabled", lambda s: s.enabled)
+        """``until(enabled())``: wait until the one matching node is enabled."""
+        return self._until(pb.Node(flag=pb.Flag(property=pb.FLAG_ENABLED, value=True)))
 
     def disabled(self) -> Element:
-        """Wait until the one matching node is disabled."""
-        return self._property("disabled", lambda s: not s.enabled)
+        """``until(enabled(False))``."""
+        return self._until(pb.Node(flag=pb.Flag(property=pb.FLAG_ENABLED, value=False)))
 
     def checked(self) -> Element:
-        """Wait until the one matching node is checked."""
-        return self._property("checked", lambda s: s.checked)
+        """``until(checked())``; a node that is not checkable never is."""
+        return self._until(pb.Node(flag=pb.Flag(property=pb.FLAG_CHECKED, value=True)))
 
     def unchecked(self) -> Element:
-        """Wait until the one matching node is unchecked."""
-        return self._property("unchecked", lambda s: not s.checked)
+        """``until(checked(False))``."""
+        return self._until(pb.Node(flag=pb.Flag(property=pb.FLAG_CHECKED, value=False)))
 
     def focused(self) -> Element:
-        """Wait until the one matching node has focus."""
-        return self._property("focused", lambda s: s.focused)
+        """``until(focused())``: wait until the one matching node has input focus."""
+        return self._until(pb.Node(flag=pb.Flag(property=pb.FLAG_FOCUSED, value=True)))
 
     def text_equals(self, expected: str) -> Element:
-        """Wait until the one matching node's text equals ``expected``."""
-        return self._property(
-            f'text == "{expected}"', lambda s: s.text == expected
-        )
+        """``until(text(expected))``: the raw accessibility text equals ``expected``."""
+        return self._until(pb.Node(match=pb.Match(property=pb.PROPERTY_TEXT, value=expected, mode=pb.MATCH_EXACT)))
 
     def text_contains(self, part: str) -> Element:
-        """Wait until the one matching node's text contains ``part``."""
-        return self._property(
-            f'text containing "{part}"', lambda s: s.text is not None and part in s.text
-        )
+        """``until(text(part, CONTAINS))``: the raw accessibility text contains ``part``
+        (non-empty)."""
+        return self._until(pb.Node(match=pb.Match(property=pb.PROPERTY_TEXT, value=part, mode=pb.MATCH_CONTAINS)))
 
     def count(self, expected: int) -> Element:
         """Wait until exactly ``expected`` nodes match."""
@@ -420,36 +434,14 @@ class ElementWait:
         if not result.HasField("error"):
             return
         if result.error.code == pb.ERR_WAIT_TIMEOUT:
-            raise WaitTimeoutError._from_result(result, description, self.device.serial)
+            condition = op["wait_state"].condition if "wait_state" in op else None
+            raise WaitTimeoutError._from_result(result, description, self.device.serial, condition=condition)
         (name,) = op
         raise CommandError._from_result(result, name, self.device.serial, self.selector.render())
 
-    def _property(
-        self, description: str, predicate: Callable[[ElementSnapshot], bool]
-    ) -> Element:
-        element = Element(self.device, self.selector)
-        last: dict[str, str | None] = {"seen": None}
-
-        def check() -> bool:
-            try:
-                snapshot = element.snapshot()
-            except CommandError as error:
-                if error.code is ErrorCode.NOT_FOUND:
-                    last["seen"] = "not found"
-                    return False
-                if error.code is ErrorCode.STALE_BEFORE_INPUT:
-                    last["seen"] = "re-rendering"
-                    return False
-                raise
-            last["seen"] = (
-                f"text={snapshot.text!r} enabled={snapshot.enabled} checked={snapshot.checked} focused={snapshot.focused}"
-            )
-            return predicate(snapshot)
-
-        self.device.await_until(
-            f"{self.selector.render()} to be {description}",
-            check,
-            self.timeout,
-            observe=lambda: last["seen"],
+    def _until(self, condition: pb.Node) -> Element:
+        self._device_wait(
+            f"{self.selector.render()} to satisfy {_proto.describe_node(condition)}",
+            wait_state=pb.WaitState(selector=self.selector._proto, condition=condition),
         )
-        return element
+        return Element(self.device, self.selector)

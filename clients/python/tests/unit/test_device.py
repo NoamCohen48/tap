@@ -30,7 +30,7 @@ from tap_e2e import (
     WaitTimeoutError,
 )
 from tap_e2e import _gen as pb
-from tap_e2e import DOWN, STARTS_WITH, Long, res, text
+from tap_e2e import DOWN, STARTS_WITH, Long, enabled, res, text
 
 from .conftest import TOKEN
 
@@ -62,6 +62,7 @@ WAITS = {
     "wait_visible": lambda d: d.screen.wait(text("x")).visible(),
     "wait_one": lambda d: d.app("com.test").wait(text("x")).one(),
     "wait_gone": lambda d: d.screen.wait(text("x")).gone(),
+    "wait_state": lambda d: d.screen.wait(text("x")).enabled(),
 }
 
 
@@ -273,17 +274,16 @@ def test_type_text_taps_waits_for_focus_then_types_into_the_focus(fake, device):
 
     def respond(command: pb.Command) -> pb.CommandResult | None:
         op = command.WhichOneof("op")
-        if op not in ("tap", "snapshot", "type_text"):
+        if op not in ("tap", "wait_state", "type_text"):
             return None
         ops.append(command)
-        if op == "snapshot":
-            snapshots = sum(1 for c in ops if c.HasField("snapshot"))
-            return pb.CommandResult(snapshot=pb.ElementSnapshot(focused=snapshots == 2))
         return pb.CommandResult(done=pb.Done())
 
     fake.devices.responder = respond
     device.screen.element(res("email")).type_text("abc")
-    assert [c.WhichOneof("op") for c in ops] == ["tap", "snapshot", "snapshot", "type_text"]
+    assert [c.WhichOneof("op") for c in ops] == ["tap", "wait_state", "type_text"]
+    assert ops[1].wait_state.selector == res("email")._proto
+    assert ops[1].wait_state.condition == pb.Node(flag=pb.Flag(property=pb.FLAG_FOCUSED, value=True))
     assert ops[-1].type_text.text == "abc"
 
     ops.clear()
@@ -301,19 +301,92 @@ def test_sensitive_text_is_sent_with_its_flag(fake, device):
     assert not plain.set_text.sensitive
 
 
-def test_a_property_wait_polls_through_a_node_that_went_stale(fake, device):
-    replies = iter([
-        pb.CommandResult(error=pb.Error(code=pb.ERR_STALE_BEFORE_INPUT)),
-        pb.CommandResult(snapshot=pb.ElementSnapshot(enabled=True)),
-    ])
-    fake.devices.responder = lambda command: next(replies) if command.HasField("snapshot") else None
-    device.screen.element(res("save")).wait(timeout=5).enabled()
-    assert next(replies, None) is None
+def _flag(prop, value=True):
+    return pb.Node(flag=pb.Flag(property=prop, value=value))
 
-    fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_STALE_BEFORE_INPUT))
+
+def _text(value, mode=pb.MATCH_EXACT):
+    return pb.Node(match=pb.Match(property=pb.PROPERTY_TEXT, value=value, mode=mode))
+
+
+STATE_WAITS = {
+    "enabled": (lambda w: w.enabled(), _flag(pb.FLAG_ENABLED)),
+    "disabled": (lambda w: w.disabled(), _flag(pb.FLAG_ENABLED, False)),
+    "checked": (lambda w: w.checked(), _flag(pb.FLAG_CHECKED)),
+    "unchecked": (lambda w: w.unchecked(), _flag(pb.FLAG_CHECKED, False)),
+    "focused": (lambda w: w.focused(), _flag(pb.FLAG_FOCUSED)),
+    "text_equals": (lambda w: w.text_equals("Paid"), _text("Paid")),
+    "text_contains": (lambda w: w.text_contains("Pa"), _text("Pa", pb.MATCH_CONTAINS)),
+    "until": (lambda w: w.until(enabled() & text("Pay", STARTS_WITH)), pb.Node(all_of=pb.AllOf(nodes=[_flag(pb.FLAG_ENABLED), _text("Pay", pb.MATCH_STARTS_WITH)]))),
+}
+
+
+@pytest.mark.parametrize("call,condition", STATE_WAITS.values(), ids=STATE_WAITS.keys())
+def test_a_state_wait_is_one_device_command_on_the_picked_selector(fake, device, call, condition):
+    sent: list[pb.Command] = []
+    fake.devices.responder = lambda command: sent.append(command) if command.HasField("wait_state") else None
+    picked = text("Row").at(2)
+    element = call(device.screen.wait(picked, timeout=5))
+    assert element.selector == picked
+    (command,) = sent
+    assert command.wait_state == pb.WaitState(selector=picked._proto, condition=condition)
+
+
+def test_a_condition_with_a_pick_is_rejected_before_sending(fake, device):
+    with pytest.raises(ValueError, match="put the pick on the selector"):
+        device.screen.wait(res("pay")).until(enabled().first())
+    assert not any(c.HasField("wait_state") for c in fake.devices.commands)
+
+
+def test_a_state_wait_timeout_says_which_condition_part_failed(fake, device):
+    last = pb.ElementSnapshot(text="Paying…", enabled=True)
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(
+            error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="STATE_NOT_REACHED", last_state=last, condition_holds=[True, False])
+        )
+        if command.HasField("wait_state")
+        else None
+    )
+    with pytest.raises(WaitTimeoutError) as info:
+        device.screen.wait(res("pay"), timeout=5).until(enabled() & text("Pay"))
+    parts = info.value.condition_parts
+    assert [(p.part, p.holds) for p in parts] == [("enabled()", True), ('text("Pay")', False)]
+    assert parts[1].observed == '"Paying…"'
+    assert str(info.value).endswith('\n  enabled(): yes\n  text("Pay"): no ("Paying…")')
+
+
+def test_a_state_wait_timeout_carries_the_last_state(fake, device):
+    from tap_e2e import WaitReason
+
+    last = pb.ElementSnapshot(text="Placing order…", enabled=False)
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="STATE_NOT_REACHED", last_state=last))
+        if command.HasField("wait_state")
+        else None
+    )
+    with pytest.raises(WaitTimeoutError) as info:
+        device.screen.wait(res("pay"), timeout=5).enabled()
+    assert info.value.reason is WaitReason.STATE_NOT_REACHED
+    assert info.value.last_state.text == "Placing order…" and not info.value.last_state.enabled
+    assert "text='Placing order…' enabled=False" in str(info.value)
+
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT, detail="NO_MATCH"))
+        if command.HasField("wait_state")
+        else None
+    )
+    with pytest.raises(WaitTimeoutError) as info:
+        device.screen.wait(res("pay"), timeout=5).enabled()
+    assert info.value.reason is WaitReason.NO_MATCH and info.value.last_state is None
+
+
+def test_an_ambiguous_state_wait_is_a_command_error(fake, device):
+    fake.devices.responder = lambda command: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_AMBIGUOUS)) if command.HasField("wait_state") else None
+    )
     with pytest.raises(CommandError) as info:
-        device.screen.element(res("save")).tap()
-    assert info.value.code is ErrorCode.STALE_BEFORE_INPUT
+        device.screen.wait(text("Row"), timeout=5).checked()
+    assert info.value.code is ErrorCode.AMBIGUOUS
 
 
 def test_open_notifications_and_quick_settings_send_the_system_panel_command(fake, device):

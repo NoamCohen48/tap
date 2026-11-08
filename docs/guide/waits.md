@@ -21,6 +21,7 @@ Each of its methods waits until the condition holds or the timeout elapses, then
 ```python
 app.wait(text("Order placed")).visible()
 app.wait(res("pay")).enabled().tap()
+app.wait(res("pay")).until(enabled() & text("Pay")).tap()
 app.wait(res("spinner"), timeout=30).gone()
 ```
 
@@ -29,17 +30,31 @@ app.wait(res("spinner"), timeout=30).gone()
 | `visible()` | at least one match |
 | `one()` | exactly one match (what `tap()` and other actions need) |
 | `gone()` | zero matches |
-| `enabled()`, `disabled()` | exactly one match with that state |
-| `checked()`, `unchecked()`, `focused()` | likewise |
-| `text_equals(s)`, `text_contains(s)` | text of the single match |
+| `until(condition)` | the one match satisfies `condition` ([below](#which-node-then-what-it-must-become)) |
+| `enabled()`, `disabled()` | shortcuts: `until(enabled())`, `until(enabled(False))` |
+| `checked()`, `unchecked()`, `focused()` | `until(checked())`, `until(checked(False))`, `until(focused())` |
+| `text_equals(s)`, `text_contains(s)` | `until(text(s))`, `until(text(s, CONTAINS))` |
 | `count(n)` | exactly `n` matches |
 
-`visible()`, `one()` and `gone()` poll **on the device** in a single round trip; the property
-waits take a snapshot from the host every poll interval (100 ms). A miss raises
-`WaitTimeoutError`. For the device waits it carries `reason` (`WaitReason.NO_MATCH`, `AMBIGUOUS`
-for `one()`, `STILL_PRESENT` for `gone()`) and `match_count` from the last poll; for the
-property waits, the number of polls and the last observation (for example
-`text='Placing order…' enabled=False …`).
+Every wait but `count(n)` polls **on the device** in a single round trip; `count(n)` polls from
+the host every 100 ms. A miss raises `WaitTimeoutError` with a `reason` and what was seen last:
+
+| Wait | `reason` on timeout | Also carries |
+|---|---|---|
+| `visible()` | `NO_MATCH` | `match_count` |
+| `one()` | `NO_MATCH` or `AMBIGUOUS` | `match_count` |
+| `gone()` | `STILL_PRESENT` | `match_count` |
+| `until` and its shortcuts | `STATE_NOT_REACHED`, or `NO_MATCH` if the node never appeared | `last_state`: the node's `ElementSnapshot` at the end; `condition_parts`: which part of the condition held |
+| `count(n)` | none | `polls`, `last_observation` (`count=…`) |
+
+The message says it on its first line, and for a condition adds one line per part:
+
+```
+Timed out after 5003 ms waiting for … to satisfy enabled() & text("Pay") on emulator-5554;
+STATE_NOT_REACHED; last observed: text='Paying…' enabled=True …
+  enabled(): yes
+  text("Pay"): no ("Paying…")
+```
 
 `visible()` passes with several matches, so when the next step is an action, `one()` is the
 wait that proves it can run.
@@ -48,6 +63,52 @@ wait that proves it can run.
 element scrolled off-screen in a `RecyclerView` is usually absent from the tree, and so is one
 that another window (a dialog, the keyboard) covers completely: Android reports it as not
 visible ([Covered elements](app-or-screen.md#covered-elements)).
+
+### Which node, then what it must become
+
+A state wait has two parts, and each goes in its own place:
+
+- **The selector chooses which node.** Combine and refine it as anywhere else
+  ([Selectors](selectors.md)), including `first()` / `at(n)` to pick one of several.
+- **`until(condition)` says what that one node must become.**
+
+The condition is written with the same builders as a selector (`enabled()`, `checked(False)`,
+`focused()`, `selected()`, `text(...)` with any match mode, `desc`, `hint`, `&`, `|`, relations
+such as `has_child(...)`), but it never chooses a node. It is checked on the node the selector
+picked, every poll, and all of its parts must hold at the same moment:
+
+```python
+app.wait(text("Pay").clickable()).until(enabled())                   # the clickable "Pay" button, once enabled
+app.wait(class_name("CheckBox").at(1)).until(checked())              # the second checkbox, once checked
+app.wait(res("total")).until(text(r"\d+,\d\d €", REGEX))             # once the total is formatted
+app.wait(res("status")).until(text("Saved") | text("Up to date"))    # either message, on that node
+app.wait(res("pay")).until(enabled() & text("Pay"))                  # both at once
+```
+
+`enabled()`, `checked()`, `text_equals(s)` and the other methods in the table are shortcuts for
+the commonest conditions. A condition cannot carry its own `first()` / `at(n)` (`ValueError`):
+the pick belongs on the selector.
+
+Putting the condition into the selector instead (`app.wait(res("pay") & enabled()).visible()`)
+looks similar but means something else: "some node that is already enabled". It never sees the
+disabled button. A pick (`at(1)`) then counts only the enabled nodes, and a selector matching
+two buttons, one of them enabled, passes. A timeout can only say `NO_MATCH`, never that the
+button was there and still disabled. Use `until`.
+
+The node is resolved again on every poll. While it is missing or being re-rendered the wait
+keeps polling. If the selector matches several nodes and has no pick, the wait fails at once with
+`AMBIGUOUS` (a `CommandError`), since there is no one node to wait for.
+
+A condition is checked the way the device checks a selector predicate on one node, with two
+details worth knowing. A property the node does not have never matches, so `text("")` holds only
+for a node whose text is empty, not for one with no text. An ancestor relation looks up at most 32
+levels. A `has_descendant` condition walks the node's subtree on every poll, so keep it on small
+containers.
+
+A `|` in the *selector* describes one node that can look different ways (`text("Allow") |
+text("While using the app")`). It is not a way to wait for "either of two things". To wait
+until one of two different screens shows up, wait for something they share, or use
+`device.await_until` with your own condition.
 
 `element.wait()` is the same thing, starting from an element you already hold.
 

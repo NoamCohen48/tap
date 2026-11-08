@@ -2,14 +2,18 @@ package io.github.noamcohen48.tap.sdk
 
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
+import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.NodeFlag
+import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.api.v1.WaitGone
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import kotlin.time.Duration
 
 /**
- * Wait builder returned by [App.await] / [Screen.await] / [Element.await]. [visible], [one] and [gone] poll on the
- * device in a single RPC; property waits poll snapshots from the host with [delay]-based
- * polling, so test-root cancellation and sibling failure cancel them promptly.
+ * Wait builder returned by [App.await] / [Screen.await] / [Element.await]. Every wait but [count] polls on
+ * the device in a single RPC; [count] polls from the host with `delay`-based polling, so test-root
+ * cancellation and sibling failure cancel it promptly.
  *
  * All terminal methods are `suspend` and require an owning scope (`tapScope`/`tapTest`).
  */
@@ -52,26 +56,48 @@ class ElementWait internal constructor(
         deviceWait("wait_gone", "${selector.render()} to be gone") { waitGone = WaitGone.newBuilder().setSelector(selector.proto).build() }
     }
 
-    /** Wait until the one matching node is enabled. */
-    suspend fun enabled(): Element = property("enabled") { it.enabled }
+    /**
+     * Waits until the one node the selector picks satisfies [condition], then returns it.
+     *
+     * The selector says *which* node: exactly one match, or its `first()` / `at(n)`. The condition
+     * says what that node must become, written with the selector builders
+     * (`enabled() and text("Pay")`, `checked(false)`, `text("Total", MatchMode.STARTS_WITH)`,
+     * `hasChild(text("Done"))`), and is checked on that node alone, every poll, all parts at the
+     * same moment. Polled on the device in one RPC. With several matches and no pick the wait
+     * fails at once with `AMBIGUOUS`. A timeout's [WaitTimeoutException.reason] is
+     * [WaitReason.STATE_NOT_REACHED] ([WaitTimeoutException.lastState] is the node at the end and
+     * [WaitTimeoutException.conditionParts] says which part failed) or [WaitReason.NO_MATCH].
+     *
+     * @throws IllegalArgumentException when [condition] has its own `first()` / `at(n)`.
+     */
+    suspend fun until(condition: Selector): Element {
+        require(!condition.hasPick) {
+            "until: the condition ${condition.render()} has a match choice (first()/at()); " +
+                "a condition is checked on the one node the selector picks, so put the pick on the selector"
+        }
+        return state(condition.proto.node)
+    }
 
-    /** Wait until the one matching node is disabled. */
-    suspend fun disabled(): Element = property("disabled") { !it.enabled }
+    /** `until(enabled())`: wait until the one matching node is enabled. */
+    suspend fun enabled(): Element = state(flag(NodeFlag.FLAG_ENABLED, true))
 
-    /** Wait until the one matching node is checked. */
-    suspend fun checked(): Element = property("checked") { it.checked }
+    /** `until(enabled(false))`. */
+    suspend fun disabled(): Element = state(flag(NodeFlag.FLAG_ENABLED, false))
 
-    /** Wait until the one matching node is unchecked. */
-    suspend fun unchecked(): Element = property("unchecked") { !it.checked }
+    /** `until(checked())`; a node that is not checkable never is. */
+    suspend fun checked(): Element = state(flag(NodeFlag.FLAG_CHECKED, true))
 
-    /** Wait until the one matching node has focus. */
-    suspend fun focused(): Element = property("focused") { it.focused }
+    /** `until(checked(false))`. */
+    suspend fun unchecked(): Element = state(flag(NodeFlag.FLAG_CHECKED, false))
 
-    /** Wait until the one matching node's text equals [expected]. */
-    suspend fun textEquals(expected: String): Element = property("text == \"$expected\"") { it.text == expected }
+    /** `until(focused())`: wait until the one matching node has input focus. */
+    suspend fun focused(): Element = state(flag(NodeFlag.FLAG_FOCUSED, true))
 
-    /** Wait until the one matching node's text contains [part]. */
-    suspend fun textContains(part: String): Element = property("text containing \"$part\"") { it.text?.contains(part) == true }
+    /** `until(text(expected))`: the raw accessibility text equals [expected]. */
+    suspend fun textEquals(expected: String): Element = state(match(TextProperty.PROPERTY_TEXT, expected, MatchMode.EXACT))
+
+    /** `until(text(part, MatchMode.CONTAINS))`: the raw accessibility text contains [part] (non-empty). */
+    suspend fun textContains(part: String): Element = state(match(TextProperty.PROPERTY_TEXT, part, MatchMode.CONTAINS))
 
     /** Waits until exactly [expected] matches are visible. */
     suspend fun count(expected: Int): Element {
@@ -86,37 +112,22 @@ class ElementWait internal constructor(
     private suspend fun deviceWait(
         operation: String,
         description: String,
+        // A state wait's condition, for its timeout report.
+        condition: Node? = null,
         build: Command.Builder.() -> Unit,
     ) {
         val result = device.execute(timeout, build)
         if (!result.hasError()) return
         if (result.error.code == ErrorCodeProto.ERR_WAIT_TIMEOUT) {
-            throw WaitTimeoutException.of(result, description, device.serial)
+            throw WaitTimeoutException.of(result, description, device.serial, condition = condition)
         }
         throw CommandException(result, operation, device.serial, selector.render())
     }
 
-    private suspend fun property(
-        description: String,
-        predicate: (ElementSnapshot) -> Boolean,
-    ): Element {
-        val element = Element(device, selector)
-        var last: String? = null
-        device.awaitUntil("${selector.render()} to be $description", timeout, observe = { last }) {
-            val snapshot =
-                try {
-                    element.snapshot()
-                } catch (e: CommandException) {
-                    when (e.code) {
-                        ErrorCode.NOT_FOUND -> last = "not found"
-                        ErrorCode.STALE_BEFORE_INPUT -> last = "re-rendering"
-                        else -> throw e
-                    }
-                    return@awaitUntil false
-                }
-            last = "text=${snapshot.text} enabled=${snapshot.enabled} checked=${snapshot.checked} focused=${snapshot.focused}"
-            predicate(snapshot)
+    private suspend fun state(condition: Node): Element {
+        deviceWait("wait_state", "${selector.render()} to satisfy ${describe(condition)}", condition) {
+            waitState = WaitState.newBuilder().setSelector(selector.proto).setCondition(condition).build()
         }
-        return element
+        return Element(device, selector)
     }
 }
