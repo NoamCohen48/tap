@@ -131,7 +131,13 @@ tap-agent wait id=save --state enabled
 tap-agent wait id=terms --state checked
 tap-agent wait id=status --state text --value Saved
 tap-agent wait class=Button --state count --value 3
+tap-agent wait id=pay --until enabled=true,text=Pay
+tap-agent wait id=status --until '{"any":[{"text":"Saved"},{"text":"Up to date"}]}'
 ```
+
+`--until` waits until the target's one node satisfies a condition written in the target
+grammar, every part at the same moment (MCP `wait_for` takes it as `until`). A condition has no
+ref, `index` / `first` or `pkg`: those choose nodes, so they go on the target.
 
 States also include disabled, unchecked, focused and text-contains. Text/count states require
 `--value`; other states reject it. Every wait polls on the device except `--state count`,

@@ -249,6 +249,21 @@ def parse_target(spec: str) -> Target:
     return Target(selector=_bounded(selector), package=package, source=spec)
 
 
+def parse_condition(spec: str) -> Selector:
+    """A wait's condition, in the target grammar (``enabled=true,text=Pay`` or a JSON selector):
+    what the one node the target picks must satisfy. It has no ref, ``index`` / ``first`` or
+    ``pkg``: those choose nodes, and the condition is checked on the node the target chose."""
+    target = parse_target(spec)
+    if target.ref is not None:
+        raise UsageError("a condition is key=value terms or a JSON selector, not a ref")
+    if target.package is not None:
+        raise UsageError("a condition has no pkg: put the package on the target")
+    assert target.selector is not None
+    if target.selector.to_proto().WhichOneof("pick") is not None:
+        raise UsageError("a condition has no index/first: it is checked on the node the target picks, so put the pick on the target")
+    return target.selector
+
+
 _DURATION = re.compile(r"(\d+(?:\.\d+)?)(ms|s|m|h)?")
 _UNIT = {"ms": 0.001, "s": 1.0, "m": 60.0, "h": 3600.0, None: 1.0}
 

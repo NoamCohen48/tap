@@ -89,6 +89,34 @@ def test_queries_and_property_waits_use_sdk_operations(fake, agent):
     assert [c.match.mode for c in conditions[3:]] == [pb.MATCH_EXACT, pb.MATCH_CONTAINS]
 
 
+def test_wait_until_sends_one_device_wait_with_the_whole_condition(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.wait("id=pay", until="enabled=true,text=Pay") == "id=pay satisfies enabled=true,text=Pay"
+    agent.wait("id=status", until='{"any":[{"text":"Saved"},{"text":"Up to date"}]}')
+    waits = [command.wait_state for command in fake.devices.commands if command.HasField("wait_state")]
+    assert waits[0].selector.node.resource.name == "pay"
+    both = waits[0].condition.all_of.nodes
+    assert [n.WhichOneof("kind") for n in both] == ["flag", "match"]
+    assert both[0].flag.property == pb.FLAG_ENABLED and both[1].match.value == "Pay"
+    assert [n.match.value for n in waits[1].condition.any_of.nodes] == ["Saved", "Up to date"]
+    parser = cli.parser()
+    assert "satisfies" in cli.run(parser.parse_args(["wait", "id=pay", "--until", "checked=false"]), agent)
+    assert fake.devices.commands[-1].wait_state.condition.flag.value is False
+    with pytest.raises(SystemExit):
+        parser.parse_args(["wait", "id=pay", "--until", "enabled=true", "--state", "checked"])
+
+
+@pytest.mark.parametrize("options", [
+    {"until": "@e3"}, {"until": "text=Pay,index=1"}, {"until": "text=Pay,pkg=com.a"},
+    {"until": '{"text":"Pay","first":true}'}, {"until": "nonsense"},
+    {"until": "enabled=true", "state": "checked"}, {"until": "enabled=true", "value": "x"},
+])
+def test_an_invalid_until_does_not_contact_a_device(agent, options):
+    with pytest.raises(AgentError) as error:
+        agent.wait("text=OK", **options)
+    assert error.value.exit_code == EXIT_USAGE
+
+
 @pytest.mark.parametrize("options", [
     {"state": "count", "value": True}, {"state": "count", "value": -1},
     {"state": "text"}, {"state": "checked", "value": "yes"},

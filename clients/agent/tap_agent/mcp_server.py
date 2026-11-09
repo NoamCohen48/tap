@@ -590,11 +590,15 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ] = "visible",
         timeout_seconds: Annotated[float, Field(ge=0.001, le=120)] = 10,
         value: Annotated[str | StrictInt | None, Field(description="Expected text or integer count for those states.")] = None,
+        until: Annotated[
+            str,
+            Field(description="Instead of state: a condition in the target grammar (enabled=true,text=Pay or a JSON selector) the target's one node must satisfy, all parts at once."),
+        ] = "",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Wait for visibility, state, text or count through SDK waits. Never sends input."""
-        return await call(session, lambda a: a.wait(target, device or None, state, timeout_seconds, value=value))
+        """Wait for visibility, state, text, count or a condition through SDK waits. Never sends input."""
+        return await call(session, lambda a: a.wait(target, device or None, state, timeout_seconds, value=value, until=until or None))
 
     @mcp.tool(name="settle", annotations=READ_ONLY)
     async def settle(

@@ -66,6 +66,9 @@ name the components affected. Earlier releases used independent version lines. T
   step editor take a condition in the selector syntax (`enabled() and text("Pay")`), recorded as
   `CONDITION_UNTIL` with `WaitStep.until` in `tap-recording/2`, replayed and exported as
   `wait(…).until(…)`. Together with the selector it is bounded to 256 nodes, as on the device.
+- `tap-agent wait --until CONDITION` (MCP `wait_for` `until`) waits until the target's node
+  satisfies a condition in the target grammar, such as `enabled=true,text=Pay` or a JSON
+  selector, in one device wait. A ref, `index` / `first` or `pkg` in it is a usage error.
 
 ## 0.1.0 — 2026-11-08
 

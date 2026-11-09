@@ -70,7 +70,7 @@
     ],
     "ElementWait": [
       {"methods": ["visible", "one", "gone", "enabled", "disabled", "checked", "unchecked", "focused", "text_equals", "text_contains", "count"], "tools": ["wait_for"]},
-      {"methods": ["until"], "tools": [], "reason": "a general condition is not a wait_for state yet; --state covers the shortcuts"}
+      {"methods": ["until"], "tools": ["wait_for"], "reason": "The condition is written in the shared target grammar, without a ref, pick or pkg."}
     ],
     "Screen": [
       {"methods": ["element", "wait"], "tools": ["tap", "wait_for"], "reason": "Whole-screen default, no implicit app scope."}
