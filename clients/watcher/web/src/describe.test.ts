@@ -7,7 +7,7 @@ import { MatchMode, NodeFlag, TextProperty } from "./gen/selector_pb";
 
 const resource = (name: string) => ({ node: { kind: { case: "resource" as const, value: { name } } } });
 
-function command(op: object, error?: { code: ErrorCode; message: string }): LoggedEvent {
+function command(op: object, error?: { code: ErrorCode; message: string } & Record<string, unknown>): LoggedEvent {
   return create(LoggedEventSchema, { seq: 1n, serial: "s", call: { case: "command", value: { op } as never }, error });
 }
 
@@ -35,6 +35,37 @@ suite("describe", () => {
     const both = { kind: { case: "allOf" as const, value: { nodes: [enabled, total] } } };
     const text = command({ case: "waitState", value: { selector: resource("total"), condition: both } });
     expect(summary(describe(text))).toBe('Wait for res("total") ← enabled & textContains("€")');
+  });
+
+  it("says which selector part ruled the nodes out", () => {
+    const text = (value: string) => ({ kind: { case: "match" as const, value: { property: TextProperty.PROPERTY_TEXT, value } } });
+    const both = { node: { kind: { case: "allOf" as const, value: { nodes: [resource("pay").node, text("Pay")] } } } };
+    const narrowing = { selectorIndex: 0, matches: 0, parts: [{ alone: 1, without: 0, nearMisses: ["Paying…"] }, { alone: 0, without: 1, nearMisses: [] }] };
+    const miss = describe(command({ case: "tap", value: { selector: both } }, { code: ErrorCode.ERR_NOT_FOUND, message: "no match", narrowing }));
+    expect(miss.why).toEqual(['No node matches res("pay") & text("Pay"); each part:', 'res("pay"): 1 alone, 0 without it (seen: "Paying…")', 'text("Pay"): 0 alone, 1 without it']);
+
+    // A drag's target is selector 1; an index past the pick's reach says how many it found.
+    const at = { ...resource("row"), pick: { case: "at" as const, value: { index: 2 } } };
+    const drag = describe(command({ case: "drag", value: { selector: resource("handle"), target: at } }, { code: ErrorCode.ERR_NOT_FOUND, message: "", narrowing: { selectorIndex: 1, matches: 2, parts: [] } }));
+    expect(drag.why).toEqual(['Only 2 nodes match res("row")[2]; its pick needs 3']);
+
+    // A narrowing that does not fit the command shows nothing rather than a wrong line.
+    const stray = describe(command({ case: "tap", value: { selector: both } }, { code: ErrorCode.ERR_NOT_FOUND, message: "", narrowing: { selectorIndex: 1, matches: 0, parts: [] } }));
+    expect(stray.why).toEqual([]);
+  });
+
+  it("lists a state wait's condition parts with what the node had", () => {
+    const enabled = { kind: { case: "flag" as const, value: { property: NodeFlag.FLAG_ENABLED, value: true } } };
+    const pay = { kind: { case: "match" as const, value: { property: TextProperty.PROPERTY_TEXT, value: "Pay" } } };
+    const both = { kind: { case: "allOf" as const, value: { nodes: [enabled, pay] } } };
+    const event = command(
+      { case: "waitState", value: { selector: resource("pay"), condition: both } },
+      { code: ErrorCode.ERR_WAIT_TIMEOUT, message: "state not reached", conditionHolds: [true, false], lastState: { text: "Paying…", enabled: true } },
+    );
+    expect(describe(event).why).toEqual(["✓ enabled", '✗ text("Pay") (has "Paying…")']);
+    // No last state: the parts without what the node had.
+    const bare = command({ case: "waitState", value: { selector: resource("pay"), condition: enabled } }, { code: ErrorCode.ERR_WAIT_TIMEOUT, message: "", conditionHolds: [false] });
+    expect(describe(bare).why).toEqual(["✗ enabled"]);
   });
 
   it("shows a sensitive text as hidden", () => {

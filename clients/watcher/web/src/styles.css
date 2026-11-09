@@ -966,6 +966,16 @@ kbd {
 .outcome-line.ok {
   color: var(--ok);
 }
+.why {
+  margin: -4px 0 8px;
+  padding: 0 0 0 20px;
+  list-style: none;
+  font: 12px var(--mono);
+  overflow-wrap: anywhere;
+}
+.why li + li {
+  margin-top: 2px;
+}
 .details dl {
   display: grid;
   grid-template-columns: auto 1fr;
