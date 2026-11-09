@@ -88,6 +88,13 @@ export const Check = () => (
   </svg>
 );
 
+export const TouchMarks = () => (
+  <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
+    <circle cx="12" cy="12" r="8" />
+    <circle cx="12" cy="12" r="2" fill="currentColor" stroke="none" />
+  </svg>
+);
+
 export const Compare = () => (
   <svg viewBox="0 0 24 24" aria-hidden="true" {...stroke}>
     <rect x="3" y="5" width="7.5" height="14" rx="1.5" />

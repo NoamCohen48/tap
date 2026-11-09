@@ -24,6 +24,20 @@ These decisions supersede the corresponding parts of the original proposal below
 - The original phase list and marker-dependent trace retention/final capture below
   are historical proposals, not an approved implementation checklist for this scope.
 
+### Toggleable touch marks
+
+The Live stage's **Marks** toggle (on by default, browser-persisted) overlays driver-resolved
+touch points and illustrative gesture trails on live, retained replay and selected Before / After
+frames. `CommandResult.touch_feedback` is copied to `LoggedEvent.touch_feedback`; no selector
+lookup, screenshot or input is added by the watcher. Feedback is captured before the driver's
+mutation gate, published only after it opens, reset per command and omitted for other displays.
+Tap-family marks use the checked point; drag uses its resolved destination; directional and
+pinch trails are schematic from the visible bounds. Failed calls and incompatible orientations
+are hidden. Live marks expire without needing a new video frame; replay uses only matching daemon
+monotonic clocks. The overlay never modifies retained/exported video or the Library player.
+Unit coverage: daemon Execute-to-event propagation, marker geometry/direction/clock filtering,
+and page toggle persistence and expiry. Device matrix not run for this change.
+
 ### Implementation checkpoint
 
 Reworked 2026-10-03 after [test-watcher-review.md](test-watcher-review.md), which lists

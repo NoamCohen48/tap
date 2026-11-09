@@ -21,6 +21,20 @@ Selecting an action whose video is still retained pauses the screen where it sta
 marks it on the scrubber. Failed actions are red on the scrubber; hovering a marker names the
 action.
 
+## Action marks
+
+**Marks** toggles touch indicators on the screen: a circle for a tap, concentric rings for
+repeated taps, a dashed ring for a held press, an arrow trail for swipe/scroll/fling/drag,
+and two arrows for a pinch. Marks are on by default; the browser remembers your choice.
+They disappear after about 1.4 seconds live, follow the action times during replay, and stay
+visible when you select an action or compare its Before / After frames.
+
+Locations come from the driver's resolved touch geometry, not from guessing where a selector
+matches. Trails and timing are illustrative, not a sampled finger recording. Failed calls,
+non-touch actions (such as Back or typing), older drivers without geometry, and incompatible
+screen orientations show no mark. Marks do not change the device, saved clips, recordings or
+Library playback.
+
 ## Before and after
 
 **Compare** (or `C`) shows the selected action's **Before** and **After** frames side by side:
