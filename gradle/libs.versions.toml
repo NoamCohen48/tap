@@ -45,6 +45,8 @@ activity-compose = { module = "androidx.activity:activity-compose", version = "1
 compose-foundation = { module = "androidx.compose.foundation:foundation" }
 compose-material3 = { module = "androidx.compose.material3:material3" }
 compose-ui = { module = "androidx.compose.ui:ui" }
+# Only the fixture app: DrawerActivity, an in-window cover for the OBSCURED check.
+drawerlayout = { module = "androidx.drawerlayout:drawerlayout", version = "1.2.0" }
 dokka-gfm-plugin = { module = "org.jetbrains.dokka:gfm-plugin", version.ref = "dokka" }
 # build-logic compiles against these (compileOnly); the root build puts them on the classpath.
 kotlin-gradle-plugin = { module = "org.jetbrains.kotlin:kotlin-gradle-plugin", version.ref = "kotlin" }

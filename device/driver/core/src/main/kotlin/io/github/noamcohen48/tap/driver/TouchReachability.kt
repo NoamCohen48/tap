@@ -6,6 +6,7 @@ import android.graphics.Rect
 import android.graphics.Region
 import android.os.Build
 import android.view.Display
+import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.UiObject2
@@ -26,17 +27,30 @@ import io.github.noamcohen48.tap.protocol.ErrorDetail
  * `OBSCURED`, which promises no mutation (device-checked by `OcclusionTest`).
  *
  * Windows that take no touches (a dimming or pointer-location overlay) are not reported, so they
- * give no false refusal. The check reads the target's window only through
- * the window list; covering views inside the target's own window are not detected.
+ * give no false refusal.
+ *
+ * Inside the target's own window one cover is detected: an open `DrawerLayout` drawer. Its scrim
+ * is drawn by the layout, not a view, and catches every touch outside the drawer, so a tap on the
+ * content under it closes the drawer instead. The layout hides that content from accessibility
+ * while a drawer is open (`IMPORTANT_FOR_ACCESSIBILITY_NO_HIDE_DESCENDANTS`), but UiAutomator still
+ * reports it, visible and with its own bounds. A target that is not important for accessibility,
+ * under a `DrawerLayout` that has another child on screen (the open drawer), is refused as
+ * `OBSCURED` too (device-checked by `DrawerScrimTest`). Other covering views inside the window
+ * (a floating bar, an in-window bottom sheet, a custom scrim) are not detected; a Compose
+ * `ModalNavigationDrawer` leaves the content out of the tree instead, so it is `NOT_FOUND`.
  */
 internal class TouchReachability(
     private val uiAutomation: () -> UiAutomation,
 ) {
-    /** Throws `NOT_INTERACTABLE` / `OBSCURED` when [point] is in a window above [element]'s. */
+    /**
+     * Throws `NOT_INTERACTABLE` / `OBSCURED` when [point] is in a window above [element]'s, or
+     * when [element] is under an open `DrawerLayout` drawer.
+     */
     fun requireReachable(
         element: UiObject2,
         point: Point,
     ) {
+        requireNotUnderOpenDrawer(element.accessibilityNodeInfo)
         // Only the default display's windows are listed; other displays are not checked.
         if (element.displayId != Display.DEFAULT_DISPLAY) return
         val windowId = element.accessibilityNodeInfo.windowId
@@ -49,6 +63,36 @@ internal class TouchReachability(
             message = "The touch point (${point.x}, ${point.y}) is covered by ${topmost.describe()}",
         )
     }
+
+    /**
+     * A node `DrawerLayout` hides while a drawer is open: not important for accessibility (a
+     * `DrawerLayout` sets that on its content only then; an ordinary clickable view is important
+     * on its own), with a `DrawerLayout` ancestor that has a child on screen other than the
+     * branch holding [node]: the drawer. Both are needed, because apps also mark views not
+     * important themselves, and many wrap their whole content in a `DrawerLayout`.
+     */
+    private fun requireNotUnderOpenDrawer(node: AccessibilityNodeInfo) {
+        if (node.isImportantForAccessibility) return
+        var branch = node
+        var parent = node.parent
+        while (parent != null) {
+            if (parent.className?.endsWith(DRAWER_LAYOUT) == true && parent.hasOtherVisibleChild(branch)) {
+                throw CommandFailure(
+                    ErrorCode.ERR_NOT_INTERACTABLE,
+                    detail = ErrorDetail.OBSCURED,
+                    message = "The target is under an open drawer of ${parent.className}: a touch on it would close the drawer",
+                )
+            }
+            branch = parent
+            parent = parent.parent
+        }
+    }
+
+    private fun AccessibilityNodeInfo.hasOtherVisibleChild(branch: AccessibilityNodeInfo): Boolean =
+        (0 until childCount).any { index ->
+            val child = getChild(index) ?: return@any false
+            child != branch && child.isVisibleToUser
+        }
 
     /**
      * The window's touchable region from API 33; before it, its bounds, corrected where the
@@ -65,6 +109,11 @@ internal class TouchReachability(
         val packageName = root?.packageName
         return listOfNotNull(title?.let { "window \"$it\"" } ?: "a window", packageName?.let { "of $it" })
             .joinToString(" ")
+    }
+
+    private companion object {
+        /** `androidx.drawerlayout.widget.DrawerLayout` and the support library's `android.support.v4.widget.DrawerLayout`. */
+        const val DRAWER_LAYOUT = ".DrawerLayout"
     }
 }
 

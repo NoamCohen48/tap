@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- DrawerActivity's views. -->
+    <item name="drawer_status" type="id" />
+    <item name="drawer_open" type="id" />
+    <item name="drawer_decorative" type="id" />
+    <item name="drawer_under" type="id" />
+    <item name="drawer_item" type="id" />
+    <item name="drawer_close" type="id" />
+</resources>

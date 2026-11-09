@@ -271,6 +271,8 @@ tap/
     |   +-- MotionActivity.kt        2 s handler-driven animation and an endless 100 ms ticker (screen-stability waits)
     |   +-- OcclusionActivity.kt     a popup over half a button and a button under the keyboard (adjustNothing) for OBSCURED
     |   +-- InsetWindowActivity.kt   a dialog's bottom-right corner and an elevated popup beside / over buttons (window surface insets)
+    |   +-- DrawerActivity.kt        a DrawerLayout drawer over a counted button (in-window OBSCURED), a decorative not-important view
+    |   +-- ComposeDrawerActivity.kt a ModalNavigationDrawer, whose content leaves the tree while open
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults
     |   +-- FixtureFaultProvider.kt  delayed-mutation hook for the late-work fault (authority ...fixture.fault)
     |   +-- FixtureApplication.kt    Application + FaultTapCounter
@@ -723,7 +725,8 @@ direct and key-event text fields with an `OnKeyListener` proof, a Compose `LazyC
 native `ListView` with end-of-content, a real runtime permission dialog, a port occupier for
 startup-retry faults, `AmbiguityActivity` (duplicate buttons/fields/scroll views, a
 long-press-aware gesture target, a prefilled field), `OcclusionActivity` (a popup window over
-half a button, a button under the keyboard) and the delayed-mutation fault provider.
+half a button, a button under the keyboard), `DrawerActivity` / `ComposeDrawerActivity` (a
+navigation drawer over a counted button) and the delayed-mutation fault provider.
 
 ## 10. Test strategy
 
