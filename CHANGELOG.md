@@ -46,6 +46,11 @@ name the components affected. Earlier releases used independent version lines. T
   A failed pick reports how many nodes there were. The error message shows the same on its
   following lines, and so does `tap-agent`. It is bounded (at most eight parts, about a second
   on the device) and left out after `snapshot()`. Protocol 5.1 adds `Error.narrowing`.
+- Detach no longer quarantines a device over a lost receiver answer. Restoring the locale or
+  removing mock-location providers goes through a driver receiver; when the broadcast reached no
+  live receiver (`result=0`: the driver process was being killed or replaced), the host now sends
+  it again, up to three times, instead of quarantining the device with the test's locale and mock
+  providers left in place.
 
 ### Clients and tools
 
