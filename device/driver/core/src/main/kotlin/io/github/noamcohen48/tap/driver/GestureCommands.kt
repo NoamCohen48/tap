@@ -38,6 +38,12 @@ internal class GestureCommands(
     private val visibleBounds: VisibleBounds,
     private val faults: FaultHooks,
 ) {
+    // The pipeline executes commands serially; reset by DriverCommandEngine before each call.
+    var touchFeedback: io.github.noamcohen48.tap.api.v1.TouchFeedback? = null
+        private set
+
+    fun resetFeedback() { touchFeedback = null }
+
     private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
     /**
      * Taps the one matching node's visible centre, whatever its state: what the app does with it
@@ -102,7 +108,10 @@ internal class GestureCommands(
                     element.recycle()
                 }
             }
-        gesture(context, source, ::center) { _, from -> pointer.drag(from, to) }
+        gesture(context, source, ::center) { _, from ->
+            touchFeedback = touchFeedback?.toBuilder()?.setEndX(to.x)?.setEndY(to.y)?.build()
+            pointer.drag(from, to)
+        }
     }
 
     /**
@@ -244,9 +253,21 @@ internal class GestureCommands(
             if (minimumDurationMs > context.remainingMs()) {
                 throw CommandFailure(ErrorCode.ERR_DEADLINE_EXCEEDED, message = "The touch sequence does not fit in the remaining command deadline; no input was sent")
             }
+            // Snapshot before the gate, while the node is still valid. Other displays are not
+            // shown by the watcher's default-display video, so never publish their geometry.
+            val feedback = if (element.displayId == Display.DEFAULT_DISPLAY) {
+                val bounds = element.visibleBounds
+                io.github.noamcohen48.tap.api.v1.TouchFeedback.newBuilder()
+                    .setDisplayWidth(device.displayWidth).setDisplayHeight(device.displayHeight)
+                    .setX(point.x).setY(point.y)
+                    .setBounds(io.github.noamcohen48.tap.api.v1.Bounds.newBuilder()
+                        .setLeft(bounds.left).setTop(bounds.top).setRight(bounds.right).setBottom(bounds.bottom))
+                    .build()
+            } else null
             // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
             // cancellation is ignored from here on and the gesture result is definitive.
             context.markMutationStarted()
+            touchFeedback = feedback
             action(element, point)
         } finally {
             element.recycle()

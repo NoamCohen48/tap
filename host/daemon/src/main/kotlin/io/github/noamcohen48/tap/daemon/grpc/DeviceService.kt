@@ -187,7 +187,11 @@ class DeviceService(
                 if (command.opCase in UNLOGGED_OPS) {
                     resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                 } else {
-                    attachedDevice.recorded({ setCommand(command.forLog()) }, { it.takeIf { it.hasError() }?.error }) {
+                    attachedDevice.recorded(
+                        { setCommand(command.forLog()) },
+                        { it.takeIf { it.hasError() }?.error },
+                        { it.takeIf { it.hasTouchFeedback() }?.touchFeedback },
+                    ) {
                         if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
                         attachedDevice.appDeaths.explain(resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)))
                     }

@@ -644,6 +644,24 @@ class Bounds(_message.Message):
     bottom: int
     def __init__(self, left: _Optional[int] = ..., top: _Optional[int] = ..., right: _Optional[int] = ..., bottom: _Optional[int] = ...) -> None: ...
 
+class TouchFeedback(_message.Message):
+    __slots__ = ("display_width", "display_height", "bounds", "x", "y", "end_x", "end_y")
+    DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    BOUNDS_FIELD_NUMBER: _ClassVar[int]
+    X_FIELD_NUMBER: _ClassVar[int]
+    Y_FIELD_NUMBER: _ClassVar[int]
+    END_X_FIELD_NUMBER: _ClassVar[int]
+    END_Y_FIELD_NUMBER: _ClassVar[int]
+    display_width: int
+    display_height: int
+    bounds: Bounds
+    x: int
+    y: int
+    end_x: int
+    end_y: int
+    def __init__(self, display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., bounds: _Optional[_Union[Bounds, _Mapping]] = ..., x: _Optional[int] = ..., y: _Optional[int] = ..., end_x: _Optional[int] = ..., end_y: _Optional[int] = ...) -> None: ...
+
 class ElementSnapshot(_message.Message):
     __slots__ = ("class_name", "package_name", "resource_name", "text", "content_description", "hint", "bounds", "checkable", "checked", "clickable", "enabled", "focusable", "focused", "long_clickable", "scrollable", "selected", "child_count", "showing_hint", "actions", "custom_actions", "range")
     CLASS_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -839,10 +857,11 @@ class NarrowingPart(_message.Message):
     def __init__(self, alone: _Optional[int] = ..., without: _Optional[int] = ..., near_misses: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class CommandResult(_message.Message):
-    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications")
+    __slots__ = ("duration_ms", "request_id", "session_generation", "touch_feedback", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications")
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_GENERATION_FIELD_NUMBER: _ClassVar[int]
+    TOUCH_FEEDBACK_FIELD_NUMBER: _ClassVar[int]
     DONE_FIELD_NUMBER: _ClassVar[int]
     BOOL_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
@@ -857,6 +876,7 @@ class CommandResult(_message.Message):
     duration_ms: int
     request_id: int
     session_generation: int
+    touch_feedback: TouchFeedback
     done: Done
     bool: bool
     count: int
@@ -868,4 +888,4 @@ class CommandResult(_message.Message):
     toast: Toast
     notification: DeviceNotification
     notifications: NotificationList
-    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ...) -> None: ...
+    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., touch_feedback: _Optional[_Union[TouchFeedback, _Mapping]] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ...) -> None: ...

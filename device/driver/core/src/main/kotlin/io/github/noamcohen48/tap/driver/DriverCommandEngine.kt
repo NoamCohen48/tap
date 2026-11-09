@@ -112,6 +112,7 @@ internal class DriverCommandEngine(
         request: Request,
         generation: Long,
     ): Response {
+        gestures.resetFeedback()
         // A selector that does not compile has nothing to explain.
         var compiledOk = false
         val response =
@@ -130,7 +131,10 @@ internal class DriverCommandEngine(
                     narrowing = if (compiledOk) explainMiss(context, request, failure) else null,
                 )
             }
-        return response.stamped(context.elapsed(), context.requestId, generation)
+        val withFeedback = gestures.touchFeedback?.let { feedback ->
+            response.toBuilder().setResult(response.result.toBuilder().setTouchFeedback(feedback)).build()
+        } ?: response
+        return withFeedback.stamped(context.elapsed(), context.requestId, generation)
     }
 
     /**

@@ -193,7 +193,13 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 - Optional fields take their default on the driver only (`distance_percent` = 80, …); the server never fills them in.
 
 `CommandResult` is `duration_ms`, the driver's `request_id`/`session_generation`, and a
-`oneof outcome` of the public result kinds or `error`.
+`oneof outcome` of the public result kinds or `error`. Optional `touch_feedback` (field 18)
+is driver-resolved default-display geometry: display dimensions, visible target bounds, checked
+touch point and, for drag, its destination. `Execute` preserves it and the event log copies it to
+`LoggedEvent.touch_feedback` (field 14), including when a driver error follows the mutation gate.
+Absent on older drivers, other displays and refusals before the gate. It is diagnostic metadata,
+not proof of injection or a sampled input trace; the watcher uses it for illustrative screen marks.
+No extra selector query, screenshot or replay is performed.
 
 `Selector`, `Node`, `ResourceId`, `ElementSnapshot`, `DeviceInfo` and the enums are likewise the
 wire types:
