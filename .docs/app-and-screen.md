@@ -69,8 +69,16 @@ Date: 2026-10-01. Status: accepted (user, 2026-09-30); implemented in protocol 5
 
 ## Limits
 
-- The occlusion check reads the window list only: a view covering the target *inside the same
-  window* (a floating bar, a bottom sheet in the same window) is not detected.
+- The occlusion check reads the window list, plus one cover inside the target's own window: an
+  open `DrawerLayout` drawer. Its scrim is drawn by the layout (no view, no node) and a touch on
+  the content closes the drawer; the layout hides that content from accessibility while a drawer
+  is open, but UiAutomator still reports it visible with its own bounds. A target that is not
+  important for accessibility under a `DrawerLayout` with another child on screen is `OBSCURED`
+  (`DrawerScrimTest`, 2026-11-09; both signals are needed: apps mark views not important
+  themselves, and many wrap their whole content in a `DrawerLayout`). Other views covering the
+  target in the same window (a floating bar, an in-window bottom sheet, a custom scrim) are not
+  detected. A Compose `ModalNavigationDrawer` leaves the content out of the tree while open, so
+  it is `NOT_FOUND`.
 - Only the default display is checked. A momentarily stale window list, or no window at the
   point, is not refused.
 - Below API 33 a window's touch area is its bounds. Some devices report a window with surface

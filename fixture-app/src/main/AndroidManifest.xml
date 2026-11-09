@@ -57,6 +57,12 @@
             android:name=".InsetWindowActivity"
             android:exported="true" />
         <activity
+            android:name=".DrawerActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ComposeDrawerActivity"
+            android:exported="true" />
+        <activity
             android:name=".GestureActivity"
             android:exported="true" />
         <activity

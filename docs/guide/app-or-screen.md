@@ -48,5 +48,9 @@ Another window, such as a keyboard, a popup or another app's overlay, can hide a
   start) is under the other window fails with `NOT_INTERACTABLE` / `OBSCURED` before any input,
   instead of landing on whatever is on top.
 
-Close the covering window (often `device.press_back()` or `device.hide_keyboard()`) or scroll
-the node clear first.
+An open navigation drawer covers the screen behind it the same way, inside the app's own window:
+a gesture on a node under a Views `DrawerLayout` drawer is `OBSCURED`, and under a Compose
+`ModalNavigationDrawer` the node is not found while the drawer is open.
+
+Close the covering window or drawer (often `device.press_back()` or `device.hide_keyboard()`) or
+scroll the node clear first.
