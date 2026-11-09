@@ -444,6 +444,25 @@ data class DeviceEntry(
     val quarantineReason: String?,
     /** What the device is; null for a device the server could not read (offline, unauthorized). */
     val properties: DeviceProperties? = null,
+    /**
+     * [DeviceState.QUARANTINED] only because device settings a session changed did not read back
+     * when it put them back: attaching writes them again first, and goes ahead once they do.
+     */
+    val retryOnAttach: Boolean = false,
+    /** [DeviceState.QUARANTINED] and attached by someone inspecting it ([DeviceOptions.inspectQuarantined]). */
+    val underInspection: Boolean = false,
+)
+
+/** What [TapClient.unquarantine] did. */
+data class UnquarantineResult(
+    /** False when the device was not quarantined: nothing was done. */
+    val wasQuarantined: Boolean,
+    /** Why it had been quarantined; empty when it was not. */
+    val quarantineReason: String,
+    /** What the cleanup retry put right. */
+    val cleaned: List<String>,
+    /** What it could not; the device keeps it. */
+    val remaining: List<String>,
 )
 
 /** What a device is ([DeviceEntry.properties]), read by the server from its system properties. */

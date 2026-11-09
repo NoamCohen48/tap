@@ -6,6 +6,36 @@ name the components affected. Earlier releases used independent version lines. T
 
 ## Unreleased
 
+### Engine
+
+- A device quarantined only because a setting it changed did not read back when it was put
+  back (another writer changing it again, ADB failing mid-restore) is no longer out of service
+  until someone clears it. ListDevices marks it `retry_on_attach`; the next attach, or
+  `tap doctor --fix`, writes the settings again and, once they read back, goes ahead. Other
+  quarantines (a driver that may still run, an unreaped ADB child, a reboot during a session,
+  a corrupt journal) still keep the device out of service. Quarantines for a reboot, a corrupt
+  journal or an out-of-range port now carry a reason.
+- `tap unquarantine --serial SERIAL` and the `Unquarantine` RPC put a quarantined device back in
+  service once someone has checked it, instead of deleting its journal file by hand. They retry
+  the cleanup first (stop the driver, remove Tap's forwards, write the saved settings back) and
+  report what is still off. `tap doctor` points to it.
+- Attach takes `inspect_quarantined`, so a person or an agent can attach a quarantined device to
+  look at and fix it (screenshots, snapshots, commands) before deciding to unquarantine it. The
+  device stays quarantined for its original reason after detach, also when the server dies
+  meanwhile; ListDevices shows it `under_inspection`.
+
+### Clients and tools
+
+- Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
+  `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:
+  `TapClient.unquarantine(serial)`, `attach_device(serial, inspect_quarantined=True)`,
+  `Device.quarantine_reason`, `DeviceEntry.retry_on_attach` / `under_inspection`. Both pick
+  retryable quarantined devices last in `availableSerials` / `available_serials`.
+- Tap agent: `attach SERIAL --quarantined` and `unquarantine SERIAL` (MCP: `inspect_quarantined`,
+  `unquarantine`); `devices` marks quarantines that are retried on attach or under inspection.
+- Tap Studio: the device list inspects and unquarantines a quarantined device. Tap watcher
+  shows the quarantine reason and, as a tooltip, the `tap unquarantine` command.
+
 ## 0.1.0 — 2026-11-08
 
 **One Tap release.** Server, bundled driver, contracts, Kotlin/JUnit and Python clients,

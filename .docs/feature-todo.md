@@ -32,6 +32,31 @@ include them without approval.
 - [ ] **Biometric simulation.** Support emulator fingerprint success/failure for authentication
   tests, with capability detection and explicit unsupported-device errors. Do not imply
   physical-device biometric injection or bypass Android security.
+- [ ] **Recover a lost command response.** Today a connection lost after a mutation was sent
+  fails the command `INDETERMINATE` (the session goes `BROKEN`, and the next attach recovers it;
+  it does not quarantine). The driver could keep each request's terminal response so that,
+  after reconnecting under the same session, the host asks for the outcome of request N instead
+  of reporting `INDETERMINATE`: a brief USB drop would then return the real result. Never a
+  replay: the request is not run again, only its recorded response is read. Open questions:
+  the driver usually dies with the connection (heartbeat self-kill, cleanup force-stop), so
+  outcomes must survive a driver restart (stored on the device, bound to session id and
+  generation); a mutation still running past the watchdog (the late-mutation quarantine) has no
+  outcome to return; it needs a protocol capability and the owner's approval
+  (`protocol-contract.md` "connection loss never causes automatic mutation replay" still holds).
+  **Deferred (2026-11-09): the cost is high and the gain is small.** No `INDETERMINATE` has
+  shown up in the local or CI device runs, and the mildest case is the only one it helps:
+  a drop that kills the driver or lasts past the heartbeat timeout stays `INDETERMINATE`
+  either way. A response cache alone would never be read: `TapDriverServer.serve()` serves
+  exactly one authenticated connection and returns when it ends, so the instrumentation exits
+  on any drop. The minimum design found: the driver keeps listening for the heartbeat window
+  (30 s), keeps the terminal responses of its last few requests in memory (bound to session,
+  generation and instance id; no on-device store, since a restarted driver has nothing in
+  flight), a resume handshake re-authenticates as the same instance, and the host re-creates
+  the forward and asks for request N's outcome (the recorded response, still running (wait up
+  to the command's deadline) or unknown → `INDETERMINATE`). It narrows the
+  "transport loss after acceptance is `INDETERMINATE`" invariant to "unless the same driver
+  instance confirms the outcome", so it needs a decision record. Revisit if `INDETERMINATE`
+  failures appear in CI or real use.
 
 ## References
 

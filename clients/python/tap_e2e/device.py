@@ -104,6 +104,11 @@ class Device:
         """The device's ADB serial, e.g. ``emulator-5554``."""
         self.generation: int = response.generation
         """The server's session generation for this device; it changes when the driver is rebuilt."""
+        self.quarantine_reason: str | None = (
+            response.quarantine_reason if response.HasField("quarantine_reason") else None
+        )
+        """Why the device is quarantined, when it was attached with ``inspect_quarantined`` and
+        is; ``None`` otherwise."""
         self.screen: Screen = Screen(self)
         """Whatever is visible, without an implicit package predicate."""
         self.timeouts: Timeouts = timeouts
@@ -118,6 +123,7 @@ class Device:
         timeouts: Timeouts | None = None,
         skip_driver_install: bool = False,
         wait_for_device: float = 0,
+        inspect_quarantined: bool = False,
     ) -> Device:
         """Attach ``serial`` (used by ``TapConnection.attach_device``).
         The attachment holds the device's per-serial lock until ``detach``; if another device session holds
@@ -134,6 +140,8 @@ class Device:
             request.lease_timeout_ms = int(wait_for_device * 1000)
         if skip_driver_install:
             request.skip_driver_install = True
+        if inspect_quarantined:
+            request.inspect_quarantined = True
         with mapped_errors(serial):
             response = owner_connection.client.device_stub.Attach(
                 request, timeout=180 + wait_for_device

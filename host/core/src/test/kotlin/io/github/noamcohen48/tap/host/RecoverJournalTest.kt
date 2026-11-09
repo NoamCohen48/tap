@@ -232,5 +232,81 @@ class RecoverJournalTest {
             assertEquals(JournalState.QUARANTINED, record?.state)
             assertTrue(record?.quarantineReason?.startsWith("DEVICE_STATE_RESTORE_FAILED") == true, record?.quarantineReason)
             assertEquals(prior.savedState, record?.savedState)
+            assertTrue(record?.restoreRetryable == true, "a restore that did not read back can be retried")
+        }
+
+    @Test
+    fun `a quarantine over state that did not read back is retried and lifted once it does`() =
+        runBlocking {
+            val device = FakeDeviceState(mapOf(StateKey.FONT_SCALE to "1.3"))
+            device.stuck += StateKey.FONT_SCALE
+            var forward = "$serial tcp:41000 tcp:$DEVICE_PORT"
+            val adb = adb(forwards = { forward }).apply {
+                responder.let { base ->
+                    responder = { s, command ->
+                        if (command.startsWith("forward --remove ")) forward = ""
+                        device.answer(command) ?: base?.invoke(s, command)
+                    }
+                }
+            }
+            store.write(
+                record(JournalState.QUARANTINED, hostPort = 41000).copy(
+                    quarantineReason = "SESSION_CLEANUP_UNCERTAIN: font scale reads 1.3",
+                    savedState = listOf(SavedState(StateKey.FONT_SCALE, "1.1")),
+                    restoreRetryable = true,
+                ),
+            )
+            val recovered = recoverJournal(adb, serial, "boot-1", store)!!
+            assertTrue("$serial: shell am force-stop $DRIVER_PACKAGE" in adb.calls, "${adb.calls}")
+            assertTrue("$serial: forward --remove tcp:41000" in adb.calls, "${adb.calls}")
+
+            // Still not reading back: stays quarantined, still retryable, state kept.
+            assertFailsWith<DeviceQuarantinedException> { retryRestore(adb, serial, store, recovered) }
+            assertEquals(JournalState.QUARANTINED, store.read()?.state)
+            assertTrue(store.read()?.restoreRetryable == true)
+
+            device.stuck.clear()
+            val healed = retryRestore(adb, serial, store, recoverJournal(adb, serial, "boot-1", store)!!)
+            assertEquals("1.1", device.values[StateKey.FONT_SCALE])
+            assertEquals(JournalState.CLOSED, healed.state)
+            assertEquals(SessionJournal(
+                state = JournalState.CLOSED, serial = serial, bootId = "boot-1", sessionId = "session", generation = 4,
+                devicePort = DEVICE_PORT, hostPort = 41000, updatedAtEpochMs = 0,
+            ), store.read()?.copy(updatedAtEpochMs = 0))
+        }
+
+    @Test
+    fun `inspecting stops the driver of a quarantined journal and returns it, except one waiting for a reset`() =
+        runBlocking {
+            store.write(record(JournalState.QUARANTINED, hostPort = 41000).copy(quarantineReason = "why"))
+            val adb = adb()
+            assertEquals("why", recoverJournal(adb, serial, "boot-1", store, inspect = true)?.quarantineReason)
+            assertTrue("$serial: shell am force-stop $DRIVER_PACKAGE" in adb.calls, "${adb.calls}")
+            assertEquals(JournalState.QUARANTINED, store.read()?.state)
+            store.write(record(JournalState.QUARANTINED).copy(generation = 5, quarantineReason = LATE_MUTATION_QUARANTINE, resetRequired = true))
+            assertFailsWith<DeviceQuarantinedException> { recoverJournal(adb(), serial, "boot-1", store, inspect = true) }
+        }
+
+    @Test
+    fun `an inspection that died puts the device back in quarantine`() =
+        runBlocking {
+            store.write(record(JournalState.ACTIVE, hostPort = 41000).copy(inspectedQuarantine = "why", savedState = listOf(SavedState(StateKey.FONT_SCALE, "1.1"))))
+            assertFailsWith<DeviceQuarantinedException> { recoverJournal(adb(), serial, "boot-1", store) }
+            val record = store.read()!!
+            assertEquals(JournalState.QUARANTINED, record.state)
+            assertEquals("why", record.quarantineReason)
+            assertNull(record.inspectedQuarantine)
+            assertEquals(listOf(SavedState(StateKey.FONT_SCALE, "1.1")), record.savedState)
+            assertEquals("why", recoverJournal(adb(), serial, "boot-1", store, inspect = true)?.quarantineReason)
+        }
+
+    @Test
+    fun `inspecting a corrupt journal returns its quarantine`() =
+        runBlocking {
+            store.write(record(JournalState.CLOSED))
+            Files.writeString(store.file, "{ not json")
+            val inspected = recoverJournal(adb(), serial, "boot-1", store, inspect = true)
+            assertEquals(JournalState.QUARANTINED, inspected?.state)
+            assertTrue(inspected?.quarantineReason?.startsWith("SESSION_JOURNAL_CORRUPT") == true, inspected?.quarantineReason)
         }
 }

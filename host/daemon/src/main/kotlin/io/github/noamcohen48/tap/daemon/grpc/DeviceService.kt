@@ -26,6 +26,8 @@ import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
+import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
+import io.github.noamcohen48.tap.api.v1.UnquarantineResponse
 import io.github.noamcohen48.tap.api.v1.PullFileRequest
 import io.github.noamcohen48.tap.api.v1.PullFileResponse
 import io.github.noamcohen48.tap.api.v1.PushFileRequest
@@ -107,6 +109,22 @@ class DeviceService(
             ListDevicesResponse.newBuilder().addAllDevices(daemon.devices().map(::deviceEntry)).build()
         }
 
+    override suspend fun unquarantine(request: UnquarantineRequest): UnquarantineResponse =
+        reply {
+            argument(request.serial.isNotBlank()) { "serial is required" }
+            val released = daemon.unquarantine(request.serial)
+            UnquarantineResponse
+                .newBuilder()
+                .apply {
+                    if (released != null) {
+                        wasQuarantined = true
+                        quarantineReason = released.reason
+                        addAllCleaned(released.cleaned)
+                        addAllRemaining(released.remaining)
+                    }
+                }.build()
+        }
+
     override suspend fun attach(request: AttachRequest): AttachResponse =
         reply {
             argument(request.serial.isNotBlank()) { "serial is required" }
@@ -118,6 +136,7 @@ class DeviceService(
                         skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
                         defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else Defaults.ACTION_TIMEOUT_MS,
                         leaseTimeoutMs = if (request.hasLeaseTimeoutMs()) nonNegative(request.leaseTimeoutMs, "lease_timeout_ms") else 0L,
+                        inspectQuarantined = request.hasInspectQuarantined() && request.inspectQuarantined,
                     ),
                 )
             // Attachment is registered by now; a failed first command must not leave it behind.
@@ -136,6 +155,7 @@ class DeviceService(
                 .setSerial(attachedDevice.deviceSession.serial)
                 .setGeneration(attachedDevice.deviceSession.generation)
                 .setDeviceInfo(info)
+                .apply { attachedDevice.deviceSession.inspectedQuarantine?.let { quarantineReason = it } }
                 .build()
         }
 
@@ -605,6 +625,9 @@ class DeviceService(
                     is DeviceStatus.Quarantined -> {
                         state = DeviceState.DEVICE_QUARANTINED
                         quarantineReason = status.reason
+                        retryOnAttach = status.retryOnAttach
+                        underInspection = status.inspected
+                        status.ownerConnectionId?.let { clientConnectionId = it }
                     }
 
                     // OTHER (e.g. `no permissions`, `recovery`) is reported as offline: present, not usable.

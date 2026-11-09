@@ -14,7 +14,9 @@ import io.github.noamcohen48.tap.host.AppLifecycle
 import io.github.noamcohen48.tap.host.DEVICE_SESSION_CLOSE_TIMEOUT_MS
 import io.github.noamcohen48.tap.host.DRIVER_PACKAGE
 import io.github.noamcohen48.tap.host.DRIVER_TEST_PACKAGE
+import io.github.noamcohen48.tap.host.DeviceBusyException
 import io.github.noamcohen48.tap.host.DeviceConditions
+import io.github.noamcohen48.tap.host.DeviceDoctor
 import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
@@ -88,8 +90,16 @@ sealed class DeviceStatus {
         val ownerConnectionId: String?,
     ) : DeviceStatus()
 
+    /**
+     * Out of service. [retryOnAttach]: only saved device settings did not read back, and attach
+     * writes them again first. [inspected]: a session attached it to inspect it, held by
+     * [ownerConnectionId] when that is one of ours.
+     */
     data class Quarantined(
         val reason: String,
+        val retryOnAttach: Boolean = false,
+        val inspected: Boolean = false,
+        val ownerConnectionId: String? = null,
     ) : DeviceStatus()
 
     /** Listed by ADB but not usable: [state] OFFLINE, UNAUTHORIZED or OTHER ([raw] is adb's text). */
@@ -188,6 +198,9 @@ internal interface DaemonDeviceSession {
     /** Rejects use after sticky reap quarantine; cleanup still runs via [close]. */
     fun checkUsable()
 
+    /** [DeviceSession.inspectedQuarantine]; fakes inspect nothing. */
+    val inspectedQuarantine: String? get() = null
+
     suspend fun close(timeoutMs: Long)
 }
 
@@ -216,6 +229,8 @@ private class CoreDeviceSessionAdapter(
     override suspend fun foregroundActivity(): Pair<String, String>? = delegate.foregroundActivity()
 
     override fun checkUsable() = delegate.checkUsable()
+
+    override val inspectedQuarantine: String? get() = delegate.inspectedQuarantine
 
     override suspend fun close(timeoutMs: Long) = delegate.close(timeoutMs)
 }
@@ -720,13 +735,25 @@ class TapDaemon internal constructor(
             val serial = device.serial
             if (device.state != AdbDeviceState.ONLINE) return@map DeviceEntry(serial, DeviceStatus.Unavailable(device.state, device.rawState))
             val store = SessionJournalStore(config.journalRoot, serial)
+            val owner = live.firstOrNull { it.deviceSession.serial == serial }?.ownerConnectionId
             val status =
-                quarantine(store)?.let { DeviceStatus.Quarantined(it) }
+                quarantine(store)?.let { if (it.inspected) it.copy(ownerConnectionId = owner) else it }
                     ?: live.firstOrNull { it.deviceSession.serial == serial }?.let { DeviceStatus.Held(it.ownerConnectionId) }
                     ?: if (store.isLeased()) DeviceStatus.Held(null) else DeviceStatus.Free
             DeviceEntry(serial, status, deviceProperties[serial])
         }
     }
+
+    /**
+     * [DeviceDoctor.unquarantine] on [serial]; a device another session (of any process) holds is
+     * [DeviceBusyException]. Attaches never race it: both take the per-serial lock.
+     */
+    suspend fun unquarantine(serial: String): DeviceDoctor.UnquarantineOutcome.Unquarantined? =
+        when (val outcome = DeviceDoctor.unquarantine(config.adb, config.journalRoot, serial)) {
+            DeviceDoctor.UnquarantineOutcome.InUse -> throw DeviceBusyException(serial, 0)
+            DeviceDoctor.UnquarantineOutcome.NotQuarantined -> null
+            is DeviceDoctor.UnquarantineOutcome.Unquarantined -> outcome.also { config.log("$serial unquarantined (was: ${it.reason})") }
+        }
 
     /** [Adb.deviceEpochSeconds], or null when unreadable: evidence then falls back to whole buffers. */
     private suspend fun deviceClock(serial: String): Long? =
@@ -750,14 +777,21 @@ class TapDaemon internal constructor(
             null
         }
 
-    /** The quarantine reason, or null when usable. An unreadable journal is not "free": attach would fail on it. */
-    private fun quarantine(store: SessionJournalStore): String? =
+    /** The quarantine, or null when usable. An unreadable journal is not "free": attach would fail on it. */
+    private fun quarantine(store: SessionJournalStore): DeviceStatus.Quarantined? =
         runCatching {
             store
                 .read()
-                ?.takeIf { it.state == JournalState.QUARANTINED }
-                ?.let { it.quarantineReason ?: "QUARANTINED" }
-        }.getOrElse { "journal unreadable: ${it.message ?: it}" }
+                ?.let { record ->
+                    when {
+                        record.state == JournalState.QUARANTINED ->
+                            DeviceStatus.Quarantined(record.quarantineReason ?: "QUARANTINED", retryOnAttach = record.restoreRetryable)
+                        // Inspected while a session holds it; a crashed inspection is plainly quarantined.
+                        record.inspectedQuarantine != null -> DeviceStatus.Quarantined(checkNotNull(record.inspectedQuarantine), inspected = store.isLeased())
+                        else -> null
+                    }
+                }
+        }.getOrElse { DeviceStatus.Quarantined("journal unreadable: ${it.message ?: it}") }
 
     // ---- attached devices --------------------------------------------------------------------
 
@@ -766,6 +800,8 @@ class TapDaemon internal constructor(
         val defaultTimeoutMs: Long,
         /** How long [attachDevice] may wait for another DeviceSession's lock on the serial. */
         val leaseTimeoutMs: Long,
+        /** [DeviceSessionConfig.inspectQuarantined]. */
+        val inspectQuarantined: Boolean = false,
     )
 
     /**
@@ -827,6 +863,7 @@ class TapDaemon internal constructor(
                 adb = config.adb,
                 driverLog = log::append,
                 leaseTimeoutMs = options.leaseTimeoutMs,
+                inspectQuarantined = options.inspectQuarantined,
             )
         val device: DaemonDeviceSession = opener.open(deviceConfig)
         // One second earlier: `date +%s` truncates, and the logs of the open itself belong in.

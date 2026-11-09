@@ -6,7 +6,7 @@
       "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"], "Events": ["history"]
     },
     "tap.v1.DeviceService": {
-      "ListDevices": ["devices"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
+      "ListDevices": ["devices"], "Unquarantine": ["unquarantine"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
       "Screenshot": ["screenshot"], "DriverLog": ["logs", "capture"], "DeviceLogs": ["logs"],
       "StartRecording": ["media_record"], "StopRecording": ["media_record"],
       "ScreenSnapshot": ["snapshot", "settle"], "ResolveRef": ["tap"],
@@ -39,7 +39,7 @@
   },
   "sdk": {
     "TapClient": [
-      {"methods": ["info", "devices", "connect", "connections"], "tools": ["server_info", "devices", "attach", "sessions"], "reason": "connect uses held mode only"},
+      {"methods": ["info", "devices", "unquarantine", "connect", "connections"], "tools": ["server_info", "devices", "unquarantine", "attach", "sessions"], "reason": "connect uses held mode only"},
       {"methods": ["create", "resume", "close"], "tools": [], "reason": "Client transport/handle lifecycle; Agent constructs and closes its SDK client, never starts a daemon."}
     ],
     "TapConnection": [
@@ -83,7 +83,7 @@
     "*": {"timeout": "timeout_seconds", "focus_timeout": "focus_timeout_seconds", "idle": "idle_minutes", "wait_for_device": "wait_for_device_seconds", "level": "view", "accuracy": "accuracy_m", "altitude": "altitude_m", "local": "local_path", "out": "path", "extra": "extras"},
     "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}
   },
-  "cli_only_fields": {"devices": ["session"], "sessions": ["session"], "server-info": ["session"]},
+  "cli_only_fields": {"devices": ["session"], "unquarantine": ["session"], "sessions": ["session"], "server-info": ["session"]},
   "limitations": [
     "The Kotlin SDK mirrors these protocol-backed capabilities; its coroutine/test-run utilities and model/artifact helpers are not tool endpoints. Reflection tests cover the operational Python classes named above, not all SDK modules.",
     "Parameter-name parity does not prove value semantics: CLI durations use units, MCP uses seconds/minutes; absent optional strings normalize to None. Tests cover forwarded fields, limits and effects.",

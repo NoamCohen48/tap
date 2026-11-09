@@ -148,6 +148,13 @@ data class DeviceOptions(
     val skipDriverInstall: Boolean = false,
     /** How long to wait for a device another session holds before failing; zero fails at once. */
     val waitForDevice: Duration = Duration.ZERO,
+    /**
+     * Attach a quarantined device to inspect and fix it before [TapClient.unquarantine] (a person
+     * or an agent deciding whether it can go back into service). It works as usual; after
+     * [Device.detach] it is still quarantined, for the same reason ([Device.quarantineReason]).
+     * Not for tests: a test should never run on a quarantined device.
+     */
+    val inspectQuarantined: Boolean = false,
 )
 
 /**
@@ -182,6 +189,11 @@ class Device internal constructor(
     val generation: Long,
     val timeouts: Timeouts,
     private val bounds: DeviceBounds = DeviceBounds(),
+    /**
+     * Why the device is quarantined, when it was attached with [DeviceOptions.inspectQuarantined]
+     * and is; null otherwise.
+     */
+    val quarantineReason: String? = null,
 ) {
     private val client get() = ownerConnection.client
     private val stateMutex = Mutex()
@@ -1383,6 +1395,7 @@ class Device internal constructor(
                         // Absent = fail at once when another session holds the device.
                         if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                         if (options.skipDriverInstall) setSkipDriverInstall(true)
+                        if (options.inspectQuarantined) setInspectQuarantined(true)
                     }.build()
             val response =
                 mapped(serial) {
@@ -1390,7 +1403,15 @@ class Device internal constructor(
                         .withDeadlineAfter(180 + options.waitForDevice.inWholeSeconds, TimeUnit.SECONDS)
                         .attach(request)
                 }
-            return Device(connection, response.attachedDeviceId, response.serial, response.generation, timeouts, bounds)
+            return Device(
+                connection,
+                response.attachedDeviceId,
+                response.serial,
+                response.generation,
+                timeouts,
+                bounds,
+                quarantineReason = if (response.hasQuarantineReason()) response.quarantineReason else null,
+            )
         }
     }
 }

@@ -4,6 +4,8 @@ import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.AdbDeviceState
 import io.github.noamcohen48.tap.host.DeviceDoctor
 import io.github.noamcohen48.tap.host.DeviceDoctor.Outcome
+import io.github.noamcohen48.tap.host.DeviceDoctor.UnquarantineOutcome
+import io.github.noamcohen48.tap.host.TapHostException
 import java.nio.file.Path
 
 /**
@@ -44,7 +46,7 @@ internal suspend fun doctor(
             is Outcome.Quarantined -> {
                 unhealthy = true
                 out("${device.serial}: quarantined: ${outcome.reason}")
-                out("  check the device, then remove ${outcome.journal} to put it back in service")
+                out("  check the device, then `tap unquarantine --serial ${device.serial}` puts it back in service")
             }
             is Outcome.Findings -> {
                 if (outcome.findings.any { !it.fixed }) unhealthy = true
@@ -62,3 +64,41 @@ private fun serverLine(stateDir: Path): String {
     status(stateDir) { line = it }
     return line
 }
+
+/**
+ * `tap unquarantine --serial SERIAL`: puts a quarantined device back in service after a person (or
+ * their agent) checked it ([DeviceDoctor.unquarantine]). Prints why it was quarantined, what the
+ * cleanup retry fixed and what is still off. Exit status 1 when another session holds the device
+ * or ADB cannot reach it, else 0 (also when it was not quarantined).
+ */
+internal suspend fun unquarantine(
+    stateDir: Path,
+    adb: Adb,
+    serial: String,
+    out: (String) -> Unit = ::println,
+): Int {
+    val outcome =
+        try {
+            DeviceDoctor.unquarantine(adb, stateDir.resolve("sessions"), serial)
+        } catch (unreachable: TapHostException) {
+            out("$serial: not changed: ${unreachable.message}")
+            return 1
+        }
+    return when (outcome) {
+        UnquarantineOutcome.InUse -> {
+            out("$serial: in use by a session; not changed")
+            1
+        }
+        UnquarantineOutcome.NotQuarantined -> {
+            out("$serial: not quarantined; nothing to do")
+            0
+        }
+        is UnquarantineOutcome.Unquarantined -> {
+            out("$serial: back in service (it was quarantined: ${outcome.reason})")
+            outcome.cleaned.forEach { out("  - $it") }
+            outcome.remaining.forEach { out("  - still off: $it") }
+            0
+        }
+    }
+}
+

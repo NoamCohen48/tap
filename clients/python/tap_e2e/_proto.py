@@ -269,6 +269,8 @@ def device_entry(entry: pb.DeviceEntry) -> DeviceEntry:
             if entry.HasField("properties")
             else None
         ),
+        retry_on_attach=entry.retry_on_attach,
+        under_inspection=entry.under_inspection,
     )
 
 

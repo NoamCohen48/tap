@@ -39,6 +39,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.ListDevicesRequest.SerializeToString,
                 response_deserializer=device__pb2.ListDevicesResponse.FromString,
                 _registered_method=True)
+        self.Unquarantine = channel.unary_unary(
+                '/tap.v1.DeviceService/Unquarantine',
+                request_serializer=device__pb2.UnquarantineRequest.SerializeToString,
+                response_deserializer=device__pb2.UnquarantineResponse.FromString,
+                _registered_method=True)
         self.Attach = channel.unary_unary(
                 '/tap.v1.DeviceService/Attach',
                 request_serializer=device__pb2.AttachRequest.SerializeToString,
@@ -161,6 +166,18 @@ class DeviceServiceServicer:
 
     def ListDevices(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def Unquarantine(self, request, context):
+        """Puts a QUARANTINED device back in service, by serial, for a person who has checked it (or
+        an agent acting for one); `tap unquarantine` does the same. It retries the cleanup the session
+        could not prove (stops the driver, removes Tap's port forwards, writes back the settings the
+        journal still holds), then closes the journal whatever the retry managed: the response says
+        what is still off. Needs no client connection. A device another session holds is refused
+        (FAILED_PRECONDITION, DEVICE_BUSY); one ADB cannot reach is refused before anything changes.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -357,6 +374,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     request_deserializer=device__pb2.ListDevicesRequest.FromString,
                     response_serializer=device__pb2.ListDevicesResponse.SerializeToString,
             ),
+            'Unquarantine': grpc.unary_unary_rpc_method_handler(
+                    servicer.Unquarantine,
+                    request_deserializer=device__pb2.UnquarantineRequest.FromString,
+                    response_serializer=device__pb2.UnquarantineResponse.SerializeToString,
+            ),
             'Attach': grpc.unary_unary_rpc_method_handler(
                     servicer.Attach,
                     request_deserializer=device__pb2.AttachRequest.FromString,
@@ -500,6 +522,33 @@ class DeviceService:
             '/tap.v1.DeviceService/ListDevices',
             device__pb2.ListDevicesRequest.SerializeToString,
             device__pb2.ListDevicesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def Unquarantine(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/Unquarantine',
+            device__pb2.UnquarantineRequest.SerializeToString,
+            device__pb2.UnquarantineResponse.FromString,
             options,
             channel_credentials,
             insecure,

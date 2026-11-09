@@ -351,20 +351,22 @@ class InfoResponse(_message.Message):
     def __init__(self, recorder: _Optional[str] = ..., format: _Optional[str] = ...) -> None: ...
 
 class AttachedDevice(_message.Message):
-    __slots__ = ("serial", "api_level", "manufacturer", "model", "display_width", "display_height")
+    __slots__ = ("serial", "api_level", "manufacturer", "model", "display_width", "display_height", "quarantine_reason")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     API_LEVEL_FIELD_NUMBER: _ClassVar[int]
     MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
     serial: str
     api_level: int
     manufacturer: str
     model: str
     display_width: int
     display_height: int
-    def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ...) -> None: ...
+    quarantine_reason: str
+    def __init__(self, serial: _Optional[str] = ..., api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
 
 class Session(_message.Message):
     __slots__ = ("device", "recording", "steps", "controller_tab", "operation", "version", "recording_revision", "can_undo", "can_redo", "library")
@@ -445,7 +447,7 @@ class ListDevicesRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class DeviceChoice(_message.Message):
-    __slots__ = ("serial", "state", "attached", "quarantine_reason", "api_level", "model", "emulator")
+    __slots__ = ("serial", "state", "attached", "quarantine_reason", "api_level", "model", "emulator", "retry_on_attach", "under_inspection")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     ATTACHED_FIELD_NUMBER: _ClassVar[int]
@@ -453,6 +455,8 @@ class DeviceChoice(_message.Message):
     API_LEVEL_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
     EMULATOR_FIELD_NUMBER: _ClassVar[int]
+    RETRY_ON_ATTACH_FIELD_NUMBER: _ClassVar[int]
+    UNDER_INSPECTION_FIELD_NUMBER: _ClassVar[int]
     serial: str
     state: _device_pb2.DeviceState
     attached: bool
@@ -460,7 +464,9 @@ class DeviceChoice(_message.Message):
     api_level: int
     model: str
     emulator: bool
-    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[_device_pb2.DeviceState, str]] = ..., attached: _Optional[bool] = ..., quarantine_reason: _Optional[str] = ..., api_level: _Optional[int] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ...) -> None: ...
+    retry_on_attach: bool
+    under_inspection: bool
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[_device_pb2.DeviceState, str]] = ..., attached: _Optional[bool] = ..., quarantine_reason: _Optional[str] = ..., api_level: _Optional[int] = ..., model: _Optional[str] = ..., emulator: _Optional[bool] = ..., retry_on_attach: _Optional[bool] = ..., under_inspection: _Optional[bool] = ...) -> None: ...
 
 class ListDevicesResponse(_message.Message):
     __slots__ = ("devices",)
@@ -469,10 +475,28 @@ class ListDevicesResponse(_message.Message):
     def __init__(self, devices: _Optional[_Iterable[_Union[DeviceChoice, _Mapping]]] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
+    __slots__ = ("serial", "inspect_quarantined")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    INSPECT_QUARANTINED_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    inspect_quarantined: bool
+    def __init__(self, serial: _Optional[str] = ..., inspect_quarantined: _Optional[bool] = ...) -> None: ...
+
+class UnquarantineRequest(_message.Message):
     __slots__ = ("serial",)
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     serial: str
     def __init__(self, serial: _Optional[str] = ...) -> None: ...
+
+class UnquarantineResponse(_message.Message):
+    __slots__ = ("quarantine_reason", "cleaned", "remaining")
+    QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
+    CLEANED_FIELD_NUMBER: _ClassVar[int]
+    REMAINING_FIELD_NUMBER: _ClassVar[int]
+    quarantine_reason: str
+    cleaned: _containers.RepeatedScalarFieldContainer[str]
+    remaining: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, quarantine_reason: _Optional[str] = ..., cleaned: _Optional[_Iterable[str]] = ..., remaining: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class AttachResponse(_message.Message):
     __slots__ = ("session",)

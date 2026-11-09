@@ -39,6 +39,21 @@ data class SessionJournal(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val savedState: List<SavedState> = emptyList(),
+    /**
+     * QUARANTINED only because [savedState] did not read back after it was written (a setting
+     * the device or another writer changed again, an ADB failure mid-restore): nothing else about
+     * the device is unproven. The next attach, or `tap doctor --fix`, stops the driver, writes the
+     * state again and, once it reads back, closes the journal: the device is back in service.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val restoreRetryable: Boolean = false,
+    /**
+     * Set on the records of a session that attached a quarantined device to inspect it
+     * (`DeviceSessionConfig.inspectQuarantined`): the quarantine's reason. Close, and recovery after
+     * a crash, put the device back in QUARANTINED with it; only unquarantine lifts it.
+     */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val inspectedQuarantine: String? = null,
 )
 
 @Serializable
@@ -177,6 +192,8 @@ class SessionJournalStore(root: Path, private val serial: String) {
         require(!record.resetRequired || !record.quarantineReason.isNullOrBlank())
         require(record.resetStartedBootId == null || record.resetRequired)
         require(record.resetStartedBootId == null || record.resetStartedBootId == record.bootId)
+        require(!record.restoreRetryable || (record.state == JournalState.QUARANTINED && record.savedState.isNotEmpty() && !record.resetRequired))
+        require(record.inspectedQuarantine == null || record.state != JournalState.QUARANTINED)
         record.savedState.forEach { StateKey.parse(it.key) }
     }
 

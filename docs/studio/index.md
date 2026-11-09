@@ -57,6 +57,12 @@ recording can go through a system dialog or a second app.
 The studio holds the device exclusively, as a test does, so another client cannot attach it
 until the studio releases it.
 
+A quarantined device (Tap could not prove it clean after a session) shows why. **Inspect**
+attaches it to look at and fix it: the top bar marks it *Quarantined*, and it stays quarantined
+after you release it. Once it is in a good state, select it again and press **Unquarantine**
+to put it back in service; the page lists what Tap could not put right. A device quarantined
+only because a setting did not read back attaches as usual: attaching retries it.
+
 ## Next
 
 - [A first recording](first-recording.md): record, check, replay and export a search in the

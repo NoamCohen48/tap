@@ -165,6 +165,9 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         )
         # What ListDevices reports.
         self.listed: list[pb.DeviceEntry] = []
+        # Serials Unquarantine was called with, and quarantined serials with their reason.
+        self.unquarantined: list[str] = []
+        self.quarantined: dict[str, str] = {}
         self.conditions: list = []
         self.foreground: tuple[str, str] | None = None
         # Device files by path; the headers and chunk sizes the uploads carried.
@@ -200,11 +203,43 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
                 f"device {request.serial} is held by another session",
                 serial=request.serial,
             )
+        reason = self.quarantined.get(request.serial)
+        if reason is not None and not request.inspect_quarantined:
+            fail(
+                context,
+                grpc.StatusCode.FAILED_PRECONDITION,
+                pb.FAILURE_REASON_DEVICE_QUARANTINED,
+                f"device {request.serial} is quarantined: {reason}",
+                serial=request.serial,
+            )
         self.attached.setdefault(request.client_connection_id, []).append(request)
-        return pb.AttachResponse(
+        response = pb.AttachResponse(
             attached_device_id=f"attached-{request.serial}",
             serial=request.serial,
             generation=1,
+        )
+        if reason is not None:
+            response.quarantine_reason = reason
+        return response
+
+    def Unquarantine(self, request, context):
+        self.unquarantined.append(request.serial)
+        if request.serial in self.busy:
+            fail(
+                context,
+                grpc.StatusCode.FAILED_PRECONDITION,
+                pb.FAILURE_REASON_DEVICE_BUSY,
+                f"device {request.serial} is held by another session",
+                serial=request.serial,
+            )
+        reason = self.quarantined.pop(request.serial, None)
+        if reason is None:
+            return pb.UnquarantineResponse()
+        return pb.UnquarantineResponse(
+            was_quarantined=True,
+            quarantine_reason=reason,
+            cleaned=["stopped the driver"],
+            remaining=["device settings a session changed were not restored"],
         )
 
     def Execute(self, request, context):

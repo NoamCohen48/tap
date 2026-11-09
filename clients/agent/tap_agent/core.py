@@ -345,9 +345,16 @@ class Agent:
 
     # --- sessions -------------------------------------------------------------------------------
 
-    def attach(self, serial: str, idle: float = DEFAULT_IDLE, wait_for_device: float = 0) -> str:
+    def attach(
+        self,
+        serial: str,
+        idle: float = DEFAULT_IDLE,
+        wait_for_device: float = 0,
+        inspect_quarantined: bool = False,
+    ) -> str:
         """Attaches ``serial`` to the session, creating the session (a held connection with an
-        ``idle`` timeout) when it does not exist."""
+        ``idle`` timeout) when it does not exist. ``inspect_quarantined`` attaches a quarantined
+        device to inspect and fix it; it stays quarantined after detach until ``unquarantine``."""
 
         def step() -> str:
             entry = self._held()
@@ -360,16 +367,39 @@ class Agent:
                 if attached is not None:
                     return f"{serial} is already attached to session {self.session!r}"
             try:
-                connection.attach_device(serial, wait_for_device=wait_for_device)
+                device = connection.attach_device(
+                    serial, wait_for_device=wait_for_device, inspect_quarantined=inspect_quarantined
+                )
             except BaseException:
                 if created:  # leave no empty session behind
                     with contextlib.suppress(Exception):
                         connection.close()
                 raise
-            return (
+            text = (
                 f"attached {serial} to session {self.session!r}, "
                 f"idle timeout {format_duration(connection.hold or idle)}"
             )
+            if device.quarantine_reason is not None:
+                text += (
+                    f"\n{serial} is quarantined ({device.quarantine_reason}): inspect and fix it; "
+                    f"it stays quarantined after detach until `unquarantine {serial}`"
+                )
+            return text
+
+        return self._run(step)
+
+    def unquarantine(self, serial: str) -> str:
+        """Puts a quarantined device back in service once it was checked: the server retries the
+        cleanup, then lifts the quarantine and says what is still off."""
+
+        def step() -> str:
+            result = self.client.unquarantine(serial)
+            if not result.was_quarantined:
+                return f"{serial} is not quarantined; nothing to do"
+            lines = [f"{serial} is back in service (it was quarantined: {result.quarantine_reason})"]
+            lines += [f"  - {line}" for line in result.cleaned]
+            lines += [f"  - still off: {line}" for line in result.remaining]
+            return "\n".join(lines)
 
         return self._run(step)
 
@@ -443,6 +473,10 @@ class Agent:
                     line += f"  held by {names.get(d.client_connection_id, d.client_connection_id)!r}"
                 if d.quarantine_reason:
                     line += f"  ({d.quarantine_reason})"
+                if d.under_inspection:
+                    line += "  under inspection"
+                elif d.retry_on_attach:
+                    line += "  retried on attach"
                 lines.append(line)
             return "\n".join(lines) or "no devices (adb devices lists none)"
 

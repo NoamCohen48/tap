@@ -1719,6 +1719,14 @@ code,
   font-size: 12.5px;
   color: var(--warn);
 }
+.unquarantined {
+  padding-left: 18px;
+}
+.devchip .quarantined {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--warn);
+}
 .btn.attach {
   justify-content: center;
   padding-block: 8px;

@@ -88,10 +88,18 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("serial")
     p.add_argument("--idle", type=_duration, default=None, help="end the session after this long unused (default 15m)")
     p.add_argument("--wait-for-device", type=_duration, default=0, metavar="DURATION", help="wait this long for a device another session holds")
+    p.add_argument(
+        "--quarantined",
+        dest="inspect_quarantined",
+        action="store_true",
+        help="attach a quarantined device to inspect and fix it (it stays quarantined until unquarantine)",
+    )
 
     verb("sessions", "list sessions with their devices", common)
     verb("release", "end the session and detach its devices", common)
     verb("devices", "list devices, properties and who holds them", common)
+    p = verb("unquarantine", "put a checked quarantined device back in service (retries its cleanup first)", common)
+    p.add_argument("serial")
     verb("detach", "detach one device without ending its session", on_device)
     verb("server-info", "daemon version, compatibility and configuration as JSON", common)
     verb("device-info", "complete current device information as JSON", on_device)
@@ -316,13 +324,17 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     settle = getattr(args, "settle", False)
     if v == "attach":
         kwargs = {} if args.idle is None else {"idle": args.idle}
-        return agent.attach(args.serial, wait_for_device=args.wait_for_device, **kwargs)
+        return agent.attach(
+            args.serial, wait_for_device=args.wait_for_device, inspect_quarantined=args.inspect_quarantined, **kwargs
+        )
     if v == "sessions":
         return agent.sessions()
     if v == "release":
         return agent.release()
     if v == "devices":
         return agent.devices()
+    if v == "unquarantine":
+        return agent.unquarantine(args.serial)
     if v == "detach":
         return agent.detach(device)
     if v == "server-info":

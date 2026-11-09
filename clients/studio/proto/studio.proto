@@ -40,6 +40,9 @@ service StudioService {
   // Attaches a device, releasing the one attached before. It names no app: app steps carry
   // their package, and the page keeps the one its App menu acts on.
   rpc Attach(AttachRequest) returns (AttachResponse);
+  // Puts a quarantined device back in service once the person checked it (tap.v1 Unquarantine):
+  // the server retries its cleanup first and says what is still off. Not while it is attached.
+  rpc Unquarantine(UnquarantineRequest) returns (UnquarantineResponse);
   // Releases the attached device; open frame streams end.
   rpc Release(ReleaseRequest) returns (ReleaseResponse);
   // The attached device's screen: a frame whenever one is taken, newest only (a slow reader skips
@@ -315,6 +318,9 @@ message AttachedDevice {
   string model = 4;
   int32 display_width = 5;
   int32 display_height = 6;
+  // Attached to inspect it (`AttachRequest.inspect_quarantined`): why it is quarantined. It stays
+  // quarantined after Release until Unquarantine.
+  string quarantine_reason = 7;
 }
 
 message Session {
@@ -380,8 +386,9 @@ message ListDevicesRequest {}
 
 message DeviceChoice {
   string serial = 1;
-  // Only DEVICE_FREE and DEVICE_LEASED devices can be attached (a lease held by this studio's own
-  // connection or by another client of the same daemon).
+  // DEVICE_FREE and DEVICE_LEASED devices can be attached (a lease held by this studio's own
+  // connection or by another client of the same daemon), and DEVICE_QUARANTINED ones with
+  // `retry_on_attach`; any other quarantined one only to inspect it.
   tap.v1.DeviceState state = 2;
   // Attached by this studio.
   bool attached = 3;
@@ -391,6 +398,10 @@ message DeviceChoice {
   int32 api_level = 5;
   string model = 6;
   bool emulator = 7;
+  // QUARANTINED only because settings did not read back: attaching retries them first.
+  bool retry_on_attach = 8;
+  // QUARANTINED and attached by someone inspecting it.
+  bool under_inspection = 9;
 }
 
 message ListDevicesResponse {
@@ -399,6 +410,20 @@ message ListDevicesResponse {
 
 message AttachRequest {
   string serial = 1;
+  // Attach a quarantined device to inspect and fix it; it stays quarantined after Release.
+  bool inspect_quarantined = 2;
+}
+
+message UnquarantineRequest {
+  string serial = 1;
+}
+
+message UnquarantineResponse {
+  // Why it had been quarantined; empty when it was not (nothing was done).
+  string quarantine_reason = 1;
+  // What the cleanup retry put right, and what it could not.
+  repeated string cleaned = 2;
+  repeated string remaining = 3;
 }
 
 message AttachResponse {

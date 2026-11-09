@@ -784,6 +784,7 @@ class DeviceSessionTest {
                 assertEquals("0", state.values[StateKey.ACCELEROMETER_ROTATION])
                 val journal = journalStore().read()
                 assertEquals(JournalState.QUARANTINED, journal?.state)
+                assertFalse(journal!!.restoreRetryable, "a driver that may still run is not a restore to retry")
                 assertEquals(
                     listOf(
                         SavedState(StateKey.DEVICE_STATE_ROTATION_LOCK, null),
@@ -792,6 +793,51 @@ class DeviceSessionTest {
                     ),
                     journal?.savedState,
                 )
+            }
+        }
+
+    @Test
+    fun `a quarantined device is refused unless attached to inspect it, and goes back to quarantine`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.FONT_SCALE to "1.3"))
+            journalStore().write(
+                SessionJournal(
+                    state = JournalState.QUARANTINED, serial = serial, bootId = "boot-1", sessionId = "old", generation = 5,
+                    devicePort = DEVICE_PORT, quarantineReason = "SESSION_CLEANUP_UNCERTAIN: driver survived",
+                    savedState = listOf(SavedState(StateKey.FONT_SCALE, "1.1")),
+                ),
+            )
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-inspect", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    state.answer(command) ?: (if (command == "forward --list") ok("") else null) ?: priorResponder?.invoke(requestSerial, command)
+                }
+                assertFailsWith<DeviceQuarantinedException> { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
+
+                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf()).copy(inspectQuarantined = true)) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Responses.done(1))
+                val session = withTimeout(5_000) { opening.await() }
+                assertEquals("SESSION_CLEANUP_UNCERTAIN: driver survived", session.inspectedQuarantine)
+                assertEquals(6, session.generation)
+                val active = journalStore().read()!!
+                assertEquals("SESSION_CLEANUP_UNCERTAIN: driver survived", active.inspectedQuarantine)
+                assertEquals(listOf(SavedState(StateKey.FONT_SCALE, "1.1")), active.savedState)
+                // The inspection changes the font scale again: detach still puts back the value from before the quarantine.
+                session.conditions.setFontScale(1.5f)
+                session.close(timeoutMs = 5_000)
+
+                assertEquals("1.1", state.values[StateKey.FONT_SCALE])
+                val closed = journalStore().read()!!
+                assertEquals(JournalState.QUARANTINED, closed.state)
+                assertEquals("SESSION_CLEANUP_UNCERTAIN: driver survived", closed.quarantineReason)
+                assertNull(closed.inspectedQuarantine)
+                assertTrue(closed.savedState.isEmpty() && !closed.restoreRetryable, closed.toString())
+            } finally {
+                fake.close()
             }
         }
 
@@ -1313,6 +1359,7 @@ class DeviceSessionTest {
                 val record = journalStore().read()
                 assertEquals(JournalState.QUARANTINED, record?.state)
                 assertTrue(record?.quarantineReason?.contains("SESSION_CLEANUP_UNCERTAIN") == true)
+                assertTrue(record?.restoreRetryable == true, "only the rotation restore failed: the next attach retries it")
                 assertEquals(
                     listOf(
                         SavedState(StateKey.DEVICE_STATE_ROTATION_LOCK, null),

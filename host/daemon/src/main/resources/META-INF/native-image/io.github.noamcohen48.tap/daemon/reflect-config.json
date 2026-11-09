@@ -2555,5 +2555,13 @@
         "parameterTypes": []
       }
     ]
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.UnquarantineRequest",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.UnquarantineResponse",
+    "allDeclaredFields": true
   }
 ]

@@ -35,6 +35,9 @@ class StudioService(Protocol):
     async def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def unquarantine(self, request: studio__pb2.UnquarantineRequest, ctx: RequestContext) -> studio__pb2.UnquarantineResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     async def release(self, request: studio__pb2.ReleaseRequest, ctx: RequestContext) -> studio__pb2.ReleaseResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -196,6 +199,16 @@ class StudioServiceASGIApplication(ConnectASGIApplication[StudioService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.attach,
+                ),
+                "/tap.studio.v1.StudioService/Unquarantine": Endpoint.unary(
+                    method=MethodInfo(
+                        name="Unquarantine",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.UnquarantineRequest,
+                        output=studio__pb2.UnquarantineResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.unquarantine,
                 ),
                 "/tap.studio.v1.StudioService/Release": Endpoint.unary(
                     method=MethodInfo(
@@ -650,6 +663,26 @@ class StudioServiceClient(ConnectClient):
                 service_name="tap.studio.v1.StudioService",
                 input=studio__pb2.AttachRequest,
                 output=studio__pb2.AttachResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def unquarantine(
+        self,
+        request: studio__pb2.UnquarantineRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.UnquarantineResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Unquarantine",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.UnquarantineRequest,
+                output=studio__pb2.UnquarantineResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -1326,6 +1359,8 @@ class StudioServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def attach(self, request: studio__pb2.AttachRequest, ctx: RequestContext) -> studio__pb2.AttachResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def unquarantine(self, request: studio__pb2.UnquarantineRequest, ctx: RequestContext) -> studio__pb2.UnquarantineResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def release(self, request: studio__pb2.ReleaseRequest, ctx: RequestContext) -> studio__pb2.ReleaseResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def frames(self, request: studio__pb2.FramesRequest, ctx: RequestContext) -> Iterator[studio__pb2.FramesResponse]:
@@ -1455,6 +1490,16 @@ class StudioServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.attach,
+                ),
+                "/tap.studio.v1.StudioService/Unquarantine": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="Unquarantine",
+                        service_name="tap.studio.v1.StudioService",
+                        input=studio__pb2.UnquarantineRequest,
+                        output=studio__pb2.UnquarantineResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.unquarantine,
                 ),
                 "/tap.studio.v1.StudioService/Release": EndpointSync.unary(
                     method=MethodInfo(
@@ -1909,6 +1954,26 @@ class StudioServiceClientSync(ConnectClientSync):
                 service_name="tap.studio.v1.StudioService",
                 input=studio__pb2.AttachRequest,
                 output=studio__pb2.AttachResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def unquarantine(
+        self,
+        request: studio__pb2.UnquarantineRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> studio__pb2.UnquarantineResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="Unquarantine",
+                service_name="tap.studio.v1.StudioService",
+                input=studio__pb2.UnquarantineRequest,
+                output=studio__pb2.UnquarantineResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
