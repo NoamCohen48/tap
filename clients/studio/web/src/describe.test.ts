@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { describeSelector, describeStep, describeWait, stepKind } from "./describe";
 import { IntentExtraSchema } from "./gen/app_pb";
 import { Direction, DisplayRotation, LocationAccuracy, Orientation, PermissionChoice, StandardAction, SystemPanel } from "./gen/command_pb";
-import { MatchMode, NodeFlag, Relation, SelectorSchema, TextProperty, type Node } from "./gen/selector_pb";
+import { MatchMode, NodeFlag, NodeSchema, Relation, SelectorSchema, TextProperty, type Node } from "./gen/selector_pb";
 import { Check, Condition, PerformRequestSchema, StepSchema, type PerformRequest } from "./gen/studio_pb";
 import * as steps from "./steps";
 
@@ -96,6 +96,10 @@ describe("describeStep", () => {
       'screen.await(res("search")).textEquals("Wool")',
     );
     expect(describeStep(recorded(steps.wait(search, { condition: Condition.ONE })))).toBe('screen.await(res("search")).one()');
+    const flag = create(NodeSchema, { kind: { case: "flag", value: { property: NodeFlag.FLAG_ENABLED, value: true } } });
+    const pay = create(NodeSchema, { kind: { case: "match", value: { property: TextProperty.PROPERTY_TEXT, value: "Pay" } } });
+    const both = create(NodeSchema, { kind: { case: "allOf", value: { nodes: [flag, pay] } } });
+    expect(describeStep(recorded(steps.wait(search, { condition: Condition.UNTIL, until: both })))).toBe('screen.await(res("search")).until(text("Pay").enabled())');
   });
 
   it("shows an assertion as kotlin.test around the element query", () => {

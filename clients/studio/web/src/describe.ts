@@ -143,6 +143,11 @@ function expression(node: Node): string {
   );
 }
 
+/** A wait's `until` condition as typed: a selector expression with no pick. */
+export function describeCondition(node: Node): string {
+  return expression(node);
+}
+
 export function describeSelector(selector: Selector | undefined): string {
   if (!selector?.node) return "(no selector)";
   let text = expression(selector.node);
@@ -367,6 +372,7 @@ const CONDITIONS: Record<Condition, string> = {
   [Condition.TEXT_EQUALS]: "textEquals",
   [Condition.TEXT_CONTAINS]: "textContains",
   [Condition.COUNT]: "count",
+  [Condition.UNTIL]: "until",
 };
 
 /** An assertion as a test writes it: `kotlin.test` around the SDK's element query. */
@@ -563,7 +569,16 @@ function describeCall(step: Step): string {
     }
     case "wait": {
       const w = step.kind.value;
-      const argument = w.value.case === "parameter" ? byName(w.value.value) : w.value.case === "text" ? quote(w.value.value) : w.value.case === "count" ? String(w.value.value) : "";
+      const argument =
+        w.value.case === "parameter"
+          ? byName(w.value.value)
+          : w.value.case === "text"
+            ? quote(w.value.value)
+            : w.value.case === "count"
+              ? String(w.value.value)
+              : w.value.case === "until"
+                ? describeCondition(w.value.value)
+                : "";
       return `${awaiting(w.selector)}.${CONDITIONS[w.condition]}(${argument})`;
     }
     case "assertion":

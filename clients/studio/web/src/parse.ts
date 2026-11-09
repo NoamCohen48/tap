@@ -42,6 +42,22 @@ class ParseError extends Error {
   }
 }
 
+export type ParsedCondition = { condition: Node } | { error: string; at: number };
+
+/**
+ * A wait's `until` condition, typed in the same DSL (`enabled() and text("Pay")`, `checked(false)`,
+ * `hasChild(text("Done"))`): a selector predicate without a pick, since it is checked on the one
+ * node the wait's selector picks.
+ */
+export function parseCondition(text: string): ParsedCondition {
+  const parsed = parseSelector(text);
+  if ("error" in parsed) return parsed;
+  if (parsed.selector.pick.case) {
+    return { error: "a condition has no first()/at(n): it is checked on the node the selector picks, so put the pick on the selector", at: 0 };
+  }
+  return { condition: parsed.selector.node! };
+}
+
 export function parseSelector(text: string): Parsed {
   try {
     if (new TextEncoder().encode(text).length > 65536) throw new ParseError("selector exceeds 64 KiB", 0);

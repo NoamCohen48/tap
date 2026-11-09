@@ -13,7 +13,7 @@ Click a step to open it:
   whole screen. The line below shows how many elements the selector matches on the current
   screen.
 - **Value and secret:** change the text of a set text or type step, or make it secret, and
-  the expected text of a text wait or assertion.
+  the expected text of a text wait or assertion, or the condition of an **Until** wait.
 - **Scroll until:** change the selector of the element a scroll until brings into view, its
   direction, its distance and its maximum number of scrolls.
 - **Gesture:** change a swipe's or scroll's direction/distance, a counted tap's count/interval,
@@ -90,6 +90,7 @@ or a coding agent ([Tap agent](../agent/index.md)), write the test from it:
 | `action` `hold` | `element.longTap(duration = 1200.milliseconds)` | `element.long_tap(duration=1.2)` |
 | `action` `set_text` on `res("search")` in `com.example.basket` | `app.await(res("search")).one().setText("wool")` | `app.wait(res("search")).one().set_text("wool")` |
 | `wait` `CONDITION_VISIBLE`, no package | `device.screen.await(text("3 results")).visible()` | `device.screen.wait(text("3 results")).visible()` |
+| `wait` `CONDITION_UNTIL`, `until` enabled and text `"Pay"` | `….await(res("pay")).until(enabled() and text("Pay"))` | `….wait(res("pay")).until(enabled() & text("Pay"))` |
 | `assertion` `CHECK_ENABLED` | `assertTrue(device.screen.element(res("checkout")).isEnabled())` | `assert device.screen.element(res("checkout")).is_enabled()` |
 | `assertion` `CHECK_TEXT_EQUALS` `"Wool"` | `assertEquals("Wool", ….text())` | `assert ….text() == "Wool"` |
 | `scroll_until` on `res("list")`, target `text("Row 40")` | `….element(res("list")).scrollUntil(text("Row 40"))` | `….element(res("list")).scroll_until(text("Row 40"))` |

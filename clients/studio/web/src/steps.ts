@@ -17,7 +17,7 @@ import {
   type StandardAction,
   type SystemPanel,
 } from "./gen/command_pb";
-import { MatchMode, type Selector } from "./gen/selector_pb";
+import { MatchMode, type Node, type Selector } from "./gen/selector_pb";
 import { Check, Condition, DeviceCheck, PerformRequestSchema, SelectorOrigin, StepSchema, type PerformRequest, type Step } from "./gen/studio_pb";
 
 /** The actions on an element that take nothing but its selector. */
@@ -223,13 +223,15 @@ export function app(operation: AppOperation, packageName: string, { anyApp, ...r
 
 /** An element wait: the condition, and the value the text and count conditions take. */
 export type Until =
-  | { condition: Exclude<Condition, Condition.TEXT_EQUALS | Condition.TEXT_CONTAINS | Condition.COUNT> }
+  | { condition: Exclude<Condition, Condition.TEXT_EQUALS | Condition.TEXT_CONTAINS | Condition.COUNT | Condition.UNTIL> }
   | { condition: Condition.TEXT_EQUALS | Condition.TEXT_CONTAINS; text: string }
-  | { condition: Condition.COUNT; count: number };
+  | { condition: Condition.COUNT; count: number }
+  | { condition: Condition.UNTIL; until: Node };
 
 /** A `WaitStep`: the SDK's element wait, replayed within the device's wait timeout. */
 export function wait({ selector, origin }: Target, until: Until): PerformRequest {
-  return request(create(StepSchema, { kind: { case: "wait", value: { selector, condition: until.condition, value: valueOf(until), selectorOrigin: origin } } }));
+  const value = "until" in until ? { case: "until" as const, value: until.until } : valueOf(until);
+  return request(create(StepSchema, { kind: { case: "wait", value: { selector, condition: until.condition, value, selectorOrigin: origin } } }));
 }
 
 /** An assertion: the check, and the value the text and count checks take. */

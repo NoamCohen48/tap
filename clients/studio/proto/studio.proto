@@ -868,6 +868,9 @@ enum Condition {
   CONDITION_TEXT_EQUALS = 9; // value: text
   CONDITION_TEXT_CONTAINS = 10; // value: text
   CONDITION_COUNT = 11; // value: count
+  // value: until. `ElementWait.until(condition)`: the one node the selector picks satisfies the
+  // condition (a selector predicate, checked on that node, polled on the device).
+  CONDITION_UNTIL = 12;
 }
 
 // A wait: `selector` meets `condition` within the device's wait timeout, replayed as the SDK
@@ -882,6 +885,9 @@ message WaitStep {
     string text = 3;
     int32 count = 4; // ≥ 0
     string parameter = 7; // the name of the parameter whose value is the text
+    // CONDITION_UNTIL's condition, written with the selector builders (`enabled() & text("Pay")`);
+    // with the selector, at most 256 nodes.
+    tap.v1.Node until = 8;
   }
   SelectorOrigin selector_origin = 5;
   // 1..120000 ms; absent uses the SDK wait default.

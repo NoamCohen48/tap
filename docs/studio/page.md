@@ -72,8 +72,11 @@ selector matches a number of elements. An assertion that does not hold is report
 recorded.
 
 **Wait** offers waits until the element is visible, exactly one, gone, enabled, disabled,
-checked, unchecked or focused, has a text, or the selector matches a number of elements. The
-waits on the app as a whole are in the **App** tab.
+checked, unchecked or focused, has a text, or the selector matches a number of elements.
+**Condition** waits until the element satisfies a condition you type in the selector syntax,
+such as `enabled() and text("Pay")` or `checked(false)`: every part is checked on that one
+element at the same moment (`await(…).until(…)`). A condition has no `first()` / `at(n)`: put
+the pick on the selector. The waits on the app as a whole are in the **App** tab.
 
 **App** offers the app's package, then **Cold launch** and **Launch** (of the launcher activity,
 or of the **Activity** you name, such as `.ui.SettingsActivity`, with any **Extras** you add:

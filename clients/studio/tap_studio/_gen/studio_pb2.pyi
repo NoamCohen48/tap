@@ -77,6 +77,7 @@ class Condition(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CONDITION_TEXT_EQUALS: _ClassVar[Condition]
     CONDITION_TEXT_CONTAINS: _ClassVar[Condition]
     CONDITION_COUNT: _ClassVar[Condition]
+    CONDITION_UNTIL: _ClassVar[Condition]
 
 class Check(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -142,6 +143,7 @@ CONDITION_FOCUSED: Condition
 CONDITION_TEXT_EQUALS: Condition
 CONDITION_TEXT_CONTAINS: Condition
 CONDITION_COUNT: Condition
+CONDITION_UNTIL: Condition
 CHECK_UNSPECIFIED: Check
 CHECK_EXISTS: Check
 CHECK_COUNT: Check
@@ -999,12 +1001,13 @@ class TypeStep(_message.Message):
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., text: _Optional[str] = ..., secret: _Optional[str] = ..., parameter: _Optional[str] = ..., skip_focus_wait: _Optional[bool] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ..., precondition_timeout_ms: _Optional[int] = ..., focus_timeout_ms: _Optional[int] = ...) -> None: ...
 
 class WaitStep(_message.Message):
-    __slots__ = ("selector", "condition", "text", "count", "parameter", "selector_origin", "timeout_ms")
+    __slots__ = ("selector", "condition", "text", "count", "parameter", "until", "selector_origin", "timeout_ms")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
     CONDITION_FIELD_NUMBER: _ClassVar[int]
     TEXT_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
     PARAMETER_FIELD_NUMBER: _ClassVar[int]
+    UNTIL_FIELD_NUMBER: _ClassVar[int]
     SELECTOR_ORIGIN_FIELD_NUMBER: _ClassVar[int]
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     selector: _selector_pb2.Selector
@@ -1012,9 +1015,10 @@ class WaitStep(_message.Message):
     text: str
     count: int
     parameter: str
+    until: _selector_pb2.Node
     selector_origin: SelectorOrigin
     timeout_ms: int
-    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., parameter: _Optional[str] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
+    def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., condition: _Optional[_Union[Condition, str]] = ..., text: _Optional[str] = ..., count: _Optional[int] = ..., parameter: _Optional[str] = ..., until: _Optional[_Union[_selector_pb2.Node, _Mapping]] = ..., selector_origin: _Optional[_Union[SelectorOrigin, str]] = ..., timeout_ms: _Optional[int] = ...) -> None: ...
 
 class AssertionStep(_message.Message):
     __slots__ = ("selector", "check", "text", "count", "parameter", "selector_origin", "timeout_ms")

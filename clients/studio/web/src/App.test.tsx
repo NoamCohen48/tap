@@ -619,6 +619,19 @@ describe("editing every value of a step", () => {
     expect(saved.kind.case === "wait" && saved.kind.value.value).toEqual({ case: "count", value: 0 });
   });
 
+  it("changes a wait to a typed condition, saved only once it parses", async () => {
+    const { fake, editor } = await editing({ kind: { case: "wait", value: { selector, condition: Condition.VISIBLE } } });
+    fireEvent.change(within(editor).getByLabelText("Condition"), { target: { value: String(Condition.UNTIL) } });
+    const until = within(editor).getByLabelText("Until");
+    fireEvent.change(until, { target: { value: 'res("a").first()' } });
+    expect(within(editor).getByText(/a condition has no first\(\)\/at\(n\)/)).toBeTruthy();
+    fireEvent.change(until, { target: { value: 'enabled() and text("Pay")' } });
+    const saved = await save(fake, editor);
+    const wait = saved.kind.case === "wait" ? saved.kind.value : undefined;
+    expect(wait?.condition).toBe(Condition.UNTIL);
+    expect(wait?.value.case === "until" && wait.value.value.kind.case).toBe("allOf");
+  });
+
   it("changes an assertion's expected text, and a check that takes none drops it", async () => {
     const { fake, editor } = await editing({ kind: { case: "assertion", value: { selector, check: Check.TEXT_EQUALS, value: { case: "text", value: "a" } } } });
     fireEvent.change(within(editor).getByLabelText("Check"), { target: { value: String(Check.EXISTS) } });
@@ -1354,6 +1367,22 @@ describe("App", () => {
     fireEvent.change(within(form).getByLabelText("Text"), { target: { value: "G" } });
     expect(wait.disabled).toBe(false);
     expect(fake.state.performed).toHaveLength(0);
+  });
+
+  it("Wait records a wait until a typed condition holds", async () => {
+    const fake = await attached();
+    fireEvent.keyDown(document, { key: "3" });
+    act(() => click(300, 450));
+    const form = await within(composer()).findByRole("form", { name: "Wait condition" });
+    const wait = within(form).getByRole("button", { name: "Wait" }) as HTMLButtonElement;
+    expect(wait.disabled).toBe(true); // nothing typed yet
+    fireEvent.change(within(form).getByLabelText("Condition"), { target: { value: "enabled(" } });
+    expect(wait.disabled).toBe(true);
+    fireEvent.change(within(form).getByLabelText("Condition"), { target: { value: 'enabled() and text("Go")' } });
+    fireEvent.click(wait);
+    await screen.findByText('screen.await(res("go")).until(text("Go").enabled())');
+    const step = fake.state.performed[0]?.step?.kind;
+    expect(step?.case === "wait" && step.value.condition).toBe(Condition.UNTIL);
   });
 
   it("Wait records an element wait, prefilling the count it matches now", async () => {

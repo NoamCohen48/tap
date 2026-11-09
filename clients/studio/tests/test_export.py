@@ -130,6 +130,8 @@ WAITS = {
     "TEXT_EQUALS": wait("TEXT_EQUALS", text="a"),
     "TEXT_CONTAINS": wait("TEXT_CONTAINS", text="a"),
     "COUNT": wait("COUNT", count=0),
+    # A builder the export writes as itself, and a condition only the text form gives.
+    "UNTIL": wait("UNTIL", until={"flag": {"property": "FLAG_ENABLED", "value": True}}),
 }
 ASSERTIONS = {
     "EXISTS": assertion("EXISTS", timeout_ms=900),
@@ -155,6 +157,7 @@ OTHERS = {
     "scroll_until": {"scroll_until": {"container": X, "target": Y, "direction": "DIR_DOWN", "max_scrolls": 5, "distance_percent": 60, "timeout_ms": 800, "precondition_timeout_ms": 900}},
     "scroll_until_picked": {"scroll_until": {"container": FIRST, "target": ODD, "direction": "DIR_UP"}},
     "wait_with_budget_selector": {"wait": {"selector": ODD, "condition": "CONDITION_VISIBLE"}},
+    "wait_until_compound": wait("UNTIL", until=ODD["node"]),
     "custom_action": action("perform_accessibility_action", custom="Archive"),
     "tap_on_a_pick": action("tap", selector=AT),
     "tap_on_contains": action("tap", selector=Y),
