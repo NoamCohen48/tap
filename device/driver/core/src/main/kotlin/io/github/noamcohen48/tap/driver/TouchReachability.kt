@@ -50,11 +50,15 @@ internal class TouchReachability(
         )
     }
 
+    /**
+     * The window's touchable region from API 33; before it, its bounds, corrected where the
+     * device reports them moved by the window's surface insets ([WindowFrames]).
+     */
     private fun AccessibilityWindowInfo.touchableRegion(): Region =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             Region().also(::getRegionInScreen)
         } else {
-            Region(Rect().also(::getBoundsInScreen))
+            Region(WindowFrames.frame(this))
         }
 
     private fun AccessibilityWindowInfo.describe(): String {

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- InsetWindowActivity's views. -->
+    <item name="inset_status" type="id" />
+    <item name="inset_show_dialog" type="id" />
+    <item name="inset_show_cover" type="id" />
+    <item name="inset_beside" type="id" />
+    <item name="inset_half_under" type="id" />
+    <item name="inset_corner" type="id" />
+    <item name="inset_corner_location" type="id" />
+</resources>

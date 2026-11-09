@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.driver.engine.CommandContext
 internal class QueryCommands(
     private val device: UiDevice,
     private val objects: UiObjectAccess,
+    private val visibleBounds: VisibleBounds,
     private val screen: ScreenCommands,
     private val keyboard: KeyboardCommands,
     private val rotation: RotationCommands,
@@ -35,7 +36,7 @@ internal class QueryCommands(
         val element = objects.resolveTarget(target)
         return try {
             val node = element.accessibilityNodeInfo
-            val bounds = element.visibleBounds
+            val bounds = visibleBounds.of(node)
             ElementSnapshot
                 .newBuilder()
                 .apply {

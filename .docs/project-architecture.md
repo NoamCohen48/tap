@@ -124,6 +124,7 @@ tap/
 |   |   |   +-- SelectorCompiler.kt      AST -> CompiledSelector.Native | .Traversal (no scope; every window)
 |   |   |   +-- UiObjectAccess.kt        resolve/hasObject/count/containerHasObject per MatchLimit
 |   |   |   +-- TouchReachability.kt     OBSCURED check (touch point in the target's window) + TouchPoints
+|   |   |   +-- WindowFrames.kt          a window's real frame (devices that report it moved by its surface insets) + VisibleBounds
 |   |   |   +-- GestureCommands.kt, TextInputCommands.kt, KeyInput.kt, QueryCommands.kt, WaitCommands.kt, ScreenStability.kt, ArtifactCommands.kt
 |   |   |   |                        tap, longTap, swipe, scroll, doubleTap, drag, pinch, fling / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
 |   |   |   +-- HierarchyDump.kt         diagnostic UiAutomator-format XML plus showing-hint, content-invalid and error
@@ -269,6 +270,7 @@ tap/
     |   +-- FieldStateActivity.kt    hinted input and setError validation for screen-snapshot regression tests
     |   +-- MotionActivity.kt        2 s handler-driven animation and an endless 100 ms ticker (screen-stability waits)
     |   +-- OcclusionActivity.kt     a popup over half a button and a button under the keyboard (adjustNothing) for OBSCURED
+    |   +-- InsetWindowActivity.kt   a dialog's bottom-right corner and an elevated popup beside / over buttons (window surface insets)
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults
     |   +-- FixtureFaultProvider.kt  delayed-mutation hook for the late-work fault (authority ...fixture.fault)
     |   +-- FixtureApplication.kt    Application + FaultTapCounter

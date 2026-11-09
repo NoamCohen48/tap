@@ -30,7 +30,9 @@ internal object HierarchyDump {
         val xml = HierarchyXmlWriter(OutputStreamWriter(out, Charsets.UTF_8))
         xml.startHierarchy(device.displayRotation)
         for (root in device.windowRoots) {
-            dumpNode(root, xml, 0, Rect(0, 0, width, height))
+            // Every node of a root is in the root's window: one frame for all of them.
+            val frame = root.window?.let { WindowFrames.frame(Rect().also(it::getBoundsInScreen), Rect().also(root::getBoundsInScreen)) }
+            dumpNode(root, xml, 0, Rect(0, 0, width, height), frame)
         }
         xml.endHierarchy()
     }
@@ -40,11 +42,12 @@ internal object HierarchyDump {
         xml: HierarchyXmlWriter,
         index: Int,
         display: Rect,
+        frame: Rect?,
     ) {
-        xml.startNode(attributes(node, index, display))
+        xml.startNode(attributes(node, index, display, frame))
         for (i in 0 until node.childCount) {
             val child = node.getChild(i) ?: continue
-            if (child.isVisibleToUser) dumpNode(child, xml, i, display)
+            if (child.isVisibleToUser) dumpNode(child, xml, i, display, frame)
             @Suppress("DEPRECATION")
             child.recycle()
         }
@@ -55,6 +58,7 @@ internal object HierarchyDump {
         node: AccessibilityNodeInfo,
         index: Int,
         display: Rect,
+        frame: Rect?,
     ): List<Pair<String, String>> =
         buildList {
             if (!nafExcluded(node) && isNaf(node)) add("NAF" to "true")
@@ -75,7 +79,7 @@ internal object HierarchyDump {
             add("password" to node.isPassword.toString())
             add("selected" to node.isSelected.toString())
             add("visible-to-user" to node.isVisibleToUser.toString())
-            add("bounds" to visibleBounds(node, display).toShortString())
+            add("bounds" to visibleBounds(node, display, frame).toShortString())
             add("drawing-order" to node.drawingOrder.toString())
             add("hint" to node.hintText?.toString().orEmpty())
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
@@ -87,23 +91,21 @@ internal object HierarchyDump {
         }
 
     /**
-     * Screen bounds clipped to the display and then to the node's window, as UiAutomator dumps
-     * them. A clip with no overlap leaves the bounds unchanged (`intersect` returns false), also
-     * as UiAutomator does.
+     * Screen bounds clipped to the display and then to the node's window [frame], as UiAutomator
+     * dumps them, except that the frame is the window's real one ([WindowFrames]), not bounds a
+     * device reports moved. A clip with no overlap leaves the bounds unchanged (`intersect`
+     * returns false), also as UiAutomator does.
      */
     @SuppressLint("CheckResult")
     private fun visibleBounds(
         node: AccessibilityNodeInfo,
         display: Rect,
+        frame: Rect?,
     ): Rect {
         val bounds = Rect()
         node.getBoundsInScreen(bounds)
         bounds.intersect(display)
-        node.window?.let { window ->
-            val windowBounds = Rect()
-            window.getBoundsInScreen(windowBounds)
-            bounds.intersect(windowBounds)
-        }
+        frame?.let(bounds::intersect)
         return bounds
     }
 
