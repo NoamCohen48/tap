@@ -36,6 +36,10 @@ fun isDriverPackage(packageName: String): Boolean = packageName == DRIVER_PACKAG
 const val DRIVER_TEST_RUNNER = "$DRIVER_TEST_PACKAGE/androidx.test.runner.AndroidJUnitRunner"
 const val DEVICE_PORT = 27183
 val DEVICE_PORT_RANGE = 27183..27187
+
+/** How long one driver start attempt waits for the instrumentation's `TAP_READY` marker. */
+const val DRIVER_READINESS_TIMEOUT_MS = 10_000L
+
 const val LATE_MUTATION_QUARANTINE = "UNINTERRUPTIBLE_MUTATION_RESET_REQUIRED"
 
 /**
@@ -104,9 +108,16 @@ fun resetRecoveryAction(
 }
 
 /**
- * Starts the driver instrumentation and waits for its `TAP_READY` marker, walking the reserved
- * port range when a port is occupied. [onStarting] runs before each attempt so the caller can
- * journal the port. Extra instrumentation arguments (fault points, heartbeat overrides) go in
+ * Starts the driver instrumentation and waits up to [readinessTimeoutMs] for its `TAP_READY`
+ * marker, walking the reserved port range when a port is occupied. [onStarting] runs before each
+ * attempt so the caller can journal the port.
+ *
+ * An attempt that ends unready for any other reason (the instrumentation exited, or printed no
+ * marker in time) is tried once more on the same port before it fails the start: starting the
+ * instrumentation changes nothing on the device the cleanup does not undo, and a driver package
+ * that was being replaced or killed as the attempt began (another tool's install, Android
+ * force-stopping it after the previous instrumentation) leaves exactly that. The failure says
+ * which of the two it was, with what the instrumentation printed. Extra instrumentation arguments (fault points, heartbeat overrides) go in
  * [driverArguments]; the driver logs [logSink] line by line.
  *
  * Each attempt owns its process and drain until it hands them to the returned
@@ -123,10 +134,13 @@ suspend fun startDriverWithRetry(
     driverArguments: Map<String, String> = emptyMap(),
     logSink: (String) -> Unit = ::println,
     processStarter: ProcessStarter = DefaultProcessStarter,
+    readinessTimeoutMs: Long = DRIVER_READINESS_TIMEOUT_MS,
     onStarting: (Int) -> Unit,
 ): RunningInstrumentation {
     var lastOutput = ""
-    for (devicePort in DEVICE_PORT_RANGE) {
+    var devicePort = DEVICE_PORT_RANGE.first
+    var unreadyRetried = false
+    while (true) {
         if (overallDeadlineNanos != null && System.nanoTime() >= overallDeadlineNanos) {
             throw DriverStartException("Driver startup on $serial exceeded its containing deadline")
         }
@@ -193,11 +207,13 @@ suspend fun startDriverWithRetry(
             }
         var handedOff = false
         var attemptCleanupError: Throwable? = null
+        val attemptStartNanos = System.nanoTime()
+        var exited = false
         try {
             currentCoroutineContext().ensureActive()
             val deadline =
                 minOf(
-                    System.nanoTime() + 10_000_000_000L,
+                    attemptStartNanos + readinessTimeoutMs * 1_000_000L,
                     overallDeadlineNanos ?: Long.MAX_VALUE,
                 )
             val remainingMs = (deadline - System.nanoTime()) / 1_000_000L
@@ -206,6 +222,8 @@ suspend fun startDriverWithRetry(
                 handedOff = true
                 return RunningInstrumentation(process, output, outputDrain, devicePort, instanceId, drainScope)
             }
+            // Completed without an instance: the output ended, so the instrumentation exited.
+            exited = ready.isCompleted
         } finally {
             if (!handedOff) {
                 attemptCleanupError = cleanupAttempt(adb, serial, process, outputDrain, drainScope)
@@ -219,11 +237,26 @@ suspend fun startDriverWithRetry(
             throw DriverStartException("Another UiAutomation instrumentation session is active on $serial")
         }
         if ("BindException" !in lastOutput || "EADDRINUSE" !in lastOutput) {
-            throw DriverStartException("Driver on $serial failed before readiness for a reason other than port occupancy: $lastOutput")
+            val seconds = (System.nanoTime() - attemptStartNanos) / 1_000_000_000.0
+            val how =
+                if (exited) {
+                    "exited after %.1f s without becoming ready".format(seconds)
+                } else {
+                    "was not ready after %.1f s".format(seconds)
+                }
+            val printed = lastOutput.trim().ifEmpty { "(no output)" }
+            if (!unreadyRetried && (overallDeadlineNanos == null || System.nanoTime() < overallDeadlineNanos)) {
+                unreadyRetried = true
+                logSink("Driver instrumentation on $serial $how; starting it once more: $printed")
+                continue
+            }
+            throw DriverStartException("Driver instrumentation on $serial $how, twice; it printed: $printed")
         }
         if (!isPortListening(adb, serial, devicePort)) {
             throw DriverStartException("Driver on $serial reported EADDRINUSE but the port was free after verified driver death")
         }
+        if (devicePort == DEVICE_PORT_RANGE.last) break
+        devicePort++
     }
     throw DriverStartException("Driver on $serial failed to bind any reserved port: $lastOutput")
 }

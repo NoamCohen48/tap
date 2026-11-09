@@ -11,6 +11,7 @@ import io.github.noamcohen48.tap.protocol.FrameType
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -256,6 +257,74 @@ class DeviceSessionTest {
             assertTrue(child.stdinClosed.get())
             assertTrue(child.stdoutClosed.get())
             assertTrue(child.stderrClosed.get())
+        }
+
+    @Test
+    fun `a driver that prints nothing in time is started once more on the same port`() =
+        runBlocking {
+            val adb =
+                FakeAdb(
+                    mapOf(
+                        "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                        "shell pidof $DRIVER_PACKAGE" to Adb.Result(1, ""),
+                    ),
+                )
+            val silent = FakeProcess(exitDelayMs = FakeProcess.NEVER, blockingStdout = true, stdoutEndsOnDestroy = true)
+            val ready = FakeProcess(stdout = "TAP_READY session=session-1 generation=1 port=$DEVICE_PORT instance=i-1\n", exitDelayMs = FakeProcess.NEVER)
+            val children = ArrayDeque(listOf(silent, ready))
+            val ports = mutableListOf<Int>()
+            val log = mutableListOf<String>()
+            val running =
+                startDriverWithRetry(
+                    adb,
+                    serial,
+                    "session-1",
+                    1,
+                    "secret",
+                    logSink = { log += it },
+                    processStarter = ProcessStarter { children.removeFirst() },
+                    readinessTimeoutMs = 200,
+                    onStarting = { ports += it },
+                )
+            try {
+                assertEquals(listOf(DEVICE_PORT, DEVICE_PORT), ports)
+                assertEquals("i-1", running.driverInstanceId)
+                assertFalse(silent.isAlive, "the silent attempt is cleaned up before the next one")
+                assertTrue(log.any { "was not ready after" in it && "starting it once more: (no output)" in it }, log.toString())
+            } finally {
+                ready.forceExit()
+                running.drainScope.cancel()
+            }
+        }
+
+    @Test
+    fun `a driver that exits unready twice fails the start saying so and what it printed`() =
+        runBlocking {
+            val adb =
+                FakeAdb(
+                    mapOf(
+                        "shell am force-stop $DRIVER_PACKAGE" to ok(""),
+                        "shell pidof $DRIVER_PACKAGE" to Adb.Result(1, ""),
+                    ),
+                )
+            var attempts = 0
+            val failure =
+                assertFailsWith<DriverStartException> {
+                    startDriverWithRetry(
+                        adb,
+                        serial,
+                        "session-1",
+                        1,
+                        "secret",
+                        logSink = {},
+                        processStarter = ProcessStarter { FakeProcess(stdout = if (attempts == 1) "" else "INSTRUMENTATION_FAILED: x\n") },
+                        onStarting = { attempts++ },
+                    )
+                }
+            assertEquals(2, attempts)
+            val message = failure.message.orEmpty()
+            assertTrue("exited after" in message && "without becoming ready, twice" in message, message)
+            assertTrue(message.endsWith("it printed: INSTRUMENTATION_FAILED: x"), message)
         }
 
     @Test

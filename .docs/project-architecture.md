@@ -464,7 +464,8 @@ a dead session left (quarantine `DEVICE_STATE_RESTORE_FAILED` if it does not rea
 
 `DriverLifecycle.kt` holds the start/observe/cleanup procedures that were extracted from the
 validation flow: `startDriverWithRetry` (instrumentation launch with the session secret,
-port range `27183..27187`, `TAP_READY` marker parsing, port-occupied retry),
+port range `27183..27187`, `TAP_READY` marker parsing, port-occupied retry, one more start
+on the same port when an attempt exits or prints no marker within 10 s),
 `observeProcess`/`processStartToken` (PID + `/proc` start token identity), `connectWithRetry`,
 `removeExactForward`, `cleanupInstrumentation`, `forceStopDriverAndVerify`, and
 `recoverJournal` (journal-driven orphan cleanup with the `ResetRecoveryAction` decision table
