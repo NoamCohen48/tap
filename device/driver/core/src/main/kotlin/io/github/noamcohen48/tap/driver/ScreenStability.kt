@@ -108,7 +108,7 @@ internal class ScreenStability(
                 }
             } ?: return null
         val windowRoot = root ?: return null
-        val bounds = Rect().also(window::getBoundsInScreen)
+        val bounds = WindowFrames.frame(Rect().also(window::getBoundsInScreen), Rect().also(windowRoot::getBoundsInScreen))
         val treeHash =
             try {
                 if (signal == StabilitySignal.STABILITY_PIXELS) 0L else fingerprint(windowRoot)

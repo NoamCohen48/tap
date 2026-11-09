@@ -35,6 +35,7 @@ internal class GestureCommands(
     private val device: UiDevice,
     private val objects: UiObjectAccess,
     private val reachability: TouchReachability,
+    private val visibleBounds: VisibleBounds,
     private val faults: FaultHooks,
 ) {
     private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
@@ -48,7 +49,7 @@ internal class GestureCommands(
         context: CommandContext,
         command: Tap,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { element, point ->
+    ) = gesture(context, target, ::center) { element, point ->
         faults.beforeTapClick(command, context.requestId)
         if (element.displayId == Display.DEFAULT_DISPLAY) pointer.tap(point) else element.click()
         faults.afterTapClick(command, context.requestId)
@@ -58,19 +59,19 @@ internal class GestureCommands(
     fun longTap(
         context: CommandContext,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { element, point ->
+    ) = gesture(context, target, ::center) { element, point ->
         if (element.displayId == Display.DEFAULT_DISPLAY) pointer.longTap(point) else element.longClick()
     }
 
     fun multiTap(context: CommandContext, command: MultiTap, target: CompiledSelector) {
         val interval = if (command.hasIntervalMs()) command.intervalMs else DEFAULT_TAP_INTERVAL_MS
-        gesture(context, target, TouchPoints::center, multiTapDurationMs(command.count, interval), true) { _, point ->
+        gesture(context, target, ::center, multiTapDurationMs(command.count, interval), true) { _, point ->
             pointer.multiTap(point, command.count, interval)
         }
     }
 
     fun hold(context: CommandContext, command: TimedPress, target: CompiledSelector) =
-        gesture(context, target, TouchPoints::center, command.durationMs, true) { _, point ->
+        gesture(context, target, ::center, command.durationMs, true) { _, point ->
             pointer.hold(point, command.durationMs)
         }
 
@@ -78,7 +79,7 @@ internal class GestureCommands(
     fun doubleTap(
         context: CommandContext,
         target: CompiledSelector,
-    ) = gesture(context, target, TouchPoints::center) { _, point ->
+    ) = gesture(context, target, ::center) { _, point ->
         pointer.doubleTap(point)
     }
 
@@ -96,12 +97,12 @@ internal class GestureCommands(
         val to =
             objects.resolveTarget(destination).let { element ->
                 try {
-                    element.visibleCenter
+                    center(element)
                 } finally {
                     element.recycle()
                 }
             }
-        gesture(context, source, TouchPoints::center) { _, from -> pointer.drag(from, to) }
+        gesture(context, source, ::center) { _, from -> pointer.drag(from, to) }
     }
 
     /**
@@ -216,6 +217,14 @@ internal class GestureCommands(
      * scroll, fling, pinch) refresh the node once more, so a node that goes stale in between is
      * `STALE_DURING_COMMAND`.
      */
+    /**
+     * Where [PointerGestures] puts the finger down: the node's visible centre, as `UiObject2`
+     * computes it but clipped to its window's real frame ([VisibleBounds]). The gestures that
+     * `UiObject2` injects itself (swipe, scroll, fling, pinch) keep [TouchPoints], so the
+     * occlusion check tests the point that is touched.
+     */
+    private fun center(element: UiObject2): Point = visibleBounds.center(element.accessibilityNodeInfo)
+
     private inline fun gesture(
         context: CommandContext,
         target: CompiledSelector,

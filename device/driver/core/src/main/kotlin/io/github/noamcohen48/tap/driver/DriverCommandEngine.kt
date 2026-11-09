@@ -83,7 +83,8 @@ internal class DriverCommandEngine(
 ) {
     private val compiler = SelectorCompiler()
     private val objects = UiObjectAccess(device)
-    private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, faults)
+    private val visibleBounds = VisibleBounds(instrumentation.context)
+    private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, visibleBounds, faults)
     private val textInput = TextInputCommands(instrumentation, objects)
     private val rotation = RotationCommands(instrumentation, device)
     private val screen = ScreenCommands(instrumentation)
@@ -95,7 +96,7 @@ internal class DriverCommandEngine(
     private val location = LocationCommands(instrumentation)
     private val toasts = ToastWatcher(instrumentation)
     private val notifications = NotificationCommands(instrumentation)
-    private val queries = QueryCommands(device, objects, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
+    private val queries = QueryCommands(device, objects, visibleBounds, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
     private val screenStability = ScreenStability(instrumentation)
     private val artifacts = ArtifactCommands(instrumentation, device)
 

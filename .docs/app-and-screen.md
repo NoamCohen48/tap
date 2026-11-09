@@ -73,6 +73,13 @@ Date: 2026-10-01. Status: accepted (user, 2026-09-30); implemented in protocol 5
   window* (a floating bar, a bottom sheet in the same window) is not detected.
 - Only the default display is checked. A momentarily stale window list, or no window at the
   point, is not refused.
+- Below API 33 a window's touch area is its bounds. Some devices report a window with surface
+  insets (a dialog, an elevated popup) moved up and left by that margin (SM-J810G, API 29: 56 px;
+  the API 34 emulator is exact), so the driver takes the frame from the window's root node when
+  it has the window's size but another origin (`WindowFrames`). The same frame clips the visible
+  bounds of snapshots, the hierarchy dump and the touch point of tap, long tap, double tap,
+  multi-tap, hold and drag. Swipe, scroll, fling and pinch are injected by `UiObject2` from its
+  own visible bounds, so their check keeps those points (`InsetWindowTest`).
 - `set_text` / `clear_text` use accessibility actions, not touches, so they are not checked.
 - Snapshot refs always carry the node's package predicate; codegen turns it into
   `app("pkg").element(…)`.
