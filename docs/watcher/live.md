@@ -12,7 +12,10 @@ saved clips and recordings ([Clips, recordings and the Library](library.md)).
   `Tap res("login")`, `Set text res("email") ← "ada@…"`, `Tap text("Archive") · AMBIGUOUS`.
   Search filters them; **Failures** shows only failed ones. Clicking a row (or `j` / `k`)
   selects it and shows its details: outcome and error, input, start, duration and the
-  connection, with the raw event behind a disclosure.
+  connection, with the raw event behind a disclosure. A failed action also says why, when the
+  driver said: for a selector that matched nothing, how many nodes each part matched alone and
+  without it (`text("Pay"): 0 alone, 1 without it`); for a state wait that timed out, which
+  parts of the condition held and what the node had (`✗ text("Pay") (has "Paying…")`).
 
 Selecting an action whose video is still retained pauses the screen where it started and
 marks it on the scrubber. Failed actions are red on the scrubber; hovering a marker names the

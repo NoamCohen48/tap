@@ -58,6 +58,10 @@ name the components affected. Earlier releases used independent version lines. T
   `unquarantine`); `devices` marks quarantines that are retried on attach or under inspection.
 - Tap Studio: the device list inspects and unquarantines a quarantined device. Tap watcher
   shows the quarantine reason and, as a tooltip, the `tap unquarantine` command.
+- Tap watcher says why a failed action failed. The selected action's details list, under its
+  error, the selector parts that ruled every node out (each part alone and without it, with the
+  values seen) or, for a state wait that timed out, which parts of the condition held and what
+  the node had.
 
 ## 0.1.0 — 2026-11-08
 

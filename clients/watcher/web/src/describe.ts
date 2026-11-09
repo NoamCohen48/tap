@@ -2,7 +2,7 @@
 // A lean describer of tap.v1 messages; it never invents what the event does not carry.
 
 import type { LoggedEvent } from "./gen/event_log_pb";
-import { ErrorCode, type Command } from "./gen/command_pb";
+import { ErrorCode, type Command, type ElementSnapshot, type Error as CommandError } from "./gen/command_pb";
 import { FailureReason } from "./gen/failure_pb";
 import { MatchMode, NodeFlag, Relation, TextProperty, type Node, type Selector } from "./gen/selector_pb";
 
@@ -20,6 +20,12 @@ export type Described = {
   outcome: string;
   /** The error's human detail, when the event carries one. */
   detail: string;
+  /**
+   * Why a failed command found nothing, or why a state wait's condition did not hold, one line
+   * each: the selector parts that ruled the nodes out, or the condition's parts with what the node
+   * had. Empty when the error carries neither.
+   */
+  why: string[];
 };
 
 const QUOTE_LIMIT = 40;
@@ -150,7 +156,71 @@ export function describe(event: LoggedEvent): Described {
     outcome = FailureReason[event.failure.reason]?.replace(/^FAILURE_REASON_/, "") ?? "FAILED";
     detail = event.failure.detail;
   }
-  return { ...parts, outcome, detail };
+  const why = call.case === "command" && event.error ? [...narrowing(call.value, event.error), ...conditionParts(call.value, event.error)] : [];
+  return { ...parts, outcome, detail, why };
+}
+
+/** The command's selectors in `Error.narrowing.selector_index` order: `selector`, then drag's `target`. */
+function selectors(value: Command): Selector[] {
+  const op = value.op.value as { selector?: Selector; target?: Selector } | undefined;
+  return [op?.selector, op?.target].filter((s): s is Selector => s !== undefined);
+}
+
+/** `Error.narrowing` against the selector it names; nothing when it does not fit the command. */
+function narrowing(value: Command, error: CommandError): string[] {
+  const narrowed = error.narrowing;
+  const target = narrowed ? selectors(value)[narrowed.selectorIndex] : undefined;
+  if (!narrowed || !target) return [];
+  const operands = target.node?.kind.case === "allOf" ? target.node.kind.value.nodes : [];
+  if (narrowed.parts.length > 0 && narrowed.parts.length !== operands.length) return [];
+  if (narrowed.matches > 0) {
+    const needed = target.pick.case === "at" ? target.pick.value.index + 1 : 1;
+    const nodes = narrowed.matches === 1 ? "1 node matches" : `${narrowed.matches} nodes match`;
+    return [`Only ${nodes} ${selector(target)}; its pick needs ${needed}`];
+  }
+  return [
+    `No node matches ${selector(target)}${narrowed.parts.length > 0 ? "; each part:" : ""}`,
+    ...narrowed.parts.map((part, i) => {
+      const seen = part.nearMisses.map((v) => quote(v)).join(", ");
+      return `${node(operands[i])}: ${part.alone} alone, ${part.without} without it${seen ? ` (seen: ${seen})` : ""}`;
+    }),
+  ];
+}
+
+/** A state wait's `Error.condition_holds`, one line per top-level part, with what the node had. */
+function conditionParts(value: Command, error: CommandError): string[] {
+  if (value.op.case !== "waitState") return [];
+  const condition = value.op.value.condition;
+  const kind = condition?.kind;
+  const operands = kind?.case === "allOf" || kind?.case === "anyOf" ? kind.value.nodes : condition ? [condition] : [];
+  if (error.conditionHolds.length === 0 || error.conditionHolds.length !== operands.length) return [];
+  return operands.map((part, i) => {
+    const had = observed(part, error.lastState);
+    return `${error.conditionHolds[i] ? "✓" : "✗"} ${node(part)}${had !== undefined && !error.conditionHolds[i] ? ` (has ${had})` : ""}`;
+  });
+}
+
+const SNAPSHOT_TEXT: Record<number, "text" | "contentDescription" | "hint" | "className" | "packageName"> = {
+  [TextProperty.PROPERTY_TEXT]: "text",
+  [TextProperty.PROPERTY_CONTENT_DESCRIPTION]: "contentDescription",
+  [TextProperty.PROPERTY_HINT]: "hint",
+  [TextProperty.PROPERTY_CLASS_NAME]: "className",
+  [TextProperty.PROPERTY_PACKAGE_NAME]: "packageName",
+};
+
+/** What [state] had for a property, resource or flag part; undefined for relations and combinations. */
+function observed(part: Node, state: ElementSnapshot | undefined): string | undefined {
+  if (!state) return undefined;
+  const kind = part.kind;
+  const text = (v: string | undefined) => (v === undefined ? "none" : quote(v));
+  if (kind.case === "match" && SNAPSHOT_TEXT[kind.value.property]) return text(state[SNAPSHOT_TEXT[kind.value.property]]);
+  if (kind.case === "resource") return text(state.resourceName);
+  if (kind.case === "flag") {
+    const name = NodeFlag[kind.value.property]?.replace("FLAG_", "").toLowerCase().replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+    const flag = name ? (state as unknown as Record<string, unknown>)[name] : undefined;
+    return typeof flag === "boolean" ? String(flag) : undefined;
+  }
+  return undefined;
 }
 
 /** One line: `Set text res("email") ← "ada@…" · NOT_FOUND`. */

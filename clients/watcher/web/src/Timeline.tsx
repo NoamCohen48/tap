@@ -152,9 +152,18 @@ function Details({ action, onClose }: { action: Action; onClose: () => void }) {
         </button>
       </header>
       {action.failed ? (
-        <p className="outcome-line bad">
-          <Icon.Alert /> <strong>{described.outcome}</strong> {described.detail}
-        </p>
+        <>
+          <p className="outcome-line bad">
+            <Icon.Alert /> <strong>{described.outcome}</strong> {described.detail}
+          </p>
+          {described.why.length > 0 && (
+            <ul className="why" aria-label="Why it failed">
+              {described.why.map((line, i) => (
+                <li key={i}>{line}</li>
+              ))}
+            </ul>
+          )}
+        </>
       ) : (
         <p className="outcome-line ok">
           <Icon.Check /> Succeeded
