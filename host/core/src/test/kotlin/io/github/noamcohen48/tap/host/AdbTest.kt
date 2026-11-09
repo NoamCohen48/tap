@@ -542,6 +542,50 @@ class AdbTest {
         }
 
     @Test
+    fun `a driver receiver broadcast that reached no receiver is sent again, a receiver failure is not`() =
+        runBlocking {
+            var locale = "de-DE"
+            val answers = ArrayDeque<String>()
+            var broadcasts = 0
+            val adb =
+                testAdb(
+                    ProcessStarter { command ->
+                        val out =
+                            when {
+                                "broadcast" in command -> {
+                                    broadcasts++
+                                    val answer = answers.removeFirst()
+                                    if (answer == "1") locale = command.last().trim('\'')
+                                    "Broadcasting: Intent { flg=0x20 }\nBroadcast completed: result=$answer"
+                                }
+                                "system_locales" in command -> locale
+                                else -> ""
+                            }
+                        FakeProcess(stdout = out)
+                    },
+                )
+            // The driver process the first broadcast started was being killed: no receiver answered.
+            answers += listOf("0", "1")
+            adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "en-US")))
+            assertEquals(2, broadcasts)
+            assertEquals("en-US", locale)
+
+            // Never answered: the restore fails after the last attempt, naming it.
+            broadcasts = 0
+            answers += listOf("0", "0", "0")
+            val unanswered = assertFailsWith<AdbCommandException> { adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "fr-FR"))) }
+            assertEquals(3, broadcasts)
+            assertTrue("result=0 (after 3 attempts)" in unanswered.message.orEmpty(), unanswered.message)
+
+            // The receiver's own failure is its answer: not sent again.
+            broadcasts = 0
+            answers += listOf("2")
+            val failed = assertFailsWith<AdbCommandException> { adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "fr-FR"))) }
+            assertEquals(1, broadcasts)
+            assertTrue(failed.message.orEmpty().endsWith("result=2"), failed.message)
+        }
+
+    @Test
     fun `package presence accepts only successful paths or the known empty absence`() =
         runBlocking {
             val commands = mutableListOf<List<String>>()

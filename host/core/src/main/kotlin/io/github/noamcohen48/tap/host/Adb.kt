@@ -1015,12 +1015,6 @@ open class Adb internal constructor(
     }
 
     /**
-     * Removes the test providers [names] through the driver app's `MockLocationReceiver`, which
-     * needs the mock-location app-op (LocationManager ignores the call silently without it): the
-     * op is allowed first, and restoring goes newest first, so the op's own saved mode is
-     * written back after this.
-     */
-    /**
      * Unbinds the driver's notification listener when Android holds it bound, so the driver's
      * process can end for good: before the driver instrumentation finishes (Android force-stops
      * the package then) and before a force-stop. Android 10 (seen on the SM-J810G) binds a
@@ -1094,29 +1088,18 @@ open class Adb internal constructor(
             }.toSet()
     }
 
+    /**
+     * Removes the test providers [names] through the driver app's `MockLocationReceiver`, which
+     * needs the mock-location app-op (LocationManager ignores the call silently without it): the
+     * op is allowed first, and restoring goes newest first, so the op's own saved mode is
+     * written back after this.
+     */
     private suspend fun removeTestProviders(
         serial: String,
         names: List<String>,
     ) {
         exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "android:mock_location", "allow")
-        val command =
-            listOf(
-                "shell",
-                "am",
-                "broadcast",
-                "-f",
-                "32",
-                "-n",
-                "$DRIVER_PACKAGE/.MockLocationReceiver",
-                "--es",
-                "remove",
-                shellQuote(names.joinToString(",")),
-            )
-        val output = exec(serial, *command.toTypedArray())
-        if (!output.contains("Broadcast completed: result=1")) {
-            val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
-            throw AdbCommandException(serial, command, null, output, "Removing the mock location providers on $serial failed: $reason")
-        }
+        driverBroadcast(serial, "MockLocationReceiver", "remove", names.joinToString(","), "Removing the mock location providers")
     }
 
     /**
@@ -1130,24 +1113,39 @@ open class Adb internal constructor(
     ) {
         exec(serial, "shell", "pm", "grant", DRIVER_PACKAGE, "android.permission.CHANGE_CONFIGURATION")
         exec(serial, "shell", "appops", "set", DRIVER_PACKAGE, "WRITE_SETTINGS", "allow")
+        driverBroadcast(serial, "SystemLocaleReceiver", "locales", tags, "Setting the device locale")
+    }
+
+    /**
+     * Sends one of the driver app's receivers [extra]=[value] and requires its `result=1`.
+     *
+     * The driver's receivers always answer 1 (done) or 2 (failed, with the reason as data), so a
+     * `result=0` is `am broadcast`'s own initial code: the broadcast reached no live receiver,
+     * because the driver process it started was being killed (Android force-stops the package as
+     * an instrumentation ends, and the detach that restores state follows one). The receivers'
+     * work is idempotent, so that answer is sent again, up to [DRIVER_BROADCAST_ATTEMPTS] times;
+     * a receiver's own failure is not.
+     */
+    private suspend fun driverBroadcast(
+        serial: String,
+        receiver: String,
+        extra: String,
+        value: String,
+        what: String,
+    ) {
         // -f 0x20 (FLAG_INCLUDE_STOPPED_PACKAGES): the driver app may never have run on its own.
-        val command =
-            listOf(
-                "shell",
-                "am",
-                "broadcast",
-                "-f",
-                "32",
-                "-n",
-                "$DRIVER_PACKAGE/.SystemLocaleReceiver",
-                "--es",
-                "locales",
-                shellQuote(tags),
-            )
-        val output = exec(serial, *command.toTypedArray())
-        if (!output.contains("Broadcast completed: result=1")) {
+        val command = listOf("shell", "am", "broadcast", "-f", "32", "-n", "$DRIVER_PACKAGE/.$receiver", "--es", extra, shellQuote(value))
+        var attempt = 1
+        while (true) {
+            val output = exec(serial, *command.toTypedArray())
+            if (output.contains("Broadcast completed: result=1")) return
             val reason = output.lineSequence().firstOrNull { "Broadcast completed" in it }?.trim() ?: output.trim()
-            throw AdbCommandException(serial, command, null, output, "Setting the device locale on $serial failed: $reason")
+            if (!output.contains("Broadcast completed: result=0") || attempt >= DRIVER_BROADCAST_ATTEMPTS) {
+                val tries = if (attempt > 1) " (after $attempt attempts)" else ""
+                throw AdbCommandException(serial, command, null, output, "$what on $serial failed: $reason$tries")
+            }
+            delay(DRIVER_BROADCAST_RETRY_MS * attempt)
+            attempt++
         }
     }
 
@@ -1803,6 +1801,12 @@ internal fun parseAdbDevices(text: String): List<AdbDevice> =
 private val WHITESPACE = Regex("\\s+")
 private const val LISTENER_UNBIND_TIMEOUT_MS = 5_000L
 private const val LISTENER_UNBIND_POLL_MS = 100L
+
+/** How many times a driver receiver broadcast that reached no receiver (`result=0`) is sent. */
+private const val DRIVER_BROADCAST_ATTEMPTS = 3
+
+/** The pause before a resent receiver broadcast, times the attempt number. */
+private const val DRIVER_BROADCAST_RETRY_MS = 500L
 private val TOP_RESUMED = Regex("topResumedActivity=ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
 private val RESUMED = Regex("mResumedActivity: ActivityRecord\\{\\S+ u\\d+ ([^/\\s]+)/([^\\s}]+)")
 private val MOCK_PROVIDER = Regex("([A-Za-z0-9_]+) provider \\[mock\\]:")

@@ -284,7 +284,12 @@ receiver in the driver app, `SystemLocaleReceiver`, protected by
 The host grants the driver `CHANGE_CONFIGURATION` (`pm grant`) and `WRITE_SETTINGS`
 (`appops set … WRITE_SETTINGS allow`; without it `updatePersistentConfiguration` throws), then
 `am broadcast -f 32 -n <driver>/.SystemLocaleReceiver --es locales <tags>` and requires
-`result=1`. The receiver does what Settings' language picker does:
+`result=1`. Both driver receivers always answer 1 or 2, so a `result=0` is `am broadcast`'s own
+initial code: no live receiver answered (the driver process was being killed or replaced, seen
+on the emulator while another tool reinstalled the driver between sessions, which quarantined
+the device with the mock providers and the test's locale left in place). The host sends such a
+broadcast again, up to three times, 0.5 s then 1 s apart; a receiver's own `result=2` is final.
+The receiver does what Settings' language picker does:
 `ActivityManager.getService().getConfiguration()`, `setLocales`, `userSetLocale = true`,
 `updatePersistentConfiguration` — synchronous, so the read-back follows directly. The hidden
 methods are looked up on the `android.app.IActivityManager` interface (allowed); the same lookup
