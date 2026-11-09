@@ -288,12 +288,13 @@ def _selector_problems(step: studio.Step) -> list[str]:
     messages = [step]
     while messages:
         message = messages.pop()
-        if isinstance(message, tap.Selector):
+        # A bare Node is a wait's until condition: bounded like a selector's tree.
+        if isinstance(message, (tap.Selector, tap.Node)):
             if message.ByteSize() > 65536:
                 return ["selector exceeds 64 KiB"]
-            if message.WhichOneof("pick") == "at" and message.at.index > 2147483647:
+            if isinstance(message, tap.Selector) and message.WhichOneof("pick") == "at" and message.at.index > 2147483647:
                 return ["selector index must be 0..2147483647"]
-            nodes = [(message.node, 1)]
+            nodes = [(message.node if isinstance(message, tap.Selector) else message, 1)]
             count = 0
             while nodes:
                 node, depth = nodes.pop()
@@ -420,8 +421,28 @@ def _wait(step: studio.WaitStep, used: set[str]) -> list[str]:
     problems = [] if step.selector.HasField("node") else ["wait.selector has no node"]
     if step.condition == studio.CONDITION_UNSPECIFIED:
         return [*problems, "wait.condition is required"]
+    if step.condition == studio.CONDITION_UNTIL:
+        if step.WhichOneof("value") != "until" or step.until.WhichOneof("kind") is None:
+            return [*problems, "CONDITION_UNTIL needs an until condition"]
+        if _node_count(step.selector.node) + _node_count(step.until) > 256:
+            return [*problems, "wait.selector and wait.until exceed 256 nodes together"]
+        return problems
     takes = "text" if step.condition in _TEXT_CONDITIONS else "count" if step.condition == studio.CONDITION_COUNT else None
     return problems + _value(step, studio.Condition.Name(step.condition), takes)
+
+
+def _node_count(node: tap.Node) -> int:
+    """The nodes in ``node``'s tree, counted iteratively (stops past 256: only the bound matters)."""
+    nodes, count = [node], 0
+    while nodes and count <= 256:
+        current = nodes.pop()
+        count += 1
+        which = current.WhichOneof("kind")
+        if which in ("all_of", "any_of"):
+            nodes.extend(getattr(current, which).nodes)
+        elif which == "related":
+            nodes.append(current.related.node)
+    return count
 
 
 def _assertion(step: studio.AssertionStep, used: set[str]) -> list[str]:

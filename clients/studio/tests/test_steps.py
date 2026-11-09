@@ -218,6 +218,7 @@ def test_secret_typing_marks_input_sensitive_on_every_run(daemon, device, skip_f
         ("CONDITION_TEXT_EQUALS", {"text": "Wool socks"}, ["wait_state"]),
         ("CONDITION_TEXT_CONTAINS", {"text": "Wool"}, ["wait_state"]),
         ("CONDITION_COUNT", {"count": 1}, ["count"]),
+        ("CONDITION_UNTIL", {"until": {"flag": {"property": "FLAG_ENABLED", "value": True}}}, ["wait_state"]),
     ],
 )
 def test_a_wait_is_the_sdk_wait_of_the_same_name(daemon, device, condition, value, ops):

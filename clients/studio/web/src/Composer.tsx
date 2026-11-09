@@ -8,12 +8,12 @@ import { DeviceControls } from "./DeviceControls";
 import { describeSelector } from "./describe";
 import { RangeType, StandardAction, type Direction } from "./gen/command_pb";
 import { SelectorCandidateSchema, type ScreenNode } from "./gen/device_pb";
-import { SelectorSchema } from "./gen/selector_pb";
+import { SelectorSchema, type Node } from "./gen/selector_pb";
 import { Check, Condition, SelectorOrigin, type PerformRequest } from "./gen/studio_pb";
 import { isEditable, isScrollable, scrollableAround, shortClass, tapLabel } from "./geometry";
 import { Arrow } from "./icons";
 import { assertsFor, candidateChips, looksDynamic, waitsFor } from "./nodes";
-import { parseSelector } from "./parse";
+import { parseCondition, parseSelector } from "./parse";
 import type { Intent } from "./ScreenView";
 import * as steps from "./steps";
 import type { Target } from "./steps";
@@ -671,6 +671,46 @@ function ValueChecks({
   );
 }
 
+/** A wait until the element satisfies a typed condition: `ElementWait.until`, all parts at once. */
+function UntilCondition({ usable, verb, onUntil }: { usable: boolean; verb: string; onUntil: (until: Node) => void }) {
+  const id = useId();
+  const [typed, setTyped] = useState("");
+  const parsed = useMemo(() => (typed.trim() ? parseCondition(typed) : null), [typed]);
+  const bad = !!parsed && "error" in parsed;
+  return (
+    <form
+      className="crow"
+      aria-label={`${verb} condition`}
+      onSubmit={(e) => {
+        e.preventDefault();
+        if (parsed && "condition" in parsed) onUntil(parsed.condition);
+      }}
+    >
+      <label className="rl" htmlFor={`${id}-until`}>
+        Condition
+      </label>
+      <div className="actions">
+        <input
+          id={`${id}-until`}
+          className="grow mono"
+          value={typed}
+          spellCheck={false}
+          placeholder={'e.g. enabled() and text("Pay")'}
+          aria-invalid={bad}
+          aria-describedby={`${id}-until-why`}
+          onChange={(e) => setTyped(e.target.value)}
+        />
+        <button type="submit" className="btn wait" disabled={!usable || !parsed || bad}>
+          {verb}
+        </button>
+      </div>
+      <div id={`${id}-until-why`} className={`why${bad ? " bad" : ""}`} aria-live="polite">
+        {parsed && "error" in parsed ? `${parsed.error} (at ${parsed.at + 1})` : "Every part holds on this element at the same moment."}
+      </div>
+    </form>
+  );
+}
+
 function AssertOnElement({
   node,
   target,
@@ -748,6 +788,7 @@ function WaitOnElement({
         onText={(text, contains) => onPerform(steps.wait(target, { condition: contains ? Condition.TEXT_CONTAINS : Condition.TEXT_EQUALS, text }))}
         onCount={(count) => onPerform(steps.wait(target, { condition: Condition.COUNT, count }))}
       />
+      <UntilCondition usable={usable} verb={verb} onUntil={(until) => onPerform(steps.wait(target, { condition: Condition.UNTIL, until }))} />
     </Group>
   );
 }

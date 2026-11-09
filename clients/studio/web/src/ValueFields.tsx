@@ -4,11 +4,11 @@
 
 import { create, ScalarType, type DescField, type DescMessage, type DescOneof } from "@bufbuild/protobuf";
 import { useState } from "react";
-import { describeSelector } from "./describe";
+import { describeCondition, describeSelector } from "./describe";
 import { AppCallSchema, DeviceCallSchema } from "./gen/event_log_pb";
 import { CommandSchema, type Command } from "./gen/command_pb";
-import { Check, Condition, DeviceAssertionStepSchema, type Step } from "./gen/studio_pb";
-import { parseSelector } from "./parse";
+import { Check, Condition, DeviceAssertionStepSchema, type Step, type WaitStep } from "./gen/studio_pb";
+import { parseCondition, parseSelector } from "./parse";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Values = Record<string, any>;
@@ -85,6 +85,34 @@ function Scalar({ field, label, values, name, onChange }: { field: DescField; la
         }}
       />
     </label>
+  );
+}
+
+/** A wait's `until` condition, typed in the selector DSL; it changes when it parses. */
+function UntilField({ step, onChange }: { step: WaitStep; onChange: () => void }) {
+  const [typed, setTyped] = useState(step.value.case === "until" ? describeCondition(step.value.value) : "");
+  const parsed = typed.trim() ? parseCondition(typed) : { error: "type the condition, e.g. enabled() and text(\"Pay\")", at: 0 };
+  return (
+    <>
+      <label className="field">
+        <span>Until</span>
+        <input
+          className="mono"
+          spellCheck={false}
+          value={typed}
+          aria-invalid={"error" in parsed}
+          onChange={(e) => {
+            setTyped(e.target.value);
+            const next = e.target.value.trim() ? parseCondition(e.target.value) : null;
+            if (next && "condition" in next) {
+              step.value = { case: "until", value: next.condition };
+              onChange();
+            }
+          }}
+        />
+      </label>
+      {"error" in parsed && <div className="count-line warn">{`${parsed.error}${typed.trim() ? ` (at ${parsed.at + 1})` : ""}`}</div>}
+    </>
   );
 }
 
@@ -349,8 +377,17 @@ function Expectation({ step, parameters, onChange }: { step: Step; parameters: r
             else (value as { check: number }).check = next;
             const text = wait ? TEXT_CONDITIONS.includes(next) : TEXT_CHECKS.includes(next);
             const count = next === (wait ? Condition.COUNT : Check.COUNT);
+            const until = wait && next === Condition.UNTIL;
             const before = value.value;
-            value.value = text ? (before.case === "text" || before.case === "parameter" ? before : { case: "text", value: "" }) : count ? { case: "count", value: before.case === "count" ? before.value : 0 } : { case: undefined };
+            value.value = text
+              ? before.case === "text" || before.case === "parameter"
+                ? before
+                : { case: "text", value: "" }
+              : count
+                ? { case: "count", value: before.case === "count" ? before.value : 0 }
+                : until && before.case === "until"
+                  ? before
+                  : { case: undefined };
             onChange();
           }}
         >
@@ -392,6 +429,7 @@ function Expectation({ step, parameters, onChange }: { step: Step; parameters: r
           />
         </label>
       )}
+      {wait && chosen === Condition.UNTIL && step.kind.case === "wait" && <UntilField step={step.kind.value} onChange={onChange} />}
       {takesCount && (
         <label className="field">
           <span>Expected count</span>

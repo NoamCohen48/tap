@@ -312,6 +312,8 @@ def _wait(writer: _Writer, step: studio.WaitStep) -> list[str]:
         return [f"{wait}.text_contains({_expected(step)})"]
     if step.condition == studio.CONDITION_COUNT:
         return [f"{wait}.count({step.count})"]
+    if step.condition == studio.CONDITION_UNTIL:
+        return [f"{wait}.until({writer.selector(tap.Selector(node=step.until))})"]
     raise ExportError(f"cannot export the wait condition {step.condition}")
 
 

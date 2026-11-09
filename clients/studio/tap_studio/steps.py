@@ -386,6 +386,7 @@ def _wait(device: Device, step: studio.WaitStep) -> None:
         studio.CONDITION_TEXT_EQUALS: lambda: wait.text_equals(step.text),
         studio.CONDITION_TEXT_CONTAINS: lambda: wait.text_contains(step.text),
         studio.CONDITION_COUNT: lambda: wait.count(step.count),
+        studio.CONDITION_UNTIL: lambda: wait.until(Selector.from_proto(tap.Selector(node=step.until))),
     }
     conditions[step.condition]()
 

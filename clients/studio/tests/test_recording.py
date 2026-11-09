@@ -252,6 +252,11 @@ def test_type_step_rules():
         ("CONDITION_COUNT", {"count": -1}, False),
         ("CONDITION_COUNT", {"text": "3"}, False),
         ("CONDITION_ENABLED", {}, True),
+        ("CONDITION_UNTIL", {"until": {"flag": {"property": "FLAG_ENABLED", "value": True}}}, True),
+        ("CONDITION_UNTIL", {}, False),
+        ("CONDITION_UNTIL", {"until": {}}, False),
+        ("CONDITION_UNTIL", {"text": "Pay"}, False),
+        ("CONDITION_VISIBLE", {"until": {"flag": {"property": "FLAG_ENABLED", "value": True}}}, False),
         ("CONDITION_UNSPECIFIED", {}, False),
     ],
 )
@@ -330,3 +335,15 @@ def test_dumps_refuses_an_invalid_recording():
         dumps(recording)
     with pytest.raises(RecordingError):
         validate(recording)
+
+
+def test_a_wait_condition_shares_the_selector_node_bound():
+    """The driver allows 256 nodes for a state wait's selector and condition together."""
+
+    def chain(n: int) -> dict:
+        return {"any_of": {"nodes": [{"resource": {"name": f"r{i}"}} for i in range(n - 1)]}}
+
+    fits = with_steps({"id": "a", "wait": {"selector": {"node": chain(128)}, "condition": "CONDITION_UNTIL", "until": chain(128)}})
+    loads(text(fits))
+    over = with_steps({"id": "a", "wait": {"selector": {"node": chain(128)}, "condition": "CONDITION_UNTIL", "until": chain(129)}})
+    rejects(over, "wait.selector and wait.until exceed 256 nodes together")

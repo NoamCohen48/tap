@@ -2,7 +2,7 @@ import { create, equals } from "@bufbuild/protobuf";
 import { describe, expect, it } from "vitest";
 import { describeSelector } from "./describe";
 import { MatchMode, NodeFlag, Relation, SelectorSchema, TextProperty, type Selector } from "./gen/selector_pb";
-import { parseSelector } from "./parse";
+import { parseCondition, parseSelector } from "./parse";
 
 function parsed(text: string): Selector {
   const result = parseSelector(text);
@@ -92,5 +92,22 @@ describe("parseSelector", () => {
     expect(error('rawRes("a")')).toBe("unknown selector rawRes(…)");
     expect(error('res("a") res("b")')).toBe("the end was expected, not “res”");
     expect(error("")).toBe("a name was expected, not the end");
+  });
+});
+
+describe("parseCondition", () => {
+  it("reads a condition as a node without a pick", () => {
+    const result = parseCondition('enabled() and text("Pay")');
+    if (!("condition" in result)) throw new Error(result.error);
+    expect(result.condition.kind.case).toBe("allOf");
+    const nodes = result.condition.kind.case === "allOf" ? result.condition.kind.value.nodes : [];
+    expect(nodes.map((n) => n.kind.case)).toEqual(["flag", "match"]);
+  });
+
+  it("refuses a pick, which belongs on the selector, and passes parse errors on", () => {
+    const picked = parseCondition('text("Pay").first()');
+    expect("error" in picked && picked.error).toMatch(/put the pick on the selector/);
+    const broken = parseCondition("enabled(");
+    expect("error" in broken).toBe(true);
   });
 });

@@ -62,6 +62,10 @@ name the components affected. Earlier releases used independent version lines. T
   error, the selector parts that ruled every node out (each part alone and without it, with the
   values seen) or, for a state wait that timed out, which parts of the condition held and what
   the node had.
+- Tap Studio waits until a typed condition holds. The Wait tab's **Condition** row and the
+  step editor take a condition in the selector syntax (`enabled() and text("Pay")`), recorded as
+  `CONDITION_UNTIL` with `WaitStep.until` in `tap-recording/2`, replayed and exported as
+  `wait(…).until(…)`. Together with the selector it is bounded to 256 nodes, as on the device.
 
 ## 0.1.0 — 2026-11-08
 
