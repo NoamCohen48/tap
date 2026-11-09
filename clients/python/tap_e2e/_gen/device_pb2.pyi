@@ -50,18 +50,22 @@ NODE_UNCHANGED: NodeChange
 NODE_REMOVED: NodeChange
 
 class DeviceEntry(_message.Message):
-    __slots__ = ("serial", "state", "client_connection_id", "quarantine_reason", "properties")
+    __slots__ = ("serial", "state", "client_connection_id", "quarantine_reason", "properties", "retry_on_attach", "under_inspection")
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     STATE_FIELD_NUMBER: _ClassVar[int]
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
     PROPERTIES_FIELD_NUMBER: _ClassVar[int]
+    RETRY_ON_ATTACH_FIELD_NUMBER: _ClassVar[int]
+    UNDER_INSPECTION_FIELD_NUMBER: _ClassVar[int]
     serial: str
     state: DeviceState
     client_connection_id: str
     quarantine_reason: str
     properties: DeviceProperties
-    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., client_connection_id: _Optional[str] = ..., quarantine_reason: _Optional[str] = ..., properties: _Optional[_Union[DeviceProperties, _Mapping]] = ...) -> None: ...
+    retry_on_attach: bool
+    under_inspection: bool
+    def __init__(self, serial: _Optional[str] = ..., state: _Optional[_Union[DeviceState, str]] = ..., client_connection_id: _Optional[str] = ..., quarantine_reason: _Optional[str] = ..., properties: _Optional[_Union[DeviceProperties, _Mapping]] = ..., retry_on_attach: _Optional[bool] = ..., under_inspection: _Optional[bool] = ...) -> None: ...
 
 class DeviceProperties(_message.Message):
     __slots__ = ("api_level", "manufacturer", "model", "emulator")
@@ -79,6 +83,24 @@ class ListDevicesRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
+class UnquarantineRequest(_message.Message):
+    __slots__ = ("serial",)
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    def __init__(self, serial: _Optional[str] = ...) -> None: ...
+
+class UnquarantineResponse(_message.Message):
+    __slots__ = ("was_quarantined", "quarantine_reason", "cleaned", "remaining")
+    WAS_QUARANTINED_FIELD_NUMBER: _ClassVar[int]
+    QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
+    CLEANED_FIELD_NUMBER: _ClassVar[int]
+    REMAINING_FIELD_NUMBER: _ClassVar[int]
+    was_quarantined: bool
+    quarantine_reason: str
+    cleaned: _containers.RepeatedScalarFieldContainer[str]
+    remaining: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, was_quarantined: _Optional[bool] = ..., quarantine_reason: _Optional[str] = ..., cleaned: _Optional[_Iterable[str]] = ..., remaining: _Optional[_Iterable[str]] = ...) -> None: ...
+
 class ListDevicesResponse(_message.Message):
     __slots__ = ("devices",)
     DEVICES_FIELD_NUMBER: _ClassVar[int]
@@ -86,30 +108,34 @@ class ListDevicesResponse(_message.Message):
     def __init__(self, devices: _Optional[_Iterable[_Union[DeviceEntry, _Mapping]]] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
-    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms")
+    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms", "inspect_quarantined")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     SKIP_DRIVER_INSTALL_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
+    INSPECT_QUARANTINED_FIELD_NUMBER: _ClassVar[int]
     client_connection_id: str
     serial: str
     skip_driver_install: bool
     default_timeout_ms: int
     lease_timeout_ms: int
-    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ...) -> None: ...
+    inspect_quarantined: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ..., inspect_quarantined: _Optional[bool] = ...) -> None: ...
 
 class AttachResponse(_message.Message):
-    __slots__ = ("attached_device_id", "serial", "generation", "device_info")
+    __slots__ = ("attached_device_id", "serial", "generation", "device_info", "quarantine_reason")
     ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     GENERATION_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
+    QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
     attached_device_id: str
     serial: str
     generation: int
     device_info: _command_pb2.DeviceInfo
-    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., generation: _Optional[int] = ..., device_info: _Optional[_Union[_command_pb2.DeviceInfo, _Mapping]] = ...) -> None: ...
+    quarantine_reason: str
+    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., generation: _Optional[int] = ..., device_info: _Optional[_Union[_command_pb2.DeviceInfo, _Mapping]] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
 
 class DetachRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id")

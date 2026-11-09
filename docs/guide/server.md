@@ -12,6 +12,7 @@ tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
 tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
+tap unquarantine --serial SERIAL [--state-dir DIR] [--adb PATH]
 tap version
 ```
 
@@ -28,6 +29,7 @@ tap version
 | `status` | prints `running 127.0.0.1:PORT pid=… version=… adb=…` (never the token); exit 1 when no server is running |
 | `stop` | terminates the server recorded in `daemon.json` after it answered an authenticated call; a stale file is removed and nothing is signalled |
 | `doctor` | checks the server and every device ADB lists (or `--serial`) for what a session that is no longer running left behind; `--fix` cleans it up. See [Cleaning up after a crash](#cleaning-up-after-a-crash) |
+| `unquarantine` | puts a quarantined device back in service once you have checked it, after retrying the cleanup; prints why it was quarantined and what is still off. See [The devices](#the-devices) |
 
 One server per machine is the intended setup; every test process on that machine connects to
 it. Two servers with different `--state-dir`s are isolated from each other (separate journals
@@ -75,7 +77,8 @@ run `tap doctor --fix` to clean up what ended sessions left
 forwards to Tap's device ports (never anyone else's), closes the journal and puts back the
 settings the session saved. A device that a live session holds, from any server or process, is
 skipped and never touched, so it is safe to run while tests are running. A quarantined device is
-reported with the journal file to remove and is never cleared: that stays your decision.
+reported with its reason and never cleared (`tap unquarantine` does that, your decision), except
+one Tap can prove clean again: see [The devices](#the-devices).
 `doctor` exits 1 while something is left unfixed or a device is quarantined.
 
 ## Who starts it
@@ -127,14 +130,36 @@ for d in TapClient.create().devices():
 
 Each device is `FREE`, `LEASED` (with the connection holding it, when it is one of this
 server's), `OFFLINE`, `UNAUTHORIZED` (ADB lists it but the device has not accepted this
-machine's key), or `QUARANTINED` with a reason. Only `FREE` and `LEASED` devices can be
-attached; a `LEASED` one waits until its holder lets go.
+machine's key), or `QUARANTINED` with a reason. Only `FREE` and `LEASED` devices, and
+`QUARANTINED` ones with `retry_on_attach`, can be attached; a `LEASED` one waits until its
+holder lets go.
 
 A device is quarantined when a session could not leave it provably clean: the driver could not
-be stopped, the journal is corrupt, the boot identity changed under an active session, or a
-mutation may still be in flight. It stays out of circulation until you have checked the device
-and removed its journal record from `~/.tap/sessions/` (one `<base64url(serial)>.json` per
-device). Nothing is retried or reset behind your back.
+be stopped, the journal is corrupt, the boot identity changed under an active session, a
+mutation may still be in flight, or a setting the session changed did not read back when it was
+put back. That last one Tap can prove later by itself: the device is listed with
+`retry_on_attach`, and the next attach (or `tap doctor --fix`) writes the settings again and,
+once they read back, uses the device as usual. Any other quarantine keeps the device out of
+circulation until you have checked it and put it back yourself: Tap never lifts what it cannot
+prove.
+
+```bash
+tap doctor                          # lists quarantined devices and why
+tap unquarantine --serial 85e49002  # once you have checked the phone
+```
+
+To look at a quarantined phone first (or let an agent look and fix it), attach it with
+`inspect_quarantined` (Kotlin `DeviceOptions(inspectQuarantined = true)`, Python
+`attach_device(serial, inspect_quarantined=True)`, `tap-agent attach SERIAL --quarantined`,
+**Inspect** in Tap Studio): screenshots, snapshots, taps and settings work as usual, and Tap still puts
+back what sessions changed before the quarantine when you detach. Detaching leaves the device
+quarantined for the same reason, so no test picks it up until you unquarantine it. ListDevices
+shows it as `under_inspection` meanwhile.
+
+`tap unquarantine` (or `unquarantine(serial)` in the clients) stops any leftover driver,
+removes Tap's port forwards and writes back the settings the session saved, then puts the device
+back in service and prints what it could not put right. It refuses a device another session
+holds.
 
 ## What a session puts back
 

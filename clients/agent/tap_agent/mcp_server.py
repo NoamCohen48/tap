@@ -109,6 +109,15 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         serial: Annotated[str, Field(description="Device serial from `devices`.")],
         idle_minutes: Annotated[float, Field(gt=0, description="End the session after this long unused.")] = 15,
         wait_for_device_seconds: Annotated[float, Field(ge=0, description="Wait this long for a device another session holds.")] = 0,
+        inspect_quarantined: Annotated[
+            bool,
+            Field(
+                description=(
+                    "Attach a QUARANTINED device to inspect and fix it (screenshots, snapshots, actions). "
+                    "It stays quarantined after detach until `unquarantine`. Never run tests on it."
+                )
+            ),
+        ] = False,
         session: Session = "",
     ) -> CallToolResult:
         """Attach a device to the session, creating the session if needed. Call this first."""
@@ -118,8 +127,18 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
                 serial,
                 idle=idle_minutes * 60,
                 wait_for_device=wait_for_device_seconds,
+                inspect_quarantined=inspect_quarantined,
             ),
         )
+
+    @mcp.tool(name="unquarantine")
+    async def unquarantine(
+        serial: Annotated[str, Field(description="Serial of a QUARANTINED device from `devices`.")],
+    ) -> CallToolResult:
+        """Put a quarantined device back in service, once you (or the user) checked it is in a good
+        state, for example after attaching it with inspect_quarantined and detaching. Retries its
+        cleanup first and says what is still off. Ask the user first when you did not check it."""
+        return await call("", lambda a: a.unquarantine(serial))
 
     @mcp.tool(name="sessions", annotations=READ_ONLY)
     async def sessions() -> CallToolResult:

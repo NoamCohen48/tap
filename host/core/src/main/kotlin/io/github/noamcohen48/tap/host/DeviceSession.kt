@@ -43,6 +43,13 @@ data class DeviceSessionConfig(
     /** How long to wait for another session's lock on this serial before giving up (0 = fail at once). */
     val leaseTimeoutMs: Long = 0,
     /**
+     * Attach even when the device is quarantined, to inspect (and fix) it: the session works as
+     * usual, but it starts with the quarantine's unrestored saved state and the device goes back
+     * to QUARANTINED when it closes ([DeviceSession.inspectedQuarantine]). A quarantine that waits
+     * for a reboot reset (`resetRequired`) is still refused.
+     */
+    val inspectQuarantined: Boolean = false,
+    /**
      * Decides, once the per-serial lock is held, whether [driverApk]/[driverTestApk] are installed
      * for this open. Callers that skip an install they consider current (the daemon compares the
      * installed APKs' digests) must decide here, not before the lock: another open of the serial
@@ -96,7 +103,12 @@ class DeviceSession private constructor(
 
     /** Guards [savedState] and the journal writes that persist it. */
     private val savedStateMutex = Mutex()
-    private val savedState = mutableListOf<SavedState>()
+
+    // Starts with what a quarantine left unrestored, so detach puts back the values from before it.
+    private val savedState = journal.savedState.toMutableList()
+
+    /** Why the device was quarantined when this session attached it to inspect it; null otherwise. */
+    val inspectedQuarantine: String? get() = journal.inspectedQuarantine
     private var cachedApiLevel: Int? = null
 
     private val reapUncertain = AtomicReference<AdbReapUncertainException?>()
@@ -289,6 +301,17 @@ class DeviceSession private constructor(
         withContext(NonCancellable) {
             if (!closeStarted.compareAndSet(false, true)) return@withContext
             var firstFailure: Throwable? = null
+            // Whether every failure was a saved-state restore that did not read back: the next
+            // attach can then retry it (SessionJournal.restoreRetryable).
+            var onlyRestoreFailed = true
+            val failed: (Throwable) -> Unit = { error ->
+                firstFailure = firstFailure ?: error
+                onlyRestoreFailed = false
+            }
+            val restoreFailed: (Throwable) -> Unit = { error ->
+                // An ADB child the restore could not reap may still change the device later.
+                if (findReapUncertain(error) != null) failed(error) else firstFailure = firstFailure ?: error
+            }
             var clientPoison: Throwable? = null
             val finished =
                 withTimeoutOrNull(timeoutMs) {
@@ -297,7 +320,7 @@ class DeviceSession private constructor(
                     // lease handoff or final CLOSED can race a late poison. The drain shares this
                     // bound and quarantines on expiry.
                     val drainFailure = awaitAdmittedOperations(timeoutMs)
-                    if (drainFailure != null) firstFailure = firstFailure ?: drainFailure
+                    if (drainFailure != null) failed(drainFailure)
                     // Read before client.close(): a deliberate close never poisons, so this is
                     // exactly "the transport failed while the session was in use".
                     clientPoison = if (client.isPoisoned) client.poisonCause ?: IllegalStateException("poisoned") else null
@@ -305,30 +328,24 @@ class DeviceSession private constructor(
                     // as cancellation (finished == null below), never as a recorded failure.
                     // Before the driver ends: Android force-stops the package when the instrumentation
                     // finishes, and a listener bound then comes back (Adb.releaseDriverNotificationListener).
-                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) { adb.releaseDriverNotificationListener(serial) }
-                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) { client.close() }
-                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
-                        restoreSavedState()
-                    }
-                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
-                        adb.removeForward(serial, hostPort)
-                    }
-                    cleanupStep({ error -> firstFailure = firstFailure ?: error }) {
+                    cleanupStep(failed) { adb.releaseDriverNotificationListener(serial) }
+                    cleanupStep(failed) { client.close() }
+                    cleanupStep(restoreFailed) { restoreSavedState() }
+                    cleanupStep(failed) { adb.removeForward(serial, hostPort) }
+                    var instrumentationGone = false
+                    cleanupStep(failed) {
                         cleanupInstrumentation(adb, serial, running)
-                        // UiAutomation.disconnect restores Android's own rotation snapshot. A
-                        // closed protocol socket does not prove that disconnect has finished.
-                        // Put our saved rotation back only after instrumentation is gone; if
-                        // cleanup fails, leave these entries journaled instead of claiming restore.
-                        restoreSavedState(rotation = true)
+                        instrumentationGone = true
                     }
+                    // UiAutomation.disconnect restores Android's own rotation snapshot. A closed
+                    // protocol socket does not prove that disconnect has finished. Put our saved
+                    // rotation back only after instrumentation is gone; if cleanup fails, leave
+                    // these entries journaled instead of claiming restore.
+                    if (instrumentationGone) cleanupStep(restoreFailed) { restoreSavedState(rotation = true) }
                     true
                 }
             if (finished == null) {
-                firstFailure =
-                    firstFailure ?: DeviceQuarantinedException(
-                        serial,
-                        "Session cleanup on $serial exceeded ${timeoutMs}ms; device quarantined",
-                    )
+                failed(DeviceQuarantinedException(serial, "Session cleanup on $serial exceeded ${timeoutMs}ms; device quarantined"))
             }
             val poison = reapUncertain.get()
             val quarantined = firstFailure != null || poison != null
@@ -336,9 +353,10 @@ class DeviceSession private constructor(
             // BROKEN makes the next open run full recovery (identity-checked driver stop, forward
             // removal, boot check) instead of trusting a clean CLOSED; it does not block the
             // device the way QUARANTINED does, because nothing about the device is unproven.
+            val inspected = journal.inspectedQuarantine
             val state =
                 when {
-                    quarantined -> JournalState.QUARANTINED
+                    quarantined || inspected != null -> JournalState.QUARANTINED
                     clientPoison != null -> JournalState.BROKEN
                     else -> JournalState.CLOSED
                 }
@@ -348,9 +366,14 @@ class DeviceSession private constructor(
                         state = state,
                         // A failed or timed-out restore keeps what is still to put back.
                         savedState = savedState.toList(),
+                        restoreRetryable = inspected == null && quarantined && poison == null && onlyRestoreFailed && savedState.isNotEmpty(),
+                        // An inspected device stays quarantined for the reason it was, and a new
+                        // cleanup failure says both.
                         quarantineReason =
-                            (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" }
+                            (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" + (inspected?.let { was -> " (quarantined before: $was)" } ?: "") }
+                                ?: inspected
                                 ?: clientPoison?.let { "DRIVER_CONNECTION_POISONED: ${it.message}" },
+                        inspectedQuarantine = null,
                         updatedAtEpochMs = System.currentTimeMillis(),
                     ),
                 )
@@ -398,7 +421,21 @@ class DeviceSession private constructor(
             try {
                 val bootId = adb.bootId(serial)
                 observedBootId = bootId
-                val prior = recoverJournal(adb, serial, bootId, store)?.let { restorePriorState(adb, serial, store, it) }
+                val prior =
+                    recoverJournal(adb, serial, bootId, store, inspect = config.inspectQuarantined)?.let {
+                        when {
+                            it.state != JournalState.QUARANTINED -> restorePriorState(adb, serial, store, it)
+                            it.restoreRetryable ->
+                                try {
+                                    retryRestore(adb, serial, store, it)
+                                } catch (still: DeviceQuarantinedException) {
+                                    // Still not reading back: inspecting goes ahead with it.
+                                    if (!config.inspectQuarantined) throw still
+                                    checkNotNull(store.read())
+                                }
+                            else -> it // inspectQuarantined: recoverJournal refuses it otherwise
+                        }
+                    }
                 observedPrior = prior
                 adb.wakeAndDismissKeyguard(serial)
                 if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
@@ -418,6 +455,14 @@ class DeviceSession private constructor(
                         sessionId = sessionId,
                         generation = generation,
                         devicePort = DEVICE_PORT,
+                        // A quarantine's unrestored state carries over; a retryable one (its retry
+                        // just failed) is an ordinary session that restores it, an unproven one an
+                        // inspection that goes back to QUARANTINED.
+                        savedState = prior?.takeIf { it.state == JournalState.QUARANTINED }?.savedState.orEmpty(),
+                        inspectedQuarantine =
+                            prior
+                                ?.takeIf { it.state == JournalState.QUARANTINED && !it.restoreRetryable }
+                                ?.let { it.quarantineReason ?: "QUARANTINED" },
                     )
                 store.write(journal)
 
@@ -536,9 +581,11 @@ class DeviceSession private constructor(
                             store.write(
                                 journal.copy(
                                     state =
-                                        if (!quarantined) JournalState.CLOSED else JournalState.QUARANTINED,
+                                        if (!quarantined && journal.inspectedQuarantine == null) JournalState.CLOSED else JournalState.QUARANTINED,
                                     quarantineReason =
-                                        (cleanupFailure ?: startupUncertain)?.let { "SESSION_START_CLEANUP_UNCERTAIN: ${it.message}" },
+                                        (cleanupFailure ?: startupUncertain)?.let { "SESSION_START_CLEANUP_UNCERTAIN: ${it.message}" }
+                                            ?: journal.inspectedQuarantine,
+                                    inspectedQuarantine = null,
                                     updatedAtEpochMs = System.currentTimeMillis(),
                                 ),
                             )
@@ -592,7 +639,7 @@ internal fun quarantineEarlyOpen(
     val now = System.currentTimeMillis()
     val known: SessionJournal? = prior ?: runCatching { store.read() }.getOrNull()
     if (known != null) {
-        store.write(known.copy(state = JournalState.QUARANTINED, quarantineReason = reason, updatedAtEpochMs = now))
+        store.write(known.copy(state = JournalState.QUARANTINED, quarantineReason = reason, restoreRetryable = false, updatedAtEpochMs = now))
         return
     }
     store.write(
@@ -661,8 +708,9 @@ internal fun findReapUncertain(error: Throwable): AdbReapUncertainException? {
 
 /**
  * Writes back the device state a previous session changed and never restored (its daemon died
- * before detach), then clears it from the journal. A restore that does not take quarantines:
- * the device is not in the state its owner left it in.
+ * before detach, or its restore did not read back), then clears it from the journal. A restore
+ * that does not take quarantines, retryably: the device is not in the state its owner left it in,
+ * and the next attach tries again.
  */
 internal suspend fun restorePriorState(
     adb: Adb,
@@ -679,6 +727,7 @@ internal suspend fun restorePriorState(
             prior.copy(
                 state = JournalState.QUARANTINED,
                 quarantineReason = "DEVICE_STATE_RESTORE_FAILED: ${error.message}",
+                restoreRetryable = true,
                 updatedAtEpochMs = System.currentTimeMillis(),
             ),
         )
@@ -689,4 +738,25 @@ internal suspend fun restorePriorState(
         )
     }
     return prior.copy(savedState = emptyList(), updatedAtEpochMs = System.currentTimeMillis()).also(store::write)
+}
+
+/**
+ * Lifts a [SessionJournal.restoreRetryable] quarantine: [record] is what [recoverJournal] returned
+ * for it (driver stopped, forwards removed). Writes the saved state again; once it reads back, the
+ * journal is CLOSED. Otherwise it stays quarantined, still retryable
+ * ([DeviceQuarantinedException]).
+ */
+internal suspend fun retryRestore(
+    adb: Adb,
+    serial: String,
+    store: SessionJournalStore,
+    record: SessionJournal,
+): SessionJournal {
+    check(record.state == JournalState.QUARANTINED && record.restoreRetryable)
+    return restorePriorState(
+        adb,
+        serial,
+        store,
+        record.copy(state = JournalState.CLOSED, quarantineReason = null, restoreRetryable = false),
+    )
 }

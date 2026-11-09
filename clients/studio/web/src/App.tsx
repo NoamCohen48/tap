@@ -541,6 +541,11 @@ function Workspace({
           <span className="mono">{device.serial}</span>
           <span className="sep">·</span>
           <span>API {device.apiLevel}</span>
+          {device.quarantineReason && (
+            <span className="quarantined" title={`Quarantined: ${device.quarantineReason}. It stays quarantined after you release it; unquarantine it from the device list.`}>
+              Quarantined
+            </span>
+          )}
           <button
             type="button"
             className="iconbtn"

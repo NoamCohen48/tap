@@ -136,9 +136,11 @@ private class FakeOpener : DeviceSessionOpener {
     val openCalls = AtomicInteger(0)
     var openGate: CompletableDeferred<DaemonDeviceSession>? = null
     val queue = ArrayDeque<DaemonDeviceSession>()
+    val configs = java.util.concurrent.CopyOnWriteArrayList<DeviceSessionConfig>()
 
     override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession {
         openCalls.incrementAndGet()
+        configs += config
         entered.trySend(Unit)
         openGate?.let { return it.await() }
         synchronized(queue) {
@@ -320,6 +322,76 @@ class TapDaemonLifecycleTest {
             assertTrue(corrupt is DeviceStatus.Quarantined && corrupt.reason.startsWith("journal unreadable"), "got $corrupt")
             assertEquals(DeviceStatus.Unavailable(AdbDeviceState.OFFLINE, "offline"), offline)
             assertEquals(DeviceStatus.Unavailable(AdbDeviceState.UNAUTHORIZED, "unauthorized"), unauthorized)
+        }
+
+    @Test
+    fun `a quarantine over settings that did not read back is listed as retried on attach`() =
+        runBlocking {
+            val dir = Files.createTempDirectory("tap-daemon-journal")
+            val adb =
+                object : Adb("fake-adb") {
+                    override suspend fun deviceStates(timeoutMs: Long): List<AdbDevice> =
+                        listOf(AdbDevice("retry1", AdbDeviceState.ONLINE, "device"), AdbDevice("stuck1", AdbDeviceState.ONLINE, "device"))
+                }
+            val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = null, log = {}), FakeOpener())
+            fun quarantine(serial: String, retryable: Boolean) =
+                io.github.noamcohen48.tap.host.SessionJournalStore(dir.resolve("sessions"), serial).write(
+                    io.github.noamcohen48.tap.host.SessionJournal(
+                        state = io.github.noamcohen48.tap.host.JournalState.QUARANTINED, serial = serial, bootId = "b", sessionId = "s",
+                        generation = 1, devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT, quarantineReason = "why",
+                        savedState = listOf(io.github.noamcohen48.tap.host.SavedState(io.github.noamcohen48.tap.host.StateKey.FONT_SCALE, "1.1")),
+                        restoreRetryable = retryable,
+                    ),
+                )
+            quarantine("retry1", retryable = true)
+            quarantine("stuck1", retryable = false)
+            assertEquals(
+                listOf(DeviceStatus.Quarantined("why", retryOnAttach = true), DeviceStatus.Quarantined("why")),
+                daemon.devices().map { it.status },
+            )
+        }
+
+    @Test
+    fun `unquarantine refuses a device another session holds and ignores a healthy one`(): Unit =
+        runBlocking {
+            val dir = Files.createTempDirectory("tap-daemon-unquarantine")
+            val daemon = TapDaemon(DaemonConfig(adb = Adb("fake-adb"), stateDir = dir, driver = null, log = {}), FakeOpener())
+            io.github.noamcohen48.tap.host.SessionJournalStore(dir.resolve("sessions"), "held1").acquireLease(0).use {
+                assertFailsWith<io.github.noamcohen48.tap.host.DeviceBusyException> { daemon.unquarantine("held1") }
+            }
+            assertNull(daemon.unquarantine("fresh1"))
+        }
+
+    @Test
+    fun `attach passes inspection through and a held inspection is listed as under inspection`(): Unit =
+        runBlocking {
+            val dir = Files.createTempDirectory("tap-daemon-inspect")
+            val adb =
+                object : Adb("fake-adb") {
+                    override suspend fun deviceStates(timeoutMs: Long): List<AdbDevice> = listOf(AdbDevice("phone", AdbDeviceState.ONLINE, "device"))
+                }
+            val opener = FakeOpener()
+            val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = null, log = {}), opener)
+            val owner = daemon.connectClient("owner")
+            daemon.attachDevice(owner.id, "phone", testOptions().copy(inspectQuarantined = true))
+            assertTrue(opener.configs.single().inspectQuarantined)
+
+            // What an inspecting DeviceSession journals while it holds the lock.
+            val store = io.github.noamcohen48.tap.host.SessionJournalStore(dir.resolve("sessions"), "phone")
+            store.acquireLease(0).use {
+                store.write(
+                    io.github.noamcohen48.tap.host.SessionJournal(
+                        state = io.github.noamcohen48.tap.host.JournalState.READY, serial = "phone", bootId = "b", sessionId = "s",
+                        generation = 2, devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT, inspectedQuarantine = "why",
+                    ),
+                )
+                assertEquals(
+                    DeviceStatus.Quarantined("why", inspected = true, ownerConnectionId = owner.id),
+                    daemon.devices().single().status,
+                )
+            }
+            // The holder is gone (a crashed inspection): plainly quarantined.
+            assertEquals(DeviceStatus.Quarantined("why"), daemon.devices().single().status)
         }
 
     @Test

@@ -13,7 +13,7 @@ into another:
 | `WaitTimeoutError` | a `wait(...)` / `await_until` condition did not hold in time (the device reported `WAIT_TIMEOUT`; any other failure during a wait, such as driver unhealthy or transport lost, is a `CommandError`) |
 | `AppLifecycleError` | install / launch / stop / clear did not reach its verified end state |
 | `DeviceBusyError` | another device session holds the device and attachment did not (or could not) wait long enough |
-| `DeviceQuarantinedError` | the device is out of service until an explicit reset (a mutation whose outcome could not be proven, a corrupt session journal); waiting or retrying does not help |
+| `DeviceQuarantinedError` | the device is out of service (a mutation whose outcome could not be proven, a corrupt session journal, a setting that did not read back) until someone checks it and runs `tap unquarantine`; waiting does not help. A quarantine listed `retry_on_attach` is retried by the next attach |
 | `ServerError` | the server rejected a call (unknown attached device, bad argument, device offline, driver would not start, client connection closed; `UNAUTHENTICATED` = wrong or missing daemon token; `PERMISSION_DENIED` = the device is attached by another client connection). `reason` is the server's `FailureReason` (for example `FailureReason.DRIVER_START_FAILED`); branch on it, not on the message |
 
 Server `reason`s about the device itself: `UNSUPPORTED_API` (the device's Android version is

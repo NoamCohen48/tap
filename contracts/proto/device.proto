@@ -17,6 +17,13 @@ option java_outer_classname = "DeviceProto";
 
 service DeviceService {
   rpc ListDevices(ListDevicesRequest) returns (ListDevicesResponse);
+  // Puts a QUARANTINED device back in service, by serial, for a person who has checked it (or
+  // an agent acting for one); `tap unquarantine` does the same. It retries the cleanup the session
+  // could not prove (stops the driver, removes Tap's port forwards, writes back the settings the
+  // journal still holds), then closes the journal whatever the retry managed: the response says
+  // what is still off. Needs no client connection. A device another session holds is refused
+  // (FAILED_PRECONDITION, DEVICE_BUSY); one ADB cannot reach is refused before anything changes.
+  rpc Unquarantine(UnquarantineRequest) returns (UnquarantineResponse);
   rpc Attach(AttachRequest) returns (AttachResponse);
   rpc Detach(DetachRequest) returns (DetachResponse);
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
@@ -110,6 +117,14 @@ message DeviceEntry {
   // online device whose properties the daemon could read; absent for offline, unauthorized or
   // unreadable ones.
   optional DeviceProperties properties = 5;
+  // QUARANTINED only because device settings a session saved did not read back after it put
+  // them back (another writer changed one again, ADB failed mid-restore); nothing else about the
+  // device is unproven. Attach (and `tap doctor --fix`) stops any leftover driver, writes them
+  // again and goes ahead once they read back; if they still do not, it fails DEVICE_QUARANTINED.
+  bool retry_on_attach = 6;
+  // QUARANTINED, and attached with `inspect_quarantined` by a live session (its
+  // `client_connection_id` when that is one of this daemon's): someone is looking at it.
+  bool under_inspection = 7;
 }
 
 // System properties of a device, read once per serial while it stays online.
@@ -122,6 +137,21 @@ message DeviceProperties {
 }
 
 message ListDevicesRequest {}
+
+message UnquarantineRequest {
+  string serial = 1;
+}
+
+message UnquarantineResponse {
+  // False when the device was not quarantined: nothing was done.
+  bool was_quarantined = 1;
+  // Why it had been quarantined.
+  string quarantine_reason = 2;
+  // What the cleanup retry put right, one line each.
+  repeated string cleaned = 3;
+  // What it could not; the device keeps it.
+  repeated string remaining = 4;
+}
 
 message ListDevicesResponse {
   repeated DeviceEntry devices = 1;
@@ -136,6 +166,12 @@ message AttachRequest {
   optional int64 default_timeout_ms = 7;
   // How long to wait for another session's lock on the serial; absent = fail at once.
   optional int64 lease_timeout_ms = 8;
+  // Attach a QUARANTINED device to inspect and fix it (an agent or person deciding whether to
+  // unquarantine it). Without it a quarantined device is refused (DEVICE_QUARANTINED). The
+  // attachment works as usual, starting with the quarantine's unrestored saved state, and Detach
+  // puts the device back in QUARANTINED for the same reason; only Unquarantine lifts it. A
+  // quarantine waiting for a reboot reset is still refused. A free device attaches as usual.
+  optional bool inspect_quarantined = 9;
 }
 
 message AttachResponse {
@@ -143,6 +179,8 @@ message AttachResponse {
   string serial = 2;
   int64 generation = 3;
   DeviceInfo device_info = 4;
+  // Set when the attachment inspects a quarantined device: why it is quarantined.
+  optional string quarantine_reason = 5;
 }
 
 message DetachRequest {

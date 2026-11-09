@@ -102,6 +102,25 @@ async def test_list_devices_says_what_each_device_is(studio, daemon):
     assert (unreadable.api_level, unreadable.model, unreadable.emulator) == (0, "", False)
 
 
+async def test_a_quarantined_device_is_inspected_and_unquarantined(studio, daemon):
+    daemon.devices.quarantined["85e49002"] = "BOOT_CHANGED: rebooted"
+    daemon.devices.listed = [
+        tap.DeviceEntry(serial="85e49002", state=tap.DEVICE_QUARANTINED, quarantine_reason="BOOT_CHANGED: rebooted", retry_on_attach=False),
+        tap.DeviceEntry(serial="emulator-5560", state=tap.DEVICE_QUARANTINED, quarantine_reason="x", retry_on_attach=True, under_inspection=True),
+    ]
+    stuck, retry = (await studio.list_devices(pb.ListDevicesRequest(), None)).devices
+    assert (stuck.retry_on_attach, retry.retry_on_attach, retry.under_inspection) == (False, True, True)
+    session = (await studio.attach(pb.AttachRequest(serial="85e49002", inspect_quarantined=True), None)).session
+    assert session.device.quarantine_reason == "BOOT_CHANGED: rebooted"
+    assert daemon.devices.attach_requests[-1].inspect_quarantined
+    await refused(studio.unquarantine(pb.UnquarantineRequest(serial="85e49002"), None), Code.FAILED_PRECONDITION, "release the device")
+    await studio.release(pb.ReleaseRequest(), None)
+    response = await studio.unquarantine(pb.UnquarantineRequest(serial="85e49002"), None)
+    assert response.quarantine_reason == "BOOT_CHANGED: rebooted"
+    assert list(response.remaining) == ["device settings a session changed were not restored"]
+    assert daemon.devices.unquarantined == ["85e49002"]
+
+
 async def test_a_passing_step_is_recorded_with_its_wait_and_the_header(attached, daemon):
     response = await attached.perform(tap_search(), None)
     assert response.recorded and response.message == ""

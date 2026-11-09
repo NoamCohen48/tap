@@ -49,6 +49,7 @@ from .models import (
     ConnectionEntry,
     DeviceEntry,
     DeviceState,
+    UnquarantineResult,
     EventLog,
     FailureReason,
     ServerInfo,
@@ -406,6 +407,23 @@ class TapClient:
                 for entry in self.device_stub.ListDevices(pb.ListDevicesRequest(), timeout=30).devices
             ]
 
+    def unquarantine(self, serial: str) -> UnquarantineResult:
+        """Puts a quarantined device back in service, once a person (or an agent acting for one)
+        has checked it, possibly by attaching it with ``inspect_quarantined``. The server retries
+        the cleanup the session could not prove (stops the driver, removes Tap's port forwards,
+        writes back the saved settings), then lifts the quarantine whatever the retry managed:
+        ``UnquarantineResult.remaining`` says what is still off. Raises ``DeviceBusyError`` while
+        another session holds the device. An operator call, not for tests or fixtures: quarantine
+        is what keeps tests off a device in an unknown state."""
+        with mapped_errors(serial):
+            response = self.device_stub.Unquarantine(pb.UnquarantineRequest(serial=serial), timeout=120)
+        return UnquarantineResult(
+            was_quarantined=response.was_quarantined,
+            quarantine_reason=response.quarantine_reason,
+            cleaned=list(response.cleaned),
+            remaining=list(response.remaining),
+        )
+
     def connect(
         self,
         name: str,
@@ -589,14 +607,16 @@ class TapConnection:
     def available_serials(self) -> list[str]:
         """Serials a test can use, from ``TapClient.devices``: online and not quarantined, free
         ones first, then ones another session holds (``attach_device`` then waits for them when
-        ``wait_for_device`` is set). Exclusive use is enforced by the session itself, so there is
-        nothing to acquire beforehand."""
+        ``wait_for_device`` is set), then quarantined ones that attaching retries
+        (``DeviceEntry.retry_on_attach``). Exclusive use is enforced by the session itself, so
+        there is nothing to acquire beforehand."""
+        order = {DeviceState.FREE: 0, DeviceState.LEASED: 1}
         devices = [
             d
             for d in self.client.devices()
-            if d.state in (DeviceState.FREE, DeviceState.LEASED)
+            if d.state in order or d.retry_on_attach
         ]
-        devices.sort(key=lambda d: d.state is not DeviceState.FREE)
+        devices.sort(key=lambda d: order.get(d.state, 2))
         return [d.serial for d in devices]
 
     def attach_device(
@@ -606,11 +626,18 @@ class TapConnection:
         timeouts: Timeouts | None = None,
         skip_driver_install: bool = False,
         wait_for_device: float = 0,
+        inspect_quarantined: bool = False,
     ) -> Device:
         """Attach ``serial``: install and start the driver (unless ``skip_driver_install``) and
         take the device's session. ``timeouts`` are this device's defaults;
         ``wait_for_device`` > 0 waits that many seconds for another session to release it.
-        Raises ``TapError`` without an RPC once the connection is closed or broken."""
+        Raises ``TapError`` without an RPC once the connection is closed or broken.
+
+        ``inspect_quarantined`` attaches a quarantined device to inspect and fix it before
+        ``TapClient.unquarantine`` (a person or an agent deciding whether it can go back into
+        service): it works as usual, ``Device.quarantine_reason`` says why it is quarantined, and
+        after ``detach`` it still is. Not for tests: a test should never run on a quarantined
+        device."""
         from .device import Device  # circular import at module load
 
         self.ensure_usable("attach_device")
@@ -620,6 +647,7 @@ class TapConnection:
             timeouts=timeouts,
             skip_driver_install=skip_driver_install,
             wait_for_device=wait_for_device,
+            inspect_quarantined=inspect_quarantined,
         )
 
     def attached_devices(self, timeouts: Timeouts | None = None) -> list[Device]:

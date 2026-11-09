@@ -14,6 +14,20 @@ const STATE_NOTES: Partial<Record<DeviceState, string>> = {
 /** How often the list is read again while a device is not ready to attach (or there is none). */
 const RECHECK_MS = 3000;
 
+/** A device the picker can choose: free, or quarantined and not being inspected by someone else. */
+const choosable = (d: DeviceChoice) =>
+  d.state === DeviceState.DEVICE_FREE || (d.state === DeviceState.DEVICE_QUARANTINED && !d.underInspection);
+
+/** Quarantined for a reason only a person can clear: attaching inspects it. */
+const inspectOnly = (d: DeviceChoice | undefined) => !!d && d.state === DeviceState.DEVICE_QUARANTINED && !d.retryOnAttach;
+
+const quarantineNote = (d: DeviceChoice) =>
+  d.underInspection
+    ? `Being inspected: ${d.quarantineReason}`
+    : d.retryOnAttach
+      ? `Quarantined: ${d.quarantineReason}. Attaching retries its settings.`
+      : `Quarantined: ${d.quarantineReason}. Inspect it, then unquarantine it to use it again.`;
+
 /** Choose a device and attach it. */
 export function DevicePicker({
   client,
@@ -29,6 +43,7 @@ export function DevicePicker({
   const [error, setError] = useState<string | null>(null);
   const [serial, setSerial] = useState("");
   const [attaching, setAttaching] = useState(false);
+  const [unquarantined, setUnquarantined] = useState<string[] | null>(null);
 
   const list = useCallback(() => {
     client.listDevices({}).then(
@@ -36,7 +51,7 @@ export function DevicePicker({
         setError(null);
         setDevices(r.devices);
         const free = r.devices.filter((d) => d.state === DeviceState.DEVICE_FREE);
-        setSerial((current) => (free.some((d) => d.serial === current) ? current : (free[0]?.serial ?? "")));
+        setSerial((current) => (r.devices.some((d) => d.serial === current && choosable(d)) ? current : (free[0]?.serial ?? "")));
       },
       (e: unknown) => setError(errorMessage(e)),
     );
@@ -54,16 +69,35 @@ export function DevicePicker({
     return () => clearInterval(timer);
   }, [waiting, held, list]);
 
+  const chosen = devices?.find((d) => d.serial === serial);
+  const inspecting = inspectOnly(chosen);
+
   const attach = async () => {
     setAttaching(true);
     setError(null);
+    setUnquarantined(null);
     try {
-      const response = await client.attach({ serial });
+      const response = await client.attach({ serial, inspectQuarantined: inspecting });
       onSession(response.session!);
     } catch (e) {
       setError(errorMessage(e));
     } finally {
       setAttaching(false);
+    }
+  };
+
+  const unquarantine = async () => {
+    setError(null);
+    try {
+      const r = await client.unquarantine({ serial });
+      setUnquarantined([
+        r.quarantineReason ? `${serial} is back in service.` : `${serial} was not quarantined.`,
+        ...r.cleaned,
+        ...r.remaining.map((line) => `Still off: ${line}`),
+      ]);
+      list();
+    } catch (e) {
+      setError(errorMessage(e));
     }
   };
 
@@ -86,6 +120,13 @@ export function DevicePicker({
             {error}
           </div>
         )}
+        {unquarantined && (
+          <ul className="start-note unquarantined" role="status">
+            {unquarantined.map((line) => (
+              <li key={line}>{line}</li>
+            ))}
+          </ul>
+        )}
         <fieldset>
           <legend className="sr-only">Device</legend>
           {devices === null ? (
@@ -96,10 +137,11 @@ export function DevicePicker({
             <ul className="devices">
               {devices.map((d) => {
                 const free = d.state === DeviceState.DEVICE_FREE;
+                const quarantined = d.state === DeviceState.DEVICE_QUARANTINED;
                 return (
                   <li key={d.serial}>
-                    <label className={free ? "" : "off"}>
-                      <input type="radio" name="serial" value={d.serial} checked={serial === d.serial} disabled={!free} onChange={() => setSerial(d.serial)} />
+                    <label className={choosable(d) ? "" : "off"}>
+                      <input type="radio" name="serial" value={d.serial} checked={serial === d.serial} disabled={!choosable(d)} onChange={() => setSerial(d.serial)} />
                       <span className="device-about">
                         <span className={d.model ? "device-name" : "device-name mono"}>{d.model || d.serial}</span>
                         <span className="device-facts">
@@ -107,7 +149,9 @@ export function DevicePicker({
                           {d.apiLevel > 0 && <span>API {d.apiLevel}</span>}
                           {d.emulator && <span>Emulator</span>}
                         </span>
-                        {!free && <span className="device-note">{d.quarantineReason || STATE_NOTES[d.state] || "Unavailable"}</span>}
+                        {!free && (
+                          <span className="device-note">{quarantined ? quarantineNote(d) : STATE_NOTES[d.state] || "Unavailable"}</span>
+                        )}
                       </span>
                     </label>
                   </li>
@@ -117,8 +161,13 @@ export function DevicePicker({
           )}
         </fieldset>
         <button type="submit" className="btn primary attach" disabled={!serial || attaching || disabled}>
-          {attaching ? "Attaching…" : "Attach"}
+          {attaching ? "Attaching…" : inspecting ? "Inspect" : "Attach"}
         </button>
+        {inspecting && (
+          <button type="button" className="btn attach" disabled={attaching || disabled} onClick={() => void unquarantine()}>
+            Unquarantine
+          </button>
+        )}
         {attaching && <p className="start-note">Starting the driver on the device. The first time on a device can take a minute.</p>}
       </form>
     </section>

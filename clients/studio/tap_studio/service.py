@@ -216,6 +216,8 @@ class Studio:
                     state=_device_state(entry.state.name),
                     attached=entry.serial == attached,
                     quarantine_reason=entry.quarantine_reason or "",
+                    retry_on_attach=entry.retry_on_attach,
+                    under_inspection=entry.under_inspection,
                     api_level=entry.properties.api_level if entry.properties else 0,
                     model=entry.properties.model if entry.properties else "",
                     emulator=entry.properties.emulator if entry.properties else False,
@@ -236,7 +238,9 @@ class Studio:
             connection = await self._live_connection()
             worker = DeviceWorker(request.serial, **self._worker_options)
             try:
-                device = await worker.call(lambda: connection.attach_device(request.serial))
+                device = await worker.call(
+                    lambda: connection.attach_device(request.serial, inspect_quarantined=request.inspect_quarantined)
+                )
             except TapError as error:
                 await worker.close()
                 raise _connect_error(error) from None
@@ -254,8 +258,24 @@ class Studio:
                 model=info.model,
                 display_width=info.display_width,
                 display_height=info.display_height,
+                quarantine_reason=device.quarantine_reason or "",
             )
         return studio.AttachResponse(session=self._session())
+
+    async def unquarantine(self, request: studio.UnquarantineRequest, ctx: RequestContext) -> studio.UnquarantineResponse:
+        self._require_control(ctx)
+        if not request.serial:
+            raise ConnectError(Code.INVALID_ARGUMENT, "serial is required")
+        if self._attached is not None and self._attached.serial == request.serial:
+            raise ConnectError(Code.FAILED_PRECONDITION, "release the device before unquarantining it")
+        client = await self._daemon()
+        try:
+            result = await _blocking(lambda: client.unquarantine(request.serial))
+        except TapError as error:
+            raise _connect_error(error) from None
+        return studio.UnquarantineResponse(
+            quarantine_reason=result.quarantine_reason, cleaned=result.cleaned, remaining=result.remaining
+        )
 
     async def release(self, request: studio.ReleaseRequest, ctx: RequestContext) -> studio.ReleaseResponse:
         self._require_control(ctx)

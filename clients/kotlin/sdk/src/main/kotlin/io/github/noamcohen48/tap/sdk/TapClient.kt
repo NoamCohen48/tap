@@ -8,6 +8,7 @@ import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
+import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.grpc.Channel
@@ -116,6 +117,22 @@ class TapClient public constructor(
                 .devicesList
                 .map { it.toModel() }
         }
+
+    /**
+     * Puts a quarantined device back in service, once a person (or an agent acting for one) has
+     * checked it, possibly through [DeviceOptions.inspectQuarantined]. The server retries the
+     * cleanup the session could not prove (stops the driver, removes Tap's port forwards, writes
+     * back the saved settings), then lifts the quarantine whatever the retry managed:
+     * [UnquarantineResult.remaining] says what is still off. A device another session holds fails
+     * with [DeviceBusyException]. An operator call, not for tests or fixtures: quarantine is what
+     * keeps tests off a device in an unknown state.
+     */
+    suspend fun unquarantine(serial: String): UnquarantineResult =
+        mapped(serial) {
+            devices
+                .withDeadlineAfter(120, TimeUnit.SECONDS)
+                .unquarantine(UnquarantineRequest.newBuilder().setSerial(serial).build())
+        }.let { UnquarantineResult(it.wasQuarantined, it.quarantineReason, it.cleanedList, it.remainingList) }
 
     /**
      * Opens a [TapConnection] and starts its liveness observation: if this process dies, the server
@@ -357,14 +374,15 @@ class TapConnection internal constructor(
 
     /**
      * Serials a test can use, from [TapClient.devices]: online and not quarantined, free ones
-     * first, then ones another session holds (opening then waits, see [DeviceOptions.waitForDevice]).
+     * first, then ones another session holds (opening then waits, see [DeviceOptions.waitForDevice]),
+     * then quarantined ones that attaching retries ([DeviceEntry.retryOnAttach]).
      * Exclusive use is enforced by the session itself, so there is nothing to acquire beforehand.
      */
     suspend fun availableSerials(): List<String> =
         client
             .devices()
-            .filter { it.state == DeviceState.FREE || it.state == DeviceState.LEASED }
-            .sortedBy { it.state != DeviceState.FREE }
+            .filter { it.state == DeviceState.FREE || it.state == DeviceState.LEASED || it.retryOnAttach }
+            .sortedBy { if (it.state == DeviceState.FREE) 0 else if (it.state == DeviceState.LEASED) 1 else 2 }
             .map { it.serial }
 
     /**

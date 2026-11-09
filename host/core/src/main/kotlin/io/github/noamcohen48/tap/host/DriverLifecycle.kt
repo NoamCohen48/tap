@@ -301,13 +301,14 @@ suspend fun recoverJournal(
     bootId: String,
     store: SessionJournalStore,
     allowResetRecovery: Boolean = false,
+    inspect: Boolean = false,
 ): SessionJournal? {
     val record =
         try {
             store.read()
         } catch (error: Throwable) {
             forceStopDriverAndVerify(adb, serial)
-            store.preserveCorrupt()
+            val preserved = store.preserveCorrupt()
             store.replaceCorruptWith(
                 SessionJournal(
                     state = JournalState.QUARANTINED,
@@ -316,9 +317,12 @@ suspend fun recoverJournal(
                     sessionId = UUID.randomUUID().toString(),
                     generation = 0,
                     devicePort = DEVICE_PORT,
+                    quarantineReason = "SESSION_JOURNAL_CORRUPT: the unreadable journal is kept as ${preserved?.fileName}",
                 ),
             )
-            throw CorruptJournalException(serial, "Corrupt journal on $serial quarantined; no forwards were removed", error)
+            val corrupt = CorruptJournalException(serial, "Corrupt journal on $serial quarantined; no forwards were removed", error)
+            if (inspect) return store.read() ?: throw corrupt
+            throw corrupt
         }
     if (record == null) {
         forceStopDriverAndVerify(adb, serial)
@@ -334,6 +338,14 @@ suspend fun recoverJournal(
         ) {
             return record
         }
+        if (record.restoreRetryable || (inspect && !record.resetRequired)) {
+            // Only the saved state is unproven, or the caller inspects the device: stop whatever
+            // driver is left and drop the journal's forwards; the caller writes the state again
+            // (retryRestore) or opens an inspection session.
+            forceStopDriverAndVerify(adb, serial)
+            removeJournalForwards(adb, serial, record)
+            return record
+        }
         throw DeviceQuarantinedException(
             serial,
             "Device $serial is quarantined by its session journal" +
@@ -341,27 +353,27 @@ suspend fun recoverJournal(
         )
     }
     if (record.devicePort !in DEVICE_PORT_RANGE) {
-        store.write(record.copy(state = JournalState.QUARANTINED))
+        store.write(record.quarantined("JOURNAL_PORT_OUT_OF_RANGE: tcp:${record.devicePort}"))
         throw DeviceQuarantinedException(serial, "Journal device port on $serial is outside the reserved framework range; device quarantined")
     }
 
     if (record.state != JournalState.CLOSED) {
         if (record.bootId != bootId) {
-            store.write(record.copy(state = JournalState.QUARANTINED))
+            store.write(record.quarantined("BOOT_CHANGED: the device rebooted during a session"))
             throw DeviceQuarantinedException(serial, "Active journal boot identity on $serial changed; device quarantined")
         }
         forceStopDriverAndVerify(adb, serial, record.driverPid, record.driverStartToken)
-        if (record.hostPort != null) {
-            removeExactForward(adb, serial, record.hostPort, record.devicePort)
-        } else {
-            adb
-                .forwards(serial)
-                .filter { it.devicePort == record.devicePort }
-                .forEach { removeExactForward(adb, serial, it.hostPort, record.devicePort) }
-        }
+        removeJournalForwards(adb, serial, record)
         if (adb.bootId(serial) != bootId) {
-            store.write(record.copy(state = JournalState.QUARANTINED))
+            store.write(record.quarantined("BOOT_CHANGED: the device rebooted during recovery"))
             throw DeviceQuarantinedException(serial, "Boot identity on $serial changed during recovery; device quarantined")
+        }
+        // A session that was inspecting a quarantined device died: the device goes back to it.
+        record.inspectedQuarantine?.let { reason ->
+            val requarantined = record.quarantined(reason)
+            store.write(requarantined)
+            if (inspect) return requarantined
+            throw DeviceQuarantinedException(serial, "Device $serial is quarantined by its session journal: $reason")
         }
         val closed =
             record.copy(
@@ -374,6 +386,31 @@ suspend fun recoverJournal(
 
     forceStopDriverAndVerify(adb, serial, record.driverPid, record.driverStartToken)
     return record
+}
+
+/** [this] as QUARANTINED for [reason]; an inspected quarantine keeps its own reason too. */
+private fun SessionJournal.quarantined(reason: String): SessionJournal =
+    copy(
+        state = JournalState.QUARANTINED,
+        quarantineReason = inspectedQuarantine?.let { if (it == reason) it else "$reason (quarantined before: $it)" } ?: reason,
+        inspectedQuarantine = null,
+        updatedAtEpochMs = System.currentTimeMillis(),
+    )
+
+/** Removes the forward [record] journaled, or every forward to its device port when none was. */
+private suspend fun removeJournalForwards(
+    adb: Adb,
+    serial: String,
+    record: SessionJournal,
+) {
+    if (record.hostPort != null) {
+        removeExactForward(adb, serial, record.hostPort, record.devicePort)
+    } else {
+        adb
+            .forwards(serial)
+            .filter { it.devicePort == record.devicePort }
+            .forEach { removeExactForward(adb, serial, it.hostPort, record.devicePort) }
+    }
 }
 
 suspend fun forceStopDriverAndVerify(

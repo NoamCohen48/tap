@@ -17,6 +17,25 @@ A **session** is a held connection on the server. It outlives each CLI call, is 
 CLI and the MCP server, and holds the device exclusively, as a test does, until `release` or
 15 idle minutes. `--session NAME` (or `TAP_AGENT_SESSION`) keeps several apart.
 
+### A quarantined device
+
+`devices` lists a device Tap could not prove clean after a session as `QUARANTINED` with the
+reason. An agent can look at it and fix it before it goes back into service:
+
+```console
+$ tap-agent attach 85e49002 --quarantined
+attached 85e49002 to session 'agent', idle timeout 15m
+85e49002 is quarantined (BOOT_CHANGED: the device rebooted during a session): inspect and fix it; it stays quarantined after detach until `unquarantine 85e49002`
+$ tap-agent screenshot          # snapshot, act, as usual
+$ tap-agent detach
+$ tap-agent unquarantine 85e49002
+85e49002 is back in service (it was quarantined: BOOT_CHANGED: the device rebooted during a session)
+  - stopped the driver
+```
+
+MCP: `attach` with `inspect_quarantined`, then `unquarantine`. A device marked
+`retried on attach` needs none of this: the next attach retries its settings.
+
 ## Read the screen
 
 ```console

@@ -21,6 +21,14 @@ const STATE: Record<number, { text: string; tone: string }> = {
   [DeviceState.DEVICE_UNAUTHORIZED]: { text: "Unauthorized", tone: "bad" },
 };
 
+/** What the rail says under a device nobody (of this daemon) is driving, and its tooltip. */
+function idleNote(serial: string, device: DeviceEntry | undefined, text: string): { note: string; hint?: string } {
+  if (device?.state !== DeviceState.DEVICE_QUARANTINED) return { note: text };
+  if (device.underInspection) return { note: `Inspected: ${device.quarantineReason}` };
+  if (device.retryOnAttach) return { note: device.quarantineReason ?? text, hint: "The next attach retries its settings." };
+  return { note: device.quarantineReason ?? text, hint: `Check the device, then: tap unquarantine --serial ${serial}` };
+}
+
 export function DeviceRail({ devices, recording, selected, onSelect, now }: Props) {
   const rows = useMemo(() => {
     const serials = new Map<string, DeviceEntry | undefined>(devices.map((device) => [device.serial, device]));
@@ -31,7 +39,7 @@ export function DeviceRail({ devices, recording, selected, onSelect, now }: Prop
       const owner = store.owner(serial);
       const activity = store.device(serial);
       const state = owner ? STATE[DeviceState.DEVICE_LEASED] : (STATE[device?.state ?? 0] ?? { text: "Unknown", tone: "idle" });
-      return { serial, owner, activity, state, last: activity.actions.at(-1), device };
+      return { serial, owner, activity, state, last: activity.actions.at(-1), device, idle: idleNote(serial, device, state.text) };
     }).sort((a, b) => Number(Boolean(b.owner)) - Number(Boolean(a.owner)) || a.serial.localeCompare(b.serial));
     // store.version is read by the caller, which re-renders this on every change.
   }, [devices, store.version]);
@@ -41,7 +49,7 @@ export function DeviceRail({ devices, recording, selected, onSelect, now }: Prop
       <h2>Devices</h2>
       {!rows.length && <p className="empty">No devices. Connect one over ADB.</p>}
       <ul>
-        {rows.map(({ serial, owner, activity, state, last, device }) => (
+        {rows.map(({ serial, owner, activity, state, last, device, idle }) => (
           <li key={serial}>
             <button className={`device ${state.tone}${serial === selected ? " selected" : ""}`} aria-current={serial === selected} onClick={() => onSelect(serial)}>
               <span className="device-top">
@@ -54,7 +62,16 @@ export function DeviceRail({ devices, recording, selected, onSelect, now }: Prop
                   </span>
                 )}
               </span>
-              <span className="device-owner">{owner ? store.label(owner.clientConnectionId) : device?.quarantineReason || state.text}</span>
+              {owner ? (
+                <span className="device-owner">
+                  {store.label(owner.clientConnectionId)}
+                  {device?.underInspection && " · inspecting a quarantine"}
+                </span>
+              ) : (
+                <span className="device-owner" title={idle.hint}>
+                  {idle.note || state.text}
+                </span>
+              )}
               {last && (
                 <span className="device-last">
                   <span className={last.failed ? "bad" : ""}>{last.summary}</span> · {ago(last.event.atEpochMs, now)}

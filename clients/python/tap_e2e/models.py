@@ -376,6 +376,25 @@ class DeviceEntry:
     properties: DeviceProperties | None = None
     """What the device is; ``None`` for a device the server could not read (offline,
     unauthorized)."""
+    retry_on_attach: bool = False
+    """``QUARANTINED`` only because device settings a session changed did not read back when it
+    put them back: attaching writes them again first, and goes ahead once they do."""
+    under_inspection: bool = False
+    """``QUARANTINED`` and attached by someone inspecting it (``inspect_quarantined``)."""
+
+
+@dataclass(frozen=True)
+class UnquarantineResult:
+    """What ``TapClient.unquarantine`` did."""
+
+    was_quarantined: bool
+    """``False`` when the device was not quarantined: nothing was done."""
+    quarantine_reason: str
+    """Why it had been quarantined; empty when it was not."""
+    cleaned: list[str]
+    """What the cleanup retry put right."""
+    remaining: list[str]
+    """What it could not; the device keeps it."""
 
 
 @dataclass(frozen=True)

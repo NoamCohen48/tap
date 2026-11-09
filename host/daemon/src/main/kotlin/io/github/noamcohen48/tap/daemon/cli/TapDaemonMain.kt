@@ -44,6 +44,7 @@ private const val STOP_SLACK_MS = 5_000L
  * `tap status [--state-dir DIR]`
  * `tap stop   [--state-dir DIR]`
  * `tap doctor [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]` — what ended sessions left behind
+ * `tap unquarantine --serial SERIAL [--state-dir DIR] [--adb PATH]` — put a quarantined device back in service
  *
  * Starting the daemon is explicit: clients never spawn it. `start` is idempotent — a live
  * daemon is reported and reused — and like the ADB server a started daemon stays up until
@@ -88,6 +89,12 @@ fun main(args: Array<String>) {
                 }
             }
 
+            "unquarantine" -> {
+                runBlocking {
+                    unquarantine(stateDir, Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb"), options.getValue("--serial"))
+                }
+            }
+
             else -> {
                 println("tap daemon ${DAEMON_VERSION}").let { 0 }
             }
@@ -118,6 +125,9 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
             throw UsageException("--port must be an integer in 0..65535, got '$value'")
         }
     }
+    if (command == "unquarantine" && "--serial" !in options) {
+        throw UsageException("`tap unquarantine` needs --serial SERIAL")
+    }
     if (("--driver-apk" in options) != ("--driver-test-apk" in options)) {
         throw UsageException("--driver-apk and --driver-test-apk go together")
     }
@@ -134,6 +144,8 @@ private fun usage(): Nothing {
                tap stop    [--state-dir DIR]
                tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
                            (what ended sessions left on the devices; --fix cleans it up)
+               tap unquarantine --serial SERIAL [--state-dir DIR] [--adb PATH]
+                           (put a quarantined device back in service once you have checked it)
                tap version
         """.trimIndent(),
     )
@@ -148,6 +160,7 @@ private val COMMAND_OPTIONS =
         "status" to setOf("--state-dir"),
         "stop" to setOf("--state-dir"),
         "doctor" to setOf("--state-dir", "--adb", "--serial", "--fix"),
+        "unquarantine" to setOf("--state-dir", "--adb", "--serial"),
         "version" to emptySet(),
     )
 

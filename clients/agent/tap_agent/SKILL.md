@@ -215,4 +215,14 @@ Both formats are language-neutral data, not automatic replay or generated test c
 them. `devices` includes API/model/emulator properties when available; `server-info` and
 `device-info` return complete SDK metadata. `detach --device SERIAL` releases only that device,
 including temporary settings/files, and keeps the held session and its other devices alive.
+
+## Quarantined devices
+
+A `QUARANTINED` device (see `devices`) is one Tap could not prove clean after a session. Never
+run tests on it. To look at it and fix it: `attach SERIAL --quarantined` (MCP:
+`inspect_quarantined`), then screenshot, snapshot and act as usual; Tap still puts back what
+the sessions changed when you `detach`, and the device stays quarantined. When it is in a good
+state, `unquarantine SERIAL` puts it back in service and says what is still off. Ask the user
+before unquarantining a device you did not check. One marked `retried on attach` needs none of
+this: the next attach retries its restore.
 Synchronization, observed test-client liveness and passive watcher streams are not agent tools.

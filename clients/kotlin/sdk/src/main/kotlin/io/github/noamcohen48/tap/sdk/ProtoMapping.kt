@@ -163,6 +163,8 @@ internal fun DeviceEntryProto.toModel(): DeviceEntry =
             } else {
                 null
             },
+        retryOnAttach = retryOnAttach,
+        underInspection = underInspection,
     )
 
 internal fun ProcessIdentity.toModel(): AppProcess = AppProcess(pid, startToken)

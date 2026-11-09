@@ -672,6 +672,58 @@ class TapClientTest {
     }
 
     @Test
+    fun `unquarantine names the device and reports what is still off`() {
+        runBlocking {
+            assertEquals(
+                UnquarantineResult(true, "BOOT_CHANGED: rebooted", listOf("stopped the driver"), listOf("device settings a session changed were not restored")),
+                client().unquarantine("85e49002"),
+            )
+            assertEquals(listOf("85e49002"), fakeDevices.unquarantined.toList())
+        }
+    }
+
+    @Test
+    fun `inspecting a quarantined device asks for it and carries the reason`() {
+        runBlocking {
+            client().connect("test").use { connection ->
+                tapScope("inspect") {
+                    val device = connection.attachDevice("85e49002", options = DeviceOptions(inspectQuarantined = true))
+                    try {
+                        assertEquals("BOOT_CHANGED: rebooted", device.quarantineReason)
+                        assertTrue(fakeDevices.attachRequests.last().inspectQuarantined)
+                    } finally {
+                        device.detach()
+                    }
+                    val plain = connection.attachDevice("emulator-5554")
+                    try {
+                        assertNull(plain.quarantineReason)
+                        assertFalse(fakeDevices.attachRequests.last().hasInspectQuarantined())
+                    } finally {
+                        plain.detach()
+                    }
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `available serials end with quarantines that attaching retries`() {
+        runBlocking {
+            fun entry(serial: String, state: io.github.noamcohen48.tap.api.v1.DeviceState, retry: Boolean = false) =
+                io.github.noamcohen48.tap.api.v1.DeviceEntry.newBuilder().setSerial(serial).setState(state).setRetryOnAttach(retry).build()
+            fakeDevices.listed =
+                listOf(
+                    entry("retry", io.github.noamcohen48.tap.api.v1.DeviceState.DEVICE_QUARANTINED, retry = true),
+                    entry("stuck", io.github.noamcohen48.tap.api.v1.DeviceState.DEVICE_QUARANTINED),
+                    entry("held", io.github.noamcohen48.tap.api.v1.DeviceState.DEVICE_LEASED),
+                    entry("free", io.github.noamcohen48.tap.api.v1.DeviceState.DEVICE_FREE),
+                )
+            assertTrue(client().devices().first().retryOnAttach)
+            client().connect("test").use { connection -> assertEquals(listOf("free", "held", "retry"), connection.availableSerials()) }
+        }
+    }
+
+    @Test
     fun `attach block needs no tapScope and always detaches`() {
         runBlocking {
             client().connect("test").use { connection ->
@@ -2567,7 +2619,22 @@ class TapClientTest {
     }
 
     private class FakeDevices : DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
-        override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse = ListDevicesResponse.getDefaultInstance()
+        @Volatile var listed: List<io.github.noamcohen48.tap.api.v1.DeviceEntry> = emptyList()
+
+        override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse = ListDevicesResponse.newBuilder().addAllDevices(listed).build()
+
+        val unquarantined = CopyOnWriteArrayList<String>()
+
+        override suspend fun unquarantine(request: io.github.noamcohen48.tap.api.v1.UnquarantineRequest): io.github.noamcohen48.tap.api.v1.UnquarantineResponse {
+            unquarantined.add(request.serial)
+            return io.github.noamcohen48.tap.api.v1.UnquarantineResponse
+                .newBuilder()
+                .setWasQuarantined(true)
+                .setQuarantineReason("BOOT_CHANGED: rebooted")
+                .addCleaned("stopped the driver")
+                .addRemaining("device settings a session changed were not restored")
+                .build()
+        }
 
         val enteredExecute = CompletableDeferred<Unit>()
         val cancelledExecute = CompletableDeferred<Unit>()
@@ -2588,8 +2655,11 @@ class TapClientTest {
         var openEntered = CompletableDeferred<Unit>()
         var openRelease: CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { it.complete(Unit) }
 
+        val attachRequests = CopyOnWriteArrayList<AttachRequest>()
+
         override suspend fun attach(request: AttachRequest): AttachResponse {
             opens.add(request.serial)
+            attachRequests.add(request)
             if (!openEntered.isCompleted) openEntered.complete(Unit)
             withTimeout(30_000) { openRelease.await() }
             return AttachResponse
@@ -2597,6 +2667,7 @@ class TapClientTest {
                 .setAttachedDeviceId("attached-${request.serial}")
                 .setSerial(request.serial)
                 .setGeneration(1)
+                .apply { if (request.inspectQuarantined) setQuarantineReason("BOOT_CHANGED: rebooted") }
                 .build()
         }
 

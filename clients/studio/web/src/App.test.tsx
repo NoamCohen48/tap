@@ -127,6 +127,8 @@ function fakeStudio() {
     watched: [] as Session[],
     wake: (() => undefined) as () => void,
     takeControlError: null as string | null,
+    attachRequests: [] as { serial: string; inspectQuarantined: boolean }[],
+    unquarantined: [] as string[],
   };
   const recording = () => create(RecordingSchema, { steps: state.steps, secrets: secretsOf(state.steps), parameters: state.parameters });
   const edited = () => ({ recording: recording(), missingSecrets: state.missing.filter((name) => secretsOf(state.steps).includes(name)) });
@@ -162,11 +164,18 @@ function fakeStudio() {
         return { devices: state.devices };
       },
       attach: (request) => {
+        state.attachRequests.push({ serial: request.serial, inspectQuarantined: request.inspectQuarantined });
+        const quarantined = state.devices.find((d) => d.serial === request.serial && d.state === DeviceState.DEVICE_QUARANTINED);
         state.session = create(SessionSchema, {
           recording: state.session.recording,
-          device: { serial: request.serial, apiLevel: 34, model: "sdk_gphone64" },
+          device: { serial: request.serial, apiLevel: 34, model: "sdk_gphone64", quarantineReason: request.inspectQuarantined ? (quarantined?.quarantineReason ?? "") : "" },
         });
         return { session: state.session };
+      },
+      unquarantine: (request) => {
+        state.unquarantined.push(request.serial);
+        state.devices = state.devices.map((d) => (d.serial === request.serial ? { ...d, state: DeviceState.DEVICE_FREE, quarantineReason: "" } : d));
+        return { quarantineReason: "BOOT_CHANGED: rebooted", cleaned: ["stopped the driver"], remaining: ["font scale reads 1.3"] };
       },
       release: () => {
         state.session = create(SessionSchema, { recording: state.session.recording });
@@ -763,6 +772,44 @@ describe("the library", () => {
     fake.state.devices = [{ serial: "emulator-5554", state: DeviceState.DEVICE_FREE, apiLevel: 34, model: "sdk_gphone64", emulator: true }];
     await waitFor(() => expect((within(picker).getByRole("button", { name: "Attach" }) as HTMLButtonElement).disabled).toBe(false), { timeout: 5000 });
     expect(within(picker).queryByText("In use by another test or tool")).toBeNull();
+  });
+
+  it("inspects a quarantined device and unquarantines it from the list", async () => {
+    const fake = fakeStudio();
+    fake.state.devices = [
+      { serial: "85e49002", state: DeviceState.DEVICE_QUARANTINED, quarantineReason: "BOOT_CHANGED: rebooted" },
+      { serial: "emulator-5560", state: DeviceState.DEVICE_QUARANTINED, quarantineReason: "font scale", retryOnAttach: true },
+      { serial: "emulator-5562", state: DeviceState.DEVICE_QUARANTINED, quarantineReason: "x", underInspection: true },
+    ];
+    render(<App client={fake.client} />);
+    const picker = await screen.findByRole("region", { name: "Attach a device" });
+    await within(picker).findByText(/Inspect it, then unquarantine it/);
+    within(picker).getByText(/Attaching retries its settings/);
+    within(picker).getByText("Being inspected: x");
+    expect((within(picker).getByRole("radio", { name: /emulator-5562/ }) as HTMLInputElement).disabled).toBe(true);
+
+    // A retryable quarantine attaches as usual.
+    fireEvent.click(within(picker).getByRole("radio", { name: /emulator-5560/ }));
+    within(picker).getByRole("button", { name: "Attach" });
+    expect(within(picker).queryByRole("button", { name: "Unquarantine" })).toBeNull();
+
+    fireEvent.click(within(picker).getByRole("radio", { name: /85e49002/ }));
+    fireEvent.click(within(picker).getByRole("button", { name: "Unquarantine" }));
+    await within(picker).findByText("85e49002 is back in service.");
+    within(picker).getByText("Still off: font scale reads 1.3");
+    expect(fake.state.unquarantined).toEqual(["85e49002"]);
+  });
+
+  it("marks a device attached to inspect it as quarantined", async () => {
+    const fake = fakeStudio();
+    fake.state.devices = [{ serial: "85e49002", state: DeviceState.DEVICE_QUARANTINED, quarantineReason: "BOOT_CHANGED: rebooted" }];
+    render(<App client={fake.client} />);
+    const picker = await screen.findByRole("region", { name: "Attach a device" });
+    await within(picker).findByText(/Inspect it/);
+    fireEvent.click(within(picker).getByRole("radio", { name: /85e49002/ }));
+    fireEvent.click(within(picker).getByRole("button", { name: "Inspect" }));
+    await screen.findByText("Quarantined");
+    expect(fake.state.attachRequests).toEqual([{ serial: "85e49002", inspectQuarantined: true }]);
   });
 
   it("lists, opens and shows a recording with no device attached", async () => {

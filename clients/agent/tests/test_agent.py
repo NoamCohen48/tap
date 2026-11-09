@@ -42,6 +42,30 @@ def test_attach_creates_a_held_session_and_later_calls_resume_it(fake, agent):
     assert fake.connections.connects == 1
 
 
+def test_a_quarantined_device_is_inspected_then_unquarantined(fake, agent):
+    fake.devices.quarantined["85e49002"] = "BOOT_CHANGED: rebooted"
+    with pytest.raises(AgentError, match="quarantined"):
+        agent.attach("85e49002")
+    out = agent.attach("85e49002", inspect_quarantined=True)
+    assert "85e49002 is quarantined (BOOT_CHANGED: rebooted)" in out
+    assert "until `unquarantine 85e49002`" in out
+    agent.detach()
+    assert agent.unquarantine("85e49002") == (
+        "85e49002 is back in service (it was quarantined: BOOT_CHANGED: rebooted)\n"
+        "  - stopped the driver\n"
+        "  - still off: device settings a session changed were not restored"
+    )
+    assert agent.unquarantine("85e49002") == "85e49002 is not quarantined; nothing to do"
+
+
+def test_devices_say_which_quarantines_are_retried_or_inspected(fake, agent):
+    fake.devices.listed = [
+        pb.DeviceEntry(serial="a", state=pb.DEVICE_QUARANTINED, quarantine_reason="x", retry_on_attach=True),
+        pb.DeviceEntry(serial="b", state=pb.DEVICE_QUARANTINED, quarantine_reason="y", under_inspection=True),
+    ]
+    assert agent.devices() == "a  QUARANTINED  (x)  retried on attach\nb  QUARANTINED  (y)  under inspection"
+
+
 def test_a_failed_first_attach_leaves_no_session(fake, agent):
     fake.devices.busy.add("emulator-5554")
     with pytest.raises(AgentError, match="held by another session"):
@@ -577,6 +601,7 @@ EXPECTED_TOOLS = {
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count",
     "detach", "server_info", "device_info", "logs", "media_record", "scroll_until", "record", "history",
+    "unquarantine",
 }
 
 

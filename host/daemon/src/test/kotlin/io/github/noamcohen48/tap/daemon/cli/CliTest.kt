@@ -44,7 +44,38 @@ class CliTest {
             parseCommandLine(listOf("doctor", "--fix", "--serial", "emulator-5554")),
         )
         assertEquals("option --fix is not valid for `tap stop`", refused("stop", "--fix"))
+        assertEquals("`tap unquarantine` needs --serial SERIAL", refused("unquarantine"))
+        assertEquals(CommandLine("unquarantine", mapOf("--serial" to "phone")), parseCommandLine(listOf("unquarantine", "--serial", "phone")))
     }
+
+    @Test
+    fun `unquarantine reports why the device was out of service and what is still off`(): Unit =
+        runBlocking {
+            val stateDir = Files.createTempDirectory("tap-unquarantine-cli")
+            io.github.noamcohen48.tap.host.SessionJournalStore(stateDir.resolve("sessions"), "phone").write(
+                io.github.noamcohen48.tap.host.SessionJournal(
+                    state = io.github.noamcohen48.tap.host.JournalState.QUARANTINED, serial = "phone", bootId = "b", sessionId = "s",
+                    generation = 2, devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT, quarantineReason = "BOOT_CHANGED: rebooted",
+                ),
+            )
+            val adb =
+                FakeAdb().apply {
+                    responder = { _, command ->
+                        when {
+                            command == "shell cat /proc/sys/kernel/random/boot_id" -> ok("b2")
+                            command.startsWith("shell pidof") -> Adb.Result(1, "")
+                            command == "forward --list" -> ok("")
+                            else -> ok("")
+                        }
+                    }
+                }
+            val lines = mutableListOf<String>()
+            assertEquals(0, unquarantine(stateDir, adb, "phone", out = { lines += it }))
+            assertEquals(listOf("phone: back in service (it was quarantined: BOOT_CHANGED: rebooted)", "  - stopped the driver"), lines)
+            lines.clear()
+            assertEquals(0, unquarantine(stateDir, adb, "phone", out = { lines += it }))
+            assertEquals(listOf("phone: not quarantined; nothing to do"), lines)
+        }
 
     @Test
     fun `doctor reports each device and fails while something is left`(): Unit =
