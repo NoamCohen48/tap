@@ -268,6 +268,10 @@ def parser() -> argparse.ArgumentParser:
     state.add_argument("--gone", dest="state", action="store_const", const="gone")
     state.add_argument("--one", dest="state", action="store_const", const="one")
     state.add_argument("--state", choices=WAIT_STATES, help="visibility, state, text, or count condition")
+    state.add_argument(
+        "--until", metavar="CONDITION",
+        help="until the target's node satisfies CONDITION, in the target grammar: enabled=true,text=Pay or a JSON selector",
+    )
     p.add_argument("--value", help="expected text or count for --state text/text-contains/count")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
 
@@ -412,7 +416,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "permission":
         return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
     if v == "wait":
-        return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value)
+        return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value, until=args.until)
     if v == "settle":
         return agent.settle(device, full=args.full, timeout=args.timeout, package=args.package, stable_for=args.stable_for, signal=args.signal)
     if v == "screenshot":

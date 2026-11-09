@@ -48,7 +48,7 @@ from . import render
 from .output import json_text, save_private
 from .records import RecordError, RecordStore
 from .step_capture import CURRENT, instrument, sending
-from .targets import Target, UsageError, format_duration, parse_int32, parse_key, parse_target
+from .targets import Target, UsageError, format_duration, parse_condition, parse_int32, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
 # Raw history keeps the existing event format; named step recordings have their own format.
@@ -1187,9 +1187,28 @@ class Agent:
 
         return self._run(step)
 
-    def wait(self, target: str, device: str | None = None, state: str = "visible", timeout: float = DEFAULT_WAIT, *, value: str | int | None = None) -> str:
-        """Wait for visibility, uniqueness, state, text or count using SDK waits (no input)."""
+    def wait(
+        self, target: str, device: str | None = None, state: str = "visible", timeout: float = DEFAULT_WAIT, *,
+        value: str | int | None = None, until: str | None = None,
+    ) -> str:
+        """Wait for visibility, uniqueness, state, text or count using SDK waits (no input). With
+        ``until`` (a condition in the target grammar, such as ``enabled=true,text=Pay``), wait until
+        the one node the target picks satisfies it: ``ElementWait.until``, polled on the device."""
         command_timeout(timeout)
+        if until is not None:
+            if state != "visible" or value is not None:
+                raise AgentError("wait --until takes no --state or --value", EXIT_USAGE)
+            try:
+                condition = parse_condition(until)
+            except UsageError as error:
+                raise AgentError(f"--until: {error}", EXIT_USAGE) from error
+
+            def satisfied() -> str:
+                element, described = self._element(self._device(device), target)
+                element.wait(timeout).until(condition)
+                return f"{described} satisfies {until}"
+
+            return self._run(satisfied)
         if state not in WAIT_STATES:
             raise AgentError(f"state must be one of {', '.join(WAIT_STATES)}", EXIT_USAGE)
         if state in ("text", "text-contains") and not isinstance(value, str):

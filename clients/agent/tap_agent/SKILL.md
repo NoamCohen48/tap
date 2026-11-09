@@ -58,7 +58,8 @@ pick index or first. Bounded at 64 KiB / 32 levels / 256 nodes; no XPath.
 
 `inspect TARGET` reads full SDK element state as JSON (may include sensitive text); `exists`
 and `count` read immediate matches. `wait TARGET --state enabled|disabled|checked|unchecked|focused`
-waits on state, `--state text|text-contains --value TEXT` on text, `--state count --value N` on count.
+waits on state, `--state text|text-contains --value TEXT` on text, `--state count --value N` on count,
+and `--until enabled=true,text=Pay` (target grammar, no ref/index/pkg) until the node satisfies all parts at once.
 All command/wait budgets are 1ms..120s; MCP settle now also accepts
 `timeout_seconds`. Do not treat a successful input as proof its expected result appeared.
 
