@@ -51,6 +51,11 @@ name the components affected. Earlier releases used independent version lines. T
   live receiver (`result=0`: the driver process was being killed or replaced), the host now sends
   it again, up to three times, instead of quarantining the device with the test's locale and mock
   providers left in place.
+- A driver that fails to start is started once more, and the error says how it failed. An
+  instrumentation that exited, or printed no ready marker within 10 s, is retried once on the
+  same port; the error then reads "exited after 2.1 s without becoming ready" or "was not ready
+  after 10.0 s", with what it printed, instead of an empty "for a reason other than port
+  occupancy".
 
 ### Clients and tools
 
