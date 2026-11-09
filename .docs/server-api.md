@@ -30,7 +30,7 @@ upgraded alongside a breaking daemon.
 ## Device capability discovery
 
 `DeviceService.GetDeviceCapabilities` takes the owning `client_connection_id` and
-`attached_device_id`. `capabilities.proto` defines 89 operation IDs, typed status/reason /
+`attached_device_id`. `capabilities.proto` defines 90 operation IDs, typed status/reason /
 requirement enums and entries sorted by ID, including unsupported operations. A known ID
 missing from a response maps to UNKNOWN in the SDKs; future numeric IDs remain in entries
 with their raw IDs preserved. This additive RPC does not change the compatibility epoch or
@@ -65,6 +65,16 @@ holds for 1..30000 ms. Both resolve one selector once, check reachability and th
 deadline before the mutation gate, and require the default display. They never replay input.
 New operations (not fields on old tap messages) ensure an old implementation rejects the
 request rather than silently injecting a single/default-duration tap. See `protocol-contract.md`.
+
+## Tap outside a panel
+
+`Command.tap_outside_panel` (field 50, `TapOutsidePanel`) is an additive mutation returning
+`CommandResult.outside_touch` (field 18, `OutsideTouch`: the point and a description of the
+panel and side). A new operation rather than a field on `Tap`, so an older driver rejects it as
+unsupported instead of tapping the node's centre. Refusals are `NOT_INTERACTABLE` with detail
+`NO_OUTSIDE_POINT` or `TOUCH_REACHES_BELOW`, both before input; `GetDeviceCapabilities` lists it
+as `CAPABILITY_TAP_OUTSIDE_PANEL`. Design and evidence:
+`.docs/tap-outside-panel.md`; wire semantics: `protocol-contract.md`.
 
 ## 2. Process model
 

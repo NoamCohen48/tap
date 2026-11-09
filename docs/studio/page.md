@@ -40,6 +40,13 @@ Each button runs its step on the device and records it. The composer's tabs, wit
   Each resolves the target once, requires an unobscured touch point and never retries input.
 - **Drag to…**: the element is outlined; click the element to drop it on, and one
   `dragTo(res("bin"))` step is recorded. Esc cancels.
+- **Tap outside panel**: with an element inside a dialog, menu, drawer or bottom sheet selected
+  (its title, say), one tap outside that panel, recorded as `tapOutsidePanel()`. It is refused
+  before any input when the element is not in a panel with room around it
+  ([Gestures](../guide/gestures.md#outside-a-dialog-menu-or-sheet)). A panel that lets touches
+  through (a dropdown, a popup that does not take focus) is refused too, unless **Also when the
+  touch reaches the screen below** is ticked (`allowReachBelow = true`); the step editor changes
+  it on a recorded step.
 - **Swipe** up, down, left or right on the element.
 - **Pinch** open or closed (`pinchOpen()` / `pinchClose()`), across the **Distance**.
 - **Scroll** up, down, left or right, on a scrollable element (a list or a page that scrolls).

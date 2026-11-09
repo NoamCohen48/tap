@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.driver
 import android.content.Context
 import android.graphics.Point
 import android.graphics.Rect
+import android.graphics.Region
 import android.hardware.display.DisplayManager
 import android.os.Build
 import android.view.Display
@@ -126,3 +127,13 @@ internal class VisibleBounds(
         intersect(other)
     }
 }
+
+/** The window's touchable region from API 33; before it, its real frame ([WindowFrames]). */
+internal fun touchableRegion(window: AccessibilityWindowInfo): Region =
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+        Region().also(window::getRegionInScreen)
+    } else {
+        Region(WindowFrames.frame(window))
+    }
+
+internal fun Rect.toBox() = WindowFrames.Box(left, top, right, bottom)

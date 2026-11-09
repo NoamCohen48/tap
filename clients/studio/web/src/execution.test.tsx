@@ -4,11 +4,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { CommandSchema, StabilitySignal } from "./gen/command_pb";
 import { StepSchema } from "./gen/studio_pb";
 import { ExecutionControls, requestBudgets, stepBudgets, validBudgets, withBudgets } from "./ExecutionControls";
-import { PressControls, stepPress, validPress, withPress } from "./PressControls";
+import { OutsidePanelControls, PressControls, REACH_BELOW_LABEL, stepPress, stepReachBelow, validPress, withPress } from "./PressControls";
 import { AppControls } from "./AppControls";
 import { describeStep } from "./describe";
 import { parseSelector } from "./parse";
-import { countedTap, hold, synthesized, typeText } from "./steps";
+import { countedTap, hold, synthesized, tapOutsidePanel, typeText } from "./steps";
 import { StepEditor } from "./StepEditor";
 import type { StudioClient } from "./api";
 
@@ -49,7 +49,35 @@ describe("counted and timed presses", () => {
     expect(stepPress(sequence)).toEqual({ count: 5, interval: 90 });
     expect(describeStep(sequence)).toContain("count = 5, interval = 90.milliseconds");
     expect(describeStep(hold(target, 1200).step!)).toContain("longTap(duration = 1200.milliseconds)");
+    expect(describeStep(tapOutsidePanel(target).step!)).toContain(".tapOutsidePanel()");
+    expect(describeStep(tapOutsidePanel(target, true).step!)).toContain(".tapOutsidePanel(allowReachBelow = true)");
     expect(stepPress(withPress(sequence, { count: 1, interval: 90 }))).toBeNull();
+  });
+});
+
+describe("tap outside a panel", () => {
+  it("sends allow_reach_below only when it is ticked", () => {
+    const send = vi.fn();
+    render(<OutsidePanelControls target={target} disabled={false} onPerform={send} />);
+    fireEvent.click(screen.getByRole("button", { name: "Tap outside panel" }));
+    fireEvent.click(screen.getByLabelText(REACH_BELOW_LABEL));
+    fireEvent.click(screen.getByRole("button", { name: "Tap outside panel" }));
+    const ops = send.mock.calls.map((call) => call[0].step.kind.value.command.op);
+    expect(ops.map((op) => [op.case, op.value.allowReachBelow])).toEqual([["tapOutsidePanel", false], ["tapOutsidePanel", true]]);
+  });
+  it("edits a recorded step's allow_reach_below", async () => {
+    const client = { count: vi.fn().mockResolvedValue({ count: 1 }) } as unknown as StudioClient;
+    const saved = vi.fn().mockResolvedValue(true);
+    const step = tapOutsidePanel(target).step!;
+    step.id = "s1";
+    expect(stepReachBelow(countedTap(target, 3).step!)).toBeNull();
+    render(<StepEditor step={step} nodes={[]} client={client} busy={false} onSave={saved} />);
+    await screen.findByText("Matches 1 element now.");
+    fireEvent.click(screen.getByLabelText(REACH_BELOW_LABEL));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    expect(stepReachBelow(saved.mock.calls[0]![0])).toBe(true);
+    expect(describeStep(saved.mock.calls[0]![0])).toContain(".tapOutsidePanel(allowReachBelow = true)");
+    expect(stepReachBelow(step)).toBe(false);
   });
 });
 

@@ -274,7 +274,7 @@ object CommandValidation {
             }
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
-            OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.TAP, OpCase.LONG_TAP, OpCase.CLEAR_TEXT,
+            OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.TAP, OpCase.LONG_TAP, OpCase.TAP_OUTSIDE_PANEL, OpCase.CLEAR_TEXT,
             OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.HIDE_KEYBOARD, OpCase.PERFORM_IME_ACTION, OpCase.GET_CLIPBOARD,
             OpCase.LIST_NOTIFICATIONS,

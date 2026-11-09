@@ -12,7 +12,7 @@ import { candidateChips } from "./nodes";
 import { parseSelector } from "./parse";
 import type { Target } from "./steps";
 import { budgetFields, ExecutionControls, stepBudgets, validBudgets, withBudgets } from "./ExecutionControls";
-import { PressFields, stepPress, validPress, withPress } from "./PressControls";
+import { PressFields, ReachBelowField, stepPress, stepReachBelow, validPress, withPress, withReachBelow } from "./PressControls";
 import { StabilitySignal } from "./gen/command_pb";
 import { StepValues } from "./ValueFields";
 
@@ -83,6 +83,7 @@ export function StepEditor({
   const [note, setNote] = useState(step.note ?? "");
   const [budgets, setBudgets] = useState(() => stepBudgets(step));
   const [press, setPress] = useState(() => stepPress(step));
+  const [reachBelow, setReachBelow] = useState(() => stepReachBelow(step));
   const originalStability = step.kind.case === "appWait" && step.kind.value.command?.op.case === "waitScreenStable" ? step.kind.value.command.op.value : undefined;
   const [quiet, setQuiet] = useState(Number(originalStability?.stableForMs ?? 500n));
   const [stabilityPackage, setStabilityPackage] = useState(originalStability?.packageName ?? "");
@@ -132,6 +133,7 @@ export function StepEditor({
   }
   if (validBudgets(budgets)) edited = withBudgets(edited, budgets);
   if (press && validPress(press)) edited = withPress(edited, press);
+  if (reachBelow !== null) edited = withReachBelow(edited, reachBelow);
   const stabilityOk = !originalStability || (Number.isInteger(quiet) && quiet >= 1 && quiet <= 30000);
   if (originalStability && stabilityOk && edited.kind.case === "appWait" && edited.kind.value.command?.op.case === "waitScreenStable") {
     edited = clone(StepSchema, edited);
@@ -272,6 +274,7 @@ export function StepEditor({
 
       <ExecutionControls fields={budgetFields(step)} values={budgets} onChange={setBudgets} />
       {press && <fieldset><legend>Press parameters</legend><PressFields value={press} onChange={setPress} /></fieldset>}
+      {reachBelow !== null && <fieldset><legend>Outside the panel</legend><ReachBelowField checked={reachBelow} onChange={setReachBelow} /></fieldset>}
       {originalStability && <fieldset><legend>Screen stability</legend>
         <label className="field"><span>Stability package (empty = whole screen)</span><input value={stabilityPackage} onChange={(e) => setStabilityPackage(e.target.value)} /></label>
         <label className="field"><span>Quiet period (ms)</span><input type="number" min={1} max={30000} value={Number.isNaN(quiet) ? "" : quiet} onChange={(e) => setQuiet(e.target.valueAsNumber)} aria-invalid={!stabilityOk} /></label>
@@ -373,6 +376,7 @@ export function StepEditor({
               setMovement(initialMovement);
               setBudgets(stepBudgets(step));
               setPress(stepPress(step));
+              setReachBelow(stepReachBelow(step));
               setQuiet(Number(originalStability?.stableForMs ?? 500n));
               setStabilityPackage(originalStability?.packageName ?? "");
               setSignal(originalStability?.signal ?? StabilitySignal.STABILITY_ALL);

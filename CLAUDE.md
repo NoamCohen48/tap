@@ -71,6 +71,9 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/app-logs.md` — decision record: the device log (`DeviceLogService`): logcat streamed
   for the whole attachment with the driver's own action lines, markers and redaction on read;
   the log parser pipeline (HTTP exchanges) is deferred to `.docs/feature-todo.md`.
+- `.docs/tap-outside-panel.md` — decision record: `tap_outside_panel`, one tap outside the dialog,
+  popup, menu, drawer or sheet that holds a node (panel by dismiss action / pane title, else the
+  window), its refusals, the device evidence and the rejected placement design.
 - `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
   foreground/background/deep links, permission dialogs, gestures), the group in progress with its
   per-action design and upstream comparison, and the prioritised backlog.

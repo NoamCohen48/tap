@@ -30,6 +30,8 @@ import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
 import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
 import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NotificationList
@@ -118,7 +120,7 @@ val Request.op: String
 val Command.isMutation: Boolean
     get() =
         when (opCase) {
-            OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.MULTI_TAP, OpCase.HOLD, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
+            OpCase.PRESS_KEY, OpCase.TAP, OpCase.LONG_TAP, OpCase.MULTI_TAP, OpCase.HOLD, OpCase.TAP_OUTSIDE_PANEL, OpCase.SET_TEXT, OpCase.TYPE_TEXT,
             OpCase.CLEAR_TEXT, OpCase.SWIPE, OpCase.SCROLL, OpCase.OPEN_SYSTEM_PANEL,
             OpCase.SET_ORIENTATION, OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION,
             OpCase.DISMISS_KEYGUARD, OpCase.DOUBLE_TAP, OpCase.DRAG, OpCase.PINCH, OpCase.FLING,
@@ -151,6 +153,7 @@ val Command.targetSelector: Selector?
             OpCase.LONG_TAP -> longTap.selector
             OpCase.MULTI_TAP -> multiTap.selector
             OpCase.HOLD -> hold.selector
+            OpCase.TAP_OUTSIDE_PANEL -> tapOutsidePanel.selector
             OpCase.SET_TEXT -> setText.selector
             OpCase.CLEAR_TEXT -> clearText.selector
             OpCase.SWIPE -> swipe.selector
@@ -297,6 +300,12 @@ object Commands {
         Command.newBuilder().setMultiTap(MultiTap.newBuilder().setSelector(selector).setCount(count).apply {
             intervalMs?.let { setIntervalMs(it) }
         }).build()
+
+    fun tapOutsidePanel(
+        selector: Selector,
+        allowReachBelow: Boolean = false,
+    ): Command =
+        Command.newBuilder().setTapOutsidePanel(TapOutsidePanel.newBuilder().setSelector(selector).setAllowReachBelow(allowReachBelow)).build()
 
     fun hold(selector: Selector, durationMs: Long): Command =
         Command.newBuilder().setHold(TimedPress.newBuilder().setSelector(selector).setDurationMs(durationMs)).build()
@@ -555,6 +564,8 @@ interface CommandHandler {
 
     fun hold(command: TimedPress)
 
+    fun tapOutsidePanel(command: TapOutsidePanel): OutsideTouch
+
     fun setText(command: SetText)
 
     fun typeText(command: TypeText)
@@ -669,6 +680,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.LONG_TAP -> result.setDone(done).also { handler.longTap(longTap) }
         OpCase.MULTI_TAP -> result.setDone(done).also { handler.multiTap(multiTap) }
         OpCase.HOLD -> result.setDone(done).also { handler.hold(hold) }
+        OpCase.TAP_OUTSIDE_PANEL -> result.setOutsideTouch(handler.tapOutsidePanel(tapOutsidePanel))
         OpCase.SET_TEXT -> result.setDone(done).also { handler.setText(setText) }
         OpCase.TYPE_TEXT -> result.setDone(done).also { handler.typeText(typeText) }
         OpCase.CLEAR_TEXT -> result.setDone(done).also { handler.clearText(clearText) }

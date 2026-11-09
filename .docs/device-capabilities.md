@@ -144,7 +144,7 @@ commands: a listed capability does not invent a CLI/MCP command.
 ## Verification and progress
 
 - Worktree: `.worktrees/feat/device-capabilities`, branch `feat/device-capabilities`.
-- Implemented: 89 operation IDs in `capabilities.proto`; host-core canonical catalog; owned
+- Implemented: 90 operation IDs (`CAPABILITY_TAP_OUTSIDE_PANEL` added with tap outside a panel) in `capabilities.proto`; host-core canonical catalog; owned
   daemon RPC using authenticated handshake facts (no driver/ADB call); SDK-native Kotlin and
   Python models with future-ID preservation and UNKNOWN for missing entries; CLI text/JSON and
   read-only MCP parity; explicit exclusion from named action recordings.

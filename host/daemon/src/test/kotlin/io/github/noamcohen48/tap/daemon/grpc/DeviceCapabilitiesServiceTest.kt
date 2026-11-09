@@ -37,7 +37,7 @@ class DeviceCapabilitiesServiceTest {
                 val first = devices.withDeadlineAfter(2, TimeUnit.SECONDS).getDeviceCapabilities(request)
                 val second = devices.withDeadlineAfter(2, TimeUnit.SECONDS).getDeviceCapabilities(request)
                 assertEquals(first, second)
-                assertEquals(89, first.capabilitiesCount)
+                assertEquals(90, first.capabilitiesCount)
                 assertTrue(first.capabilitiesList.any { it.id == CapabilityId.CAPABILITY_APP_SET_LOCALES })
                 assertTrue(attached.events.after(0).first.isEmpty())
                 val denied =

@@ -3,7 +3,7 @@ import { useState } from "react";
 import { Row } from "./controls";
 import { TapSchema } from "./gen/command_pb";
 import { StepSchema, type PerformRequest, type Step } from "./gen/studio_pb";
-import { countedTap, hold, type Target } from "./steps";
+import { countedTap, hold, tapOutsidePanel, type Target } from "./steps";
 
 export type Press = { count: number; interval: number } | { duration: number };
 export function validPress(value: Press): boolean {
@@ -44,4 +44,29 @@ export function PressControls({ target, disabled, onPerform }: { target: Target;
     <Row label="Counted taps"><PressFields value={sequence} onChange={setSequence} /><button type="button" className="btn" disabled={disabled || !validPress(sequence)} onClick={() => { if ("count" in sequence) onPerform(countedTap(target, sequence.count, sequence.interval)); }}>Tap sequence</button></Row>
     <Row label="Physical hold"><PressFields value={timed} onChange={setTimed} /><button type="button" className="btn" disabled={disabled || !validPress(timed)} onClick={() => { if ("duration" in timed) onPerform(hold(target, timed.duration)); }}>Hold for duration</button></Row>
   </>;
+}
+
+/** A tap outside a panel's `allow_reach_below`, or null for any other step. */
+export function stepReachBelow(step: Step): boolean | null {
+  const op = step.kind.case === "action" ? step.kind.value.command?.op : undefined;
+  return op?.case === "tapOutsidePanel" ? op.value.allowReachBelow : null;
+}
+export function withReachBelow(step: Step, allowReachBelow: boolean): Step {
+  const copy = clone(StepSchema, step);
+  const op = copy.kind.case === "action" ? copy.kind.value.command?.op : undefined;
+  if (op?.case === "tapOutsidePanel") op.value.allowReachBelow = allowReachBelow;
+  return copy;
+}
+export const REACH_BELOW_LABEL = "Also when the touch reaches the screen below";
+const REACH_BELOW_HINT = "The panel lets touches through (a dropdown, a popup that does not take focus): the touch also presses what is under it. Without this, such a panel is refused.";
+export function ReachBelowField({ checked, disabled, onChange }: { checked: boolean; disabled?: boolean; onChange: (checked: boolean) => void }) {
+  return <label className="check" title={REACH_BELOW_HINT}><input type="checkbox" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />{REACH_BELOW_LABEL}</label>;
+}
+/** One tap outside the dialog, menu, drawer or sheet that holds the element. */
+export function OutsidePanelControls({ target, disabled, onPerform }: { target: Target; disabled: boolean; onPerform: (request: PerformRequest) => void }) {
+  const [reachBelow, setReachBelow] = useState(false);
+  return <Row label="Outside panel">
+    <button type="button" className="btn" disabled={disabled} title="Tap outside the dialog, menu, drawer or sheet this element is in" onClick={() => onPerform(tapOutsidePanel(target, reachBelow))}>Tap outside panel</button>
+    <ReachBelowField checked={reachBelow} disabled={disabled} onChange={setReachBelow} />
+  </Row>;
 }

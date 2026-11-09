@@ -40,6 +40,7 @@ TARGETED_OPS = (
     "double_tap",
     "multi_tap",
     "hold",
+    "tap_outside_panel",
     "set_text",
     "clear_text",
     "scroll",

@@ -3,8 +3,6 @@ package io.github.noamcohen48.tap.driver
 import android.app.UiAutomation
 import android.graphics.Point
 import android.graphics.Rect
-import android.graphics.Region
-import android.os.Build
 import android.view.Display
 import android.view.accessibility.AccessibilityNodeInfo
 import android.view.accessibility.AccessibilityWindowInfo
@@ -54,7 +52,7 @@ internal class TouchReachability(
         // Only the default display's windows are listed; other displays are not checked.
         if (element.displayId != Display.DEFAULT_DISPLAY) return
         val windowId = element.accessibilityNodeInfo.windowId
-        val topmost = uiAutomation().windows.filter { it.touchableRegion().contains(point.x, point.y) }.maxByOrNull { it.layer }
+        val topmost = uiAutomation().windows.filter { touchableRegion(it).contains(point.x, point.y) }.maxByOrNull { it.layer }
         // No window at the point, or the list is momentarily out of date: nothing to refuse on.
         if (topmost == null || topmost.id == windowId) return
         throw CommandFailure(
@@ -92,17 +90,6 @@ internal class TouchReachability(
         (0 until childCount).any { index ->
             val child = getChild(index) ?: return@any false
             child != branch && child.isVisibleToUser
-        }
-
-    /**
-     * The window's touchable region from API 33; before it, its bounds, corrected where the
-     * device reports them moved by the window's surface insets ([WindowFrames]).
-     */
-    private fun AccessibilityWindowInfo.touchableRegion(): Region =
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            Region().also(::getRegionInScreen)
-        } else {
-            Region(WindowFrames.frame(this))
         }
 
     private fun AccessibilityWindowInfo.describe(): String {

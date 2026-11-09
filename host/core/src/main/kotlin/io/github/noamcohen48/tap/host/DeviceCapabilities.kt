@@ -69,6 +69,7 @@ object DeviceCapabilities {
             "multi_tap" to CAPABILITY_MULTI_TAP,
             "hold" to CAPABILITY_TIMED_PRESS,
             "wait_state" to CAPABILITY_WAIT_STATE,
+            "tap_outside_panel" to CAPABILITY_TAP_OUTSIDE_PANEL,
         )
 
     /** Empty sets explicitly exclude attachment/control-plane RPCs, not device operations. */

@@ -100,6 +100,7 @@ class Capability(Enum):
     APP_OPEN_LINK = "APP_OPEN_LINK"
     APP_PROCESS = "APP_PROCESS"
     APP_IS_RUNNING = "APP_IS_RUNNING"
+    TAP_OUTSIDE_PANEL = "TAP_OUTSIDE_PANEL"
 
 
 class CapabilityStatus(Enum):

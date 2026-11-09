@@ -55,6 +55,7 @@ ACTIONS = {
     "double_tap": action("double_tap"),
     "multi_tap": action("multi_tap", count=3, interval_ms=120),
     "hold": action("hold", duration_ms=800),
+    "tap_outside_panel": action("tap_outside_panel", allow_reach_below=True),
     "set_text": action("set_text", text="wool"),
     "clear_text": action("clear_text"),
     "scroll": action("scroll", direction="DIR_DOWN", distance_percent=40),
