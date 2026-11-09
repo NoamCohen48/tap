@@ -198,6 +198,9 @@ def _action(writer: _Writer, step: studio.Step) -> list[str]:
         calls[op] = f"tap({timeout}, count={message.count}, interval={interval!r})"
     elif op == "hold":
         calls[op] = f"long_tap({timeout}, duration={message.duration_ms / 1000!r})"
+    elif op == "tap_outside_panel":
+        below = ", allow_reach_below=True" if message.allow_reach_below else ""
+        calls[op] = f"tap_outside_panel({timeout}{below})"
     elif op == "set_text":
         sensitive = ", sensitive=True" if secret is not None else ""
         calls[op] = f"set_text({_value(message.text, secret, parameter)}, {timeout}{sensitive})"

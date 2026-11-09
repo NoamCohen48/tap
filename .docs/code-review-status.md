@@ -60,7 +60,8 @@ moot (protobuf caps decode recursion at 100; depth is re-checked in `CommandVali
     `ResourceId.aut_package` and `SCOPE_DENIED` are gone; `res(name)` matches any package,
     `resId(pkg, name)` exactly one, and a `name` containing `:id/` is
     `QUALIFIED_RESOURCE_NAME`. Removed fields were deleted, not reserved.
-  - `NOT_INTERACTABLE` is emitted again, for one reason only: `OBSCURED`, a gesture whose touch
+  - `NOT_INTERACTABLE` is emitted again, for `OBSCURED` and, from `tap_outside_panel` only,
+    `NO_OUTSIDE_POINT` / `TOUCH_REACHES_BELOW` (`.docs/tap-outside-panel.md`). `OBSCURED` is a gesture whose touch
     point lies in a window above the target's (keyboard, dialog, shade, overlay). Searching
     every window made a partly covered node findable, so without the check a tap would land on
     the covering window and report success (a node covered completely is reported not visible

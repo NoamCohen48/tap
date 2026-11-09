@@ -134,6 +134,16 @@ class RangeType(enum.Enum):
 
 
 @dataclass(frozen=True)
+class OutsideTouch:
+    """Where ``Element.tap_outside_panel`` touched: the screen point and how it found the panel,
+    its bounds and the side, e.g. ``'window "Popup Window" [150,651][570,828], below'``."""
+
+    x: int
+    y: int
+    panel: str
+
+
+@dataclass(frozen=True)
 class Range:
     """A range node's (SeekBar, Slider, RatingBar, ProgressBar) value and bounds, in its own
     units (``Element.set_progress``)."""

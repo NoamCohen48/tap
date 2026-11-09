@@ -105,6 +105,7 @@ function command(value: Command): Pick<Described, "verb" | "target" | "input"> {
     case "tap":
     case "longTap":
     case "doubleTap":
+    case "tapOutsidePanel":
     case "clearText":
     case "exists":
     case "count":

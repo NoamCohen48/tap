@@ -296,6 +296,7 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
         "long_tap": lambda: element.long_tap(timeout),
         "multi_tap": lambda: element.tap(timeout, count=message.count, interval=message.interval_ms / 1000 if message.HasField("interval_ms") else 0.1),
         "hold": lambda: element.long_tap(timeout, duration=message.duration_ms / 1000),
+        "tap_outside_panel": lambda: element.tap_outside_panel(timeout, allow_reach_below=message.allow_reach_below),
         "set_text": lambda: (
             element.set_text(secret_value or "", timeout, sensitive=True)
             if action.HasField("secret")

@@ -9,6 +9,7 @@ import android.widget.FrameLayout
 import android.widget.LinearLayout
 import android.widget.TextView
 import androidx.activity.ComponentActivity
+import androidx.core.view.GravityCompat
 import androidx.drawerlayout.widget.DrawerLayout
 
 /**
@@ -46,7 +47,7 @@ class DrawerActivity : ComponentActivity() {
                                 id = R.id.drawer_open
                                 text = "Open drawer"
                                 isAllCaps = false
-                                setOnClickListener { drawer.openDrawer(Gravity.START) }
+                                setOnClickListener { drawer.openDrawer(GravityCompat.START) }
                             },
                         )
                         addView(

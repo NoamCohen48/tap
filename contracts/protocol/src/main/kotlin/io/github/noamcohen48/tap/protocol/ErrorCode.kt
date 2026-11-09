@@ -116,6 +116,12 @@ object ErrorDetail {
 
     // NOT_INTERACTABLE: the gesture's touch point is inside a window above the target's.
     const val OBSCURED = "OBSCURED"
+
+    // NOT_INTERACTABLE (tap_outside_panel): no side of the panel has room for a touch (a
+    // full-screen window that is not a panel), or every free point is in another app window
+    // below the panel and the command did not allow reaching it.
+    const val NO_OUTSIDE_POINT = "NO_OUTSIDE_POINT"
+    const val TOUCH_REACHES_BELOW = "TOUCH_REACHES_BELOW"
     // WAIT_TIMEOUT (wait_permission_prompt)
     const val NO_PERMISSION_PROMPT = "NO_PERMISSION_PROMPT"
 

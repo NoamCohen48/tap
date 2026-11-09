@@ -26,6 +26,8 @@ import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
 import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
 import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.OpenNotification
@@ -89,7 +91,7 @@ internal class DriverCommandEngine(
     private val compiler = SelectorCompiler()
     private val objects = UiObjectAccess(device)
     private val visibleBounds = VisibleBounds(instrumentation.context)
-    private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, visibleBounds, faults)
+    private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, visibleBounds, OutsidePanel(instrumentation.context) { instrumentation.uiAutomation }, faults)
     private val textInput = TextInputCommands(instrumentation, objects)
     private val rotation = RotationCommands(instrumentation, device)
     private val screen = ScreenCommands(instrumentation)
@@ -273,6 +275,8 @@ internal class DriverCommandEngine(
         override fun multiTap(command: MultiTap) = gestures.multiTap(context, command, selectors[command.selector])
 
         override fun hold(command: TimedPress) = gestures.hold(context, command, selectors[command.selector])
+
+        override fun tapOutsidePanel(command: TapOutsidePanel): OutsideTouch = gestures.tapOutsidePanel(context, command, selectors[command.selector])
 
         override fun setText(command: SetText) = textInput.setText(context, command, selectors[command.selector])
 

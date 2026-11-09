@@ -92,6 +92,7 @@ enum class Capability {
     APP_OPEN_LINK,
     APP_PROCESS,
     APP_IS_RUNNING,
+    TAP_OUTSIDE_PANEL,
 }
 
 /** Eligibility, not guaranteed execution success. Conditional and unknown are not unsupported. */

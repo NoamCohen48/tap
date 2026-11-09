@@ -88,6 +88,7 @@ or a coding agent ([Tap agent](../agent/index.md)), write the test from it:
 | `app` `cold_launch` | `app.coldLaunch()` | `app.cold_launch()` |
 | `action` `multi_tap` | `element.tap(count = 3, interval = 100.milliseconds)` | `element.tap(count=3, interval=0.1)` |
 | `action` `hold` | `element.longTap(duration = 1200.milliseconds)` | `element.long_tap(duration=1.2)` |
+| `action` `tap_outside_panel` | `element.tapOutsidePanel()`, `(allowReachBelow = true)` | `element.tap_outside_panel()`, `(allow_reach_below=True)` |
 | `action` `set_text` on `res("search")` in `com.example.basket` | `app.await(res("search")).one().setText("wool")` | `app.wait(res("search")).one().set_text("wool")` |
 | `wait` `CONDITION_VISIBLE`, no package | `device.screen.await(text("3 results")).visible()` | `device.screen.wait(text("3 results")).visible()` |
 | `wait` `CONDITION_UNTIL`, `until` enabled and text `"Pay"` | `….await(res("pay")).until(enabled() and text("Pay"))` | `….wait(res("pay")).until(enabled() & text("Pay"))` |
