@@ -136,6 +136,8 @@ def parser() -> argparse.ArgumentParser:
     kind = p.add_mutually_exclusive_group()
     kind.add_argument("--long", action="store_true", help="long-press instead")
     kind.add_argument("--double", action="store_true", help="double-tap instead")
+    kind.add_argument("--outside-panel", action="store_true", help="tap outside the dialog, menu, drawer or sheet the target is in")
+    p.add_argument("--allow-reach-below", action="store_true", help="with --outside-panel: send the touch even onto the screen under a panel that lets touches through")
     p.add_argument("--count", type=int, default=1, help="tap this many times, 1..100")
     p.add_argument("--interval", type=_duration, default=0.1, help="release-to-press gap for counted taps, 40ms..1s (default 100ms)")
     p.add_argument("--duration", type=_duration, help="hold the finger down for this duration, 1ms..30s (implies --long)")
@@ -357,6 +359,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return getattr(agent, v)(args.target, device, args.timeout)
     if v == "tap":
         return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double,
+                         outside_panel=args.outside_panel, allow_reach_below=args.allow_reach_below,
                          count=args.count, interval=args.interval, duration=args.duration, timeout=args.timeout)
     if v == "fill":
         return agent.fill(args.target, args.text, device, settle=settle, sensitive=args.sensitive, timeout=args.timeout)

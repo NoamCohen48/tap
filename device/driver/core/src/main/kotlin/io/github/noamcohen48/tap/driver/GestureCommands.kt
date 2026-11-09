@@ -11,6 +11,8 @@ import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.MultiTap
 import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.PressKey
@@ -26,7 +28,7 @@ import io.github.noamcohen48.tap.protocol.multiTapDurationMs
 
 /**
  * Element gestures (`tap`, `long_tap`, `double_tap`, `drag`, `swipe`, `scroll`, `fling`,
- * `pinch`), `press_key` and `open_system_panel`. Every gesture resolves each element it uses
+ * `pinch`, `tap_outside_panel`), `press_key` and `open_system_panel`. Every gesture resolves each element it uses
  * to exactly one match before any input, and reports only whether the input was injected: what
  * the app did with it is for the test to observe.
  */
@@ -36,6 +38,7 @@ internal class GestureCommands(
     private val objects: UiObjectAccess,
     private val reachability: TouchReachability,
     private val visibleBounds: VisibleBounds,
+    private val outsidePanel: OutsidePanel,
     private val faults: FaultHooks,
 ) {
     private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
@@ -74,6 +77,30 @@ internal class GestureCommands(
         gesture(context, target, ::center, command.durationMs, true) { _, point ->
             pointer.hold(point, command.durationMs)
         }
+
+    /**
+     * One tap outside the panel that holds the one matching node ([OutsidePanel]). The node only
+     * names the panel: it need not be touchable itself. Every refusal comes before input.
+     */
+    fun tapOutsidePanel(
+        context: CommandContext,
+        command: TapOutsidePanel,
+        target: CompiledSelector,
+    ): OutsideTouch {
+        context.checkpoint()
+        val element = objects.resolveTarget(target)
+        try {
+            if (element.displayId != Display.DEFAULT_DISPLAY) {
+                throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "A tap outside a panel requires the default display")
+            }
+            val placement = outsidePanel.place(element.accessibilityNodeInfo, command.allowReachBelow)
+            context.markMutationStarted()
+            pointer.tap(placement.point)
+            return OutsideTouch.newBuilder().setX(placement.point.x).setY(placement.point.y).setPanel(placement.description).build()
+        } finally {
+            element.recycle()
+        }
+    }
 
     /** Two taps on the element's visible centre as one gesture (Android's double-tap timing). */
     fun doubleTap(

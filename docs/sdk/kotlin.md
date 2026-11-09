@@ -329,6 +329,9 @@ app.element(res("carousel")).swipe(Direction.UP)
 
 app.element(res("card")).dragTo(res("done_column"))
 app.await(text("Moved to Done")).visible()
+
+app.element(text("Delete photo?")).tapOutsidePanel()
+app.await(text("Delete photo?")).gone()
 ```
 
 ### Waits

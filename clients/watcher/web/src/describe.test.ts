@@ -68,6 +68,11 @@ suite("describe", () => {
     expect(describe(bare).why).toEqual(["✗ enabled"]);
   });
 
+  it("names the panel's node of a tap outside it", () => {
+    const event = command({ case: "tapOutsidePanel", value: { selector: resource("dialog_title") } });
+    expect(summary(describe(event))).toBe('Tap outside panel res("dialog_title")');
+  });
+
   it("shows a sensitive text as hidden", () => {
     const event = command({ case: "setText", value: { selector: resource("password"), text: "", sensitive: true } });
     expect(describe(event).input).toBe("(hidden)");

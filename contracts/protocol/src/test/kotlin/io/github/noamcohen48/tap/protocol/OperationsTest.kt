@@ -4,6 +4,8 @@ import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.NotificationList
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.DismissNotification
 import io.github.noamcohen48.tap.api.v1.DeviceNotification
@@ -104,7 +106,7 @@ class OperationsTest {
     @Test
     fun mutationsAreExactlyTheInputCommands() {
         val mutations = setOf(
-            "press_key", "tap", "long_tap", "multi_tap", "hold", "set_text", "type_text", "clear_text", "swipe", "scroll",
+            "press_key", "tap", "long_tap", "multi_tap", "hold", "tap_outside_panel", "set_text", "type_text", "clear_text", "swipe", "scroll",
             "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
             "dismiss_keyguard", "choose_permission", "double_tap", "drag", "pinch", "fling",
             "hide_keyboard", "perform_ime_action", "set_clipboard", "perform_accessibility_action", "set_progress",
@@ -169,6 +171,7 @@ class OperationsTest {
                 "await_toast" to OutcomeCase.TOAST,
                 "await_notification" to OutcomeCase.NOTIFICATION,
                 "list_notifications" to OutcomeCase.NOTIFICATIONS,
+                "tap_outside_panel" to OutcomeCase.OUTSIDE_TOUCH,
             )
         sampleCommands.forEach { (name, command) ->
             val handler = RecordingHandler()
@@ -337,6 +340,9 @@ class OperationsTest {
 
         override fun hold(command: TimedPress) = record("hold", Unit)
 
+        override fun tapOutsidePanel(command: TapOutsidePanel): OutsideTouch =
+            record("tap_outside_panel", OutsideTouch.newBuilder().setX(540).setY(1519).setPanel("window [28,943][1052,1456], below").build())
+
         override fun setText(command: SetText) = record("set_text", Unit)
 
         override fun typeText(command: TypeText) = record("type_text", Unit)
@@ -420,6 +426,7 @@ class OperationsTest {
                 "long_tap" to Commands.longTap(Selectors.contentDescription("More")),
                 "multi_tap" to Commands.multiTap(button, 3),
                 "hold" to Commands.hold(button, 2_000),
+                "tap_outside_panel" to Commands.tapOutsidePanel(Selectors.text("Settings title")),
                 "set_text" to Commands.setText(button, "user@example.com"),
                 "type_text" to Commands.typeText("typed"),
                 "clear_text" to Commands.clearText(button),

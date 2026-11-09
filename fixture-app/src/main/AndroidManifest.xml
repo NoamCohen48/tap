@@ -63,6 +63,12 @@
             android:name=".ComposeDrawerActivity"
             android:exported="true" />
         <activity
+            android:name=".OutsidePanelActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ComposeOutsidePanelActivity"
+            android:exported="true" />
+        <activity
             android:name=".GestureActivity"
             android:exported="true" />
         <activity

@@ -18,7 +18,7 @@ import type { Intent } from "./ScreenView";
 import * as steps from "./steps";
 import type { Target } from "./steps";
 import { TextEntry } from "./TextEntry";
-import { PressControls } from "./PressControls";
+import { OutsidePanelControls, PressControls } from "./PressControls";
 
 /** The composer's tabs: the three kinds of step on the selected element, then the app and the device. */
 export type Tab = Intent | "app" | "device";
@@ -357,6 +357,7 @@ function ActOnElement({
         </button>
       </Row>
       <PressControls target={pressTarget} disabled={!usable} onPerform={onPerform} />
+      <OutsidePanelControls target={pressTarget} disabled={!usable} onPerform={onPerform} />
       <Row label="Swipe">
         <Directions verb="Swipe" disabled={!usable} onDirection={(d) => onPerform(steps.swipe(target, d, distance))} />
       </Row>

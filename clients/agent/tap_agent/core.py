@@ -34,6 +34,7 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
     MatchMode,
     Notification,
     Orientation,
+    OutsideTouch,
     PermissionChoice,
     ServerError,
     StabilitySignal,
@@ -176,6 +177,10 @@ def _hint(error: TapError) -> str:
             return f"{message}\nthe app died, so nothing on its screen is there any more; launch it again"
         if error.code is ErrorCode.NOT_INTERACTABLE and error.detail == "OBSCURED":
             return f"{message}\nanother window covers the node; close it (often `key back`) or scroll the node clear"
+        if error.code is ErrorCode.NOT_INTERACTABLE and error.detail == "NO_OUTSIDE_POINT":
+            return f"{message}\nthe target is not in a dialog, menu, drawer or sheet with room around it; target a node inside the panel"
+        if error.code is ErrorCode.NOT_INTERACTABLE and error.detail == "TOUCH_REACHES_BELOW":
+            return f"{message}\nthe panel lets touches through to the screen under it; add --allow-reach-below to touch there anyway"
     if isinstance(error, ServerError):
         if error.reason is FailureReason.UNKNOWN_REF:
             return f"{message}\nthat ref is not on the screen any more; run `snapshot` for current refs"
@@ -688,8 +693,10 @@ class Agent:
     def tap(
         self, target: str, device: str | None = None, long: bool = False, settle: bool = False, double: bool = False,
         *, count: int = 1, interval: float = 0.1, duration: float | None = None, timeout: float | None = None,
+        outside_panel: bool = False, allow_reach_below: bool = False,
     ) -> str:
-        """Tap once or ``count`` times, double-tap, or hold for ``duration`` seconds.
+        """Tap once or ``count`` times, double-tap, hold for ``duration`` seconds, or tap outside
+        the panel (dialog, menu, drawer, sheet) the target is in.
         ``interval`` is the release-to-press gap in seconds for counted taps.
         """
         if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 100:
@@ -705,6 +712,16 @@ class Agent:
             long = True
         if long and double:
             raise AgentError("tap is either long or double, not both", EXIT_USAGE)
+        if allow_reach_below and not outside_panel:
+            raise AgentError("allow_reach_below needs outside_panel", EXIT_USAGE)
+        if outside_panel:
+            if long or double or count != 1 or interval != 0.1:
+                raise AgentError("outside_panel is a single tap: it cannot be combined with long, double, duration, count or interval", EXIT_USAGE)
+            touched: list[OutsideTouch] = []
+            text = self._act(device, target, "tapped outside the panel of", lambda e: touched.append(e.tap_outside_panel(timeout, allow_reach_below=allow_reach_below)), settle)
+            where = f" at ({touched[0].x}, {touched[0].y}): {touched[0].panel}" if touched else ""
+            first, _, rest = text.partition("\n")
+            return f"{first}{where}" + (f"\n{rest}" if rest else "")
         if (long or double) and (count != 1 or interval != 0.1):
             raise AgentError("count/interval cannot be combined with long, duration or double", EXIT_USAGE)
         if long:

@@ -9,6 +9,7 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
 import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
@@ -116,6 +117,32 @@ class Element internal constructor(
     /** Two taps at the centre of the one matching node's visible bounds, inside Android's double-tap window. */
     suspend fun doubleTap(timeout: Duration? = null) {
         run(timeout) { doubleTap = DoubleTap.newBuilder().setSelector(target).build() }
+    }
+
+    /**
+     * Taps outside the panel this element is in: a dialog, popup, menu, drawer or bottom sheet,
+     * Views or Compose. Select any node inside the panel, such as its title; it need not be
+     * tappable itself. This is how a test checks "a touch outside closes it".
+     *
+     * The panel is the nearest node from this one up that offers Android's dismiss action or has
+     * a pane title (drawers and bottom sheets), and the touch goes beside it, where no control of
+     * the app's own would take it; otherwise it is the element's window (dialogs, popups, menus),
+     * and the touch goes just past its edge. Sides are tried below, above, right, left, skipping
+     * the system bars and gesture area, the keyboard and windows above. Wait until the panel has
+     * stopped moving first: the point is placed from its bounds at that moment.
+     *
+     * Fails before any input with `NOT_INTERACTABLE` and detail `NO_OUTSIDE_POINT` when no side
+     * has room (a full-screen window that is not a panel, such as a plain screen), or
+     * `TOUCH_REACHES_BELOW` when the only free points are on the screen under a panel that lets
+     * touches through (an autocomplete dropdown, a non-focusable popup): set [allowReachBelow]
+     * to send the touch there anyway. Whether the panel closes is the app's choice: assert it,
+     * for example with `app.await(selector).gone()`. Default display only.
+     */
+    suspend fun tapOutsidePanel(
+        timeout: Duration? = null,
+        allowReachBelow: Boolean = false,
+    ) {
+        run(timeout) { tapOutsidePanel = TapOutsidePanel.newBuilder().setSelector(target).setAllowReachBelow(allowReachBelow).build() }
     }
 
     /**

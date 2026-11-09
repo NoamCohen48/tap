@@ -158,7 +158,10 @@ several nodes match; use a ref from `snapshot` or a narrower selector
 
 As in tests, every action needs exactly one match and fails before touching the device
 otherwise. The error names the code and a next step for the agent. A tap whose point another
-window covers (a dialog, the shade) fails as `NOT_INTERACTABLE` / `OBSCURED`. Exit codes: `0`
+window covers (a dialog, the shade) fails as `NOT_INTERACTABLE` / `OBSCURED`. `tap TARGET
+--outside-panel` touches outside the dialog, menu, drawer or sheet that holds the target, and fails
+the same way, with `NO_OUTSIDE_POINT` or `TOUCH_REACHES_BELOW`, when it has nowhere safe to touch.
+Exit codes: `0`
 ok, `1` the step failed, `2` usage, `3` no server running.
 
 `screenshot` and `capture` (screenshot, hierarchy, device info, driver log) save evidence

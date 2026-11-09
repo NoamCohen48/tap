@@ -37,6 +37,15 @@ deadline before the mutation gate, and require the default display. They never r
 New operations (not fields on old tap messages) ensure an old implementation rejects the
 request rather than silently injecting a single/default-duration tap. See `protocol-contract.md`.
 
+## Tap outside a panel
+
+`Command.tap_outside_panel` (field 49, `TapOutsidePanel`) is an additive mutation returning
+`CommandResult.outside_touch` (field 18, `OutsideTouch`: the point and a description of the
+panel and side). A new operation rather than a field on `Tap`, so an older driver rejects it as
+unsupported instead of tapping the node's centre. Refusals are `NOT_INTERACTABLE` with detail
+`NO_OUTSIDE_POINT` or `TOUCH_REACHES_BELOW`, both before input. Design and evidence:
+`.docs/tap-outside-panel.md`; wire semantics: `protocol-contract.md`.
+
 ## 2. Process model
 
 ```text

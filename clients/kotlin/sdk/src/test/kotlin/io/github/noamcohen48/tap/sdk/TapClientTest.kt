@@ -15,6 +15,7 @@ import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.Done
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
@@ -1250,6 +1251,34 @@ class TapClientTest {
                         assertFailsWith<IllegalArgumentException> { element.longTap(duration = 0.milliseconds) }
                         assertFailsWith<IllegalArgumentException> { element.longTap(duration = 31.seconds) }
                         assertEquals(before, fakeDevices.executeRequests.size)
+                    } finally {
+                        device.detach()
+                    }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
+    @Test
+    fun `tapOutsidePanel sends one command naming the panel's node`() =
+        runBlocking {
+            fakeDevices.executeResponder = {
+                CommandResult.newBuilder().setOutsideTouch(OutsideTouch.newBuilder().setX(540).setY(1519).setPanel("window [28,943][1052,1456], below")).build()
+            }
+            val connection = client().connect("tap-outside")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    try {
+                        device.screen.element(text("Dialog title")).tapOutsidePanel()
+                        device.screen.element(res("dropdown")).tapOutsidePanel(timeout = 3.seconds, allowReachBelow = true)
+                        val commands = fakeDevices.executeRequests.map { it.command }.filter { it.opCase == Command.OpCase.TAP_OUTSIDE_PANEL }
+                        assertEquals(2, commands.size)
+                        assertEquals(text("Dialog title").proto, commands[0].tapOutsidePanel.selector)
+                        assertFalse(commands[0].tapOutsidePanel.allowReachBelow)
+                        assertTrue(commands[1].tapOutsidePanel.allowReachBelow)
+                        assertEquals(3000L, commands[1].timeoutMs)
                     } finally {
                         device.detach()
                     }
