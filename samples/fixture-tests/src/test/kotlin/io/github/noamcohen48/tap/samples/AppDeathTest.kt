@@ -42,12 +42,19 @@ class AppDeathTest {
     fun aHungAppIsReportedAsAnAnr(device: Device) =
         tapTest {
             val app = Fixture.launch(device, ".DyingActivity")
-            // The button hangs on the finger going down, so the finger going up stays unanswered:
-            // Android calls it an ANR after 5 s of that. A hang with no input waiting is no ANR.
+            // The button hangs on the finger going down, so the finger going up stays unanswered.
+            // Android 11+ calls that an ANR after 5 s, and the wait that follows reports it.
+            // Android 10 and older call it an ANR only once more input is waiting for the window
+            // (seen on the SM-J810G: "Waiting to send non-key event"), so there the next input,
+            // a key press, is what fails with it. A hang with no input waiting is no ANR.
             app.await(desc("hang_button")).visible().tap()
             val failure =
-                assertFailsWith<CommandException> {
-                    app.await(res("never_there"), timeout = 25.seconds).visible()
+                if (device.info().apiLevel <= 29) {
+                    assertFailsWith<CommandException> { device.pressBack() }
+                } else {
+                    assertFailsWith<CommandException> {
+                        app.await(res("never_there"), timeout = 25.seconds).visible()
+                    }
                 }
             assertEquals(ErrorCode.AUT_ANR, failure.code)
             app.forceStop()
