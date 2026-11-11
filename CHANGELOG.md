@@ -23,6 +23,8 @@ name the components affected. Earlier releases used independent version lines. T
   look at and fix it (screenshots, snapshots, commands) before deciding to unquarantine it. The
   device stays quarantined for its original reason after detach, also when the server dies
   meanwhile; ListDevices shows it `under_inspection`.
+- Writing a private app file or importing a database works on Android 10 and older: the write
+  used `mv -T`, which their toybox lacks, so every write failed with `IO_ERROR`.
 
 ### Clients and tools
 
