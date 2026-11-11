@@ -329,7 +329,7 @@ requested app/path on downloads too. No root, arbitrary shell, SQL execution or 
 | `GetCapabilities(app)` → `{available, reason?}` | Probe actual `run-as` for the current Android user. Safe while running; no debug-label assumption/root fallback. |
 | `ListFiles(app, path)` → `{entries}` | Immediate children, at most 1024. Empty path lists the private root. Entries expose basename, regular-file size, directory/symlink flags; symlinks are not followed. |
 | `ReadFile(app, path)` → stream `{part}` | One header then chunks, regular files only; ≤ 64 MiB, server size/SHA-256 verified before streaming. |
-| `WriteFile(stream {part})` → `{}` | One header then exactly its declared bytes. Create parents; refuse an existing destination unless `overwrite`. Stage/hash-check then rename; toybox `mv -n -T` handles no-clobber writes (production `run_as_app` SELinux denies hard links). |
+| `WriteFile(stream {part})` → `{}` | One header then exactly its declared bytes. Create parents; refuse an existing destination unless `overwrite`. Stage/hash-check then rename; toybox `mv -n` handles no-clobber writes (no `-T`: Android 10's toybox lacks it) (production `run_as_app` SELinux denies hard links). |
 | `DeleteFile(app, path)` → `{}` | One regular file only; no root/directory/recursive deletion. |
 | `ExportDatabase(app, name)` → stream `{part}` | Base `databases/name` first, then existing `-wal` and `-journal`; omit rebuildable SHM. Preserve committed WAL after force-stop. |
 | `ImportDatabase(stream {part})` → `{}` | Base first, then optional WAL/journal; ≤ 3 distinct files / 64 MiB total, same app/overwrite policy. Stage/hash-check all bytes, replace bundle, remove old sidecars including SHM. No restart or SQLite binary required. |

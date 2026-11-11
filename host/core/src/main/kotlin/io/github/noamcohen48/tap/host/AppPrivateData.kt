@@ -461,13 +461,17 @@ class AppPrivateData internal constructor(
             [ "$actual" = "$4" ] || exit 70
             safe "$1"
             [ ! -e "$path" ] || [ -f "$path" ] || exit 67
-            if [ "$5" = 1 ]; then mv -f -T "$temp" "$path"
+            # No -T: Android 10's toybox (0.8.0) has no such option. The check above keeps a
+            # directory out of the destination (the app is stopped), and the one after the move
+            # proves the destination is the file, not a directory the staged file went into.
+            if [ "$5" = 1 ]; then mv -f "$temp" "$path"
             else
                 # run_as_app SELinux denies hard links on production Android. Use toybox's
                 # no-clobber rename and check whether it actually consumed the staged file.
-                mv -n -T "$temp" "$path"
+                mv -n "$temp" "$path"
                 [ ! -e "$temp" ] || exit 68
             fi
+            [ -f "$path" ] || exit 67
                 """.trimIndent()
         private val PREPARE_DATABASE =
             COMMON +

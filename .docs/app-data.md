@@ -1,7 +1,6 @@
 # Debuggable app data
 
-Status: implemented; Kotlin and Python API 34 file/WAL round trips passed. API 29 remains
-unverified because the Samsung phone is disconnected.
+Status: implemented; Kotlin and Python file/WAL round trips passed on API 34 and API 29.
 
 ## Decision
 
@@ -48,8 +47,11 @@ Verify size/SHA-256 before use. Paths and contents are omitted from event record
 can leave owner-only host spools/private staging; app changes are never journal-restored.
 
 The API 34 production-style image refused a run-as hard link (`ln: Permission denied`). Use
-`mv -n -T` and verify that it consumed the temporary file for no-clobber writes, not an assumed
+`mv -n` and verify that it consumed the temporary file for no-clobber writes, not an assumed
 hard-link permission. This still does not exclude an external actor racing the filesystem.
+Android 10's toybox (0.8.0, the SM-J810G) has no `mv -T`, so the rename runs without it: the
+script refuses a destination that is not a regular file before the move and checks that it is
+one after it.
 
 Database import verifies/stages the complete bundle before replacing the old files. The commit
 script keeps old base/WAL/journal/SHM in a reserved private backup and attempts rollback on a
