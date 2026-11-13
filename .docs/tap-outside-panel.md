@@ -91,8 +91,9 @@ Other findings that shaped it:
   menus and dialogs; with `WindowFrames` the same points close them.
 - A plain `tap` on a scrim node is not a safe substitute: on the expanded sheet, `tap` on
   `id("touch_outside")` pressed a row and reported OK on both devices (the scrim's centre is
-  under the sheet). That is a separate gap in `tap` (a sibling drawn above the node in the same
-  window), not fixed here.
+  under the sheet). That was a gap in every gesture (a control drawn over the node in the same
+  window); since then such a gesture fails as `OBSCURED` before input (`InWindowCoverTest`), so
+  that tap is refused rather than pressing a row.
 - Pane titles are localized ("Dialog" on the emulator, "Dialogue" on the SM-J810G): only their
   presence is read.
 

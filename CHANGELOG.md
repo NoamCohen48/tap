@@ -35,6 +35,10 @@ name the components affected. Earlier releases used independent version lines. T
   `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
   explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining
   prerequisites without changing device state or starting operations.
+- A gesture whose touch point is under another control drawn over the target in the same window
+  (a floating button, a bottom sheet's row over the scrim a test named) fails as
+  `NOT_INTERACTABLE` / `OBSCURED` before any input. It used to press that control and report OK.
+  A label or badge on top that takes no touches is still touched through.
 - A device quarantined only because a setting it changed did not read back when it was put
   back (another writer changing it again, ADB failing mid-restore) is no longer out of service
   until someone clears it. ListDevices marks it `retry_on_attach`; the next attach, or

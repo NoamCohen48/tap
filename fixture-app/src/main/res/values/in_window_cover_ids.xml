@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <item name="cover_status" type="id" />
+    <item name="cover_target" type="id" />
+    <item name="cover_button" type="id" />
+    <item name="badge_target" type="id" />
+</resources>
