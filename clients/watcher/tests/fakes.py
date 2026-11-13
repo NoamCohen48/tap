@@ -1,4 +1,4 @@
-"""A scripted Tap daemon (only the read RPCs the watcher may call) and synthetic H.264."""
+"""A scripted Tap daemon: read-only watching, opt-in phone indicators and synthetic H.264."""
 
 from __future__ import annotations
 
@@ -98,6 +98,7 @@ class FakeDaemon(
     client_connection_pb2_grpc.ClientConnectionServiceServicer,
     device_pb2_grpc.DeviceServiceServicer,
     watch_pb2_grpc.WatchServiceServicer,
+    watch_pb2_grpc.TouchIndicatorServiceServicer,
 ):
     """Records every call (with its metadata). `Watch` replays [snapshot] + [activities] after
     the requested seq, then whatever [push] adds; `WatchVideo` sends [video] (one stream, or
@@ -115,6 +116,9 @@ class FakeDaemon(
         self.video_live: asyncio.Queue[watch.WatchVideoResponse] = asyncio.Queue()
         self.video_calls = 0
         self.hold_video = True
+        self.indicators = watch.TouchIndicators()
+        self.indicator_requests: list[watch.SetTouchIndicatorsRequest] = []
+        self.fail_indicator_write = False
 
     def _call(self, name: str, context: grpc.aio.ServicerContext) -> None:
         self.calls.append((name, tuple(context.invocation_metadata() or ())))
@@ -128,6 +132,20 @@ class FakeDaemon(
         return device.ListDevicesResponse(
             devices=[device.DeviceEntry(serial="serial", state=device.DEVICE_FREE)]
         )
+
+    async def GetTouchIndicators(self, request, context):
+        self._call("GetTouchIndicators", context)
+        return watch.GetTouchIndicatorsResponse(indicators=self.indicators)
+
+    async def SetTouchIndicators(self, request, context):
+        self._call("SetTouchIndicators", context)
+        self.indicator_requests.append(request)
+        if self.fail_indicator_write:
+            await context.abort(grpc.StatusCode.UNAVAILABLE, "connection lost")
+        for name in ("show_taps", "pointer_location"):
+            if request.HasField(name):
+                setattr(self.indicators, name, getattr(request, name))
+        return watch.SetTouchIndicatorsResponse(indicators=self.indicators)
 
     def push(self, activity: watch.Activity) -> None:
         activity.seq = len(self.activities) + 1
@@ -172,6 +190,7 @@ async def serve(daemon: FakeDaemon) -> tuple[grpc.aio.Server, Endpoint]:
     )
     device_pb2_grpc.add_DeviceServiceServicer_to_server(daemon, server)
     watch_pb2_grpc.add_WatchServiceServicer_to_server(daemon, server)
+    watch_pb2_grpc.add_TouchIndicatorServiceServicer_to_server(daemon, server)
     port = server.add_insecure_port("127.0.0.1:0")
     await server.start()
     return server, Endpoint(f"127.0.0.1:{port}", "secret")

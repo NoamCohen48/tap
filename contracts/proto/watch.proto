@@ -25,6 +25,28 @@ service WatchService {
   rpc WatchVideo(WatchVideoRequest) returns (stream WatchVideoResponse);
 }
 
+// Explicit opt-in device diagnostics, separate from the read-only watch streams. These
+// system settings persist until changed, affect every user of the device, and need no
+// client connection or attachment. Nothing is enabled automatically or restored on disconnect.
+service TouchIndicatorService {
+  rpc GetTouchIndicators(GetTouchIndicatorsRequest) returns (GetTouchIndicatorsResponse);
+  // No retry after transmission. Omitted switches are left unchanged. At least one is required.
+  rpc SetTouchIndicators(SetTouchIndicatorsRequest) returns (SetTouchIndicatorsResponse);
+}
+
+message GetTouchIndicatorsRequest { string serial = 1; }
+message SetTouchIndicatorsRequest {
+  string serial = 1;
+  optional bool show_taps = 2;
+  optional bool pointer_location = 3;
+}
+message GetTouchIndicatorsResponse { TouchIndicators indicators = 1; }
+message SetTouchIndicatorsResponse { TouchIndicators indicators = 1; }
+message TouchIndicators {
+  bool show_taps = 1;
+  bool pointer_location = 2;
+}
+
 message WatchRequest {
   // Only activity with a larger seq; 0 for the whole retained backlog. Must be >= 0.
   int64 after_seq = 1;

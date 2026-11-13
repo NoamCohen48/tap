@@ -1,4 +1,4 @@
-"""The page's service only reads: the daemon sees Info, ListDevices, Watch and WatchVideo."""
+"""Ordinary watching only reads; native phone indicators require explicit, non-retried writes."""
 
 from __future__ import annotations
 
@@ -79,3 +79,43 @@ async def exercise(tmp_path):
 
 def test_service_reads_only_and_saves_clips_from_retained_video(tmp_path):
     asyncio.run(exercise(tmp_path))
+
+
+def test_phone_settings_are_explicit_forwarded_once_and_not_reset_on_close(tmp_path):
+    async def run():
+        daemon = FakeDaemon()
+        daemon.indicators.pointer_location = True
+        server, endpoint = await serve(daemon)
+        watcher = Watcher(Library(tmp_path), endpoint)
+        ctx = Mock(spec=RequestContext)
+        try:
+            initial = await watcher.get_touch_indicators(
+                watch.GetTouchIndicatorsRequest(serial="serial"), ctx
+            )
+            assert not initial.indicators.show_taps and initial.indicators.pointer_location
+            request = watch.SetTouchIndicatorsRequest(serial="serial", show_taps=True)
+            changed = await watcher.set_touch_indicators(request, ctx)
+            assert changed.indicators.show_taps and changed.indicators.pointer_location
+            assert daemon.indicator_requests == [request]
+            assert not daemon.indicator_requests[0].HasField("pointer_location")
+            assert all(
+                ("authorization", "Bearer secret") in metadata
+                for _, metadata in daemon.calls
+            )
+            daemon.fail_indicator_write = True
+            with pytest.raises(ConnectError):
+                await watcher.set_touch_indicators(
+                    watch.SetTouchIndicatorsRequest(serial="serial", show_taps=False),
+                    ctx,
+                )
+            assert len(daemon.indicator_requests) == 2  # no retry on transport loss
+        finally:
+            await watcher.close()
+            await server.stop(0)
+        assert len(daemon.indicator_requests) == 2  # no automatic restore
+        assert {name for name, _ in daemon.calls} <= {
+            "GetTouchIndicators",
+            "SetTouchIndicators",
+        }
+
+    asyncio.run(run())

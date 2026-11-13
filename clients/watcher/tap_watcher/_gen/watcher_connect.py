@@ -25,6 +25,12 @@ class WatcherService(Protocol):
     async def list_devices(self, request: device__pb2.ListDevicesRequest, ctx: RequestContext) -> device__pb2.ListDevicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
+    async def get_touch_indicators(self, request: watch__pb2.GetTouchIndicatorsRequest, ctx: RequestContext) -> watch__pb2.GetTouchIndicatorsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
+    async def set_touch_indicators(self, request: watch__pb2.SetTouchIndicatorsRequest, ctx: RequestContext) -> watch__pb2.SetTouchIndicatorsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+
     def watch(self, request: watch__pb2.WatchRequest, ctx: RequestContext) -> AsyncIterator[watch__pb2.WatchResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
 
@@ -71,6 +77,26 @@ class WatcherServiceASGIApplication(ConnectASGIApplication[WatcherService]):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=svc.list_devices,
+                ),
+                "/tap.watcher.v1.WatcherService/GetTouchIndicators": Endpoint.unary(
+                    method=MethodInfo(
+                        name="GetTouchIndicators",
+                        service_name="tap.watcher.v1.WatcherService",
+                        input=watch__pb2.GetTouchIndicatorsRequest,
+                        output=watch__pb2.GetTouchIndicatorsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.get_touch_indicators,
+                ),
+                "/tap.watcher.v1.WatcherService/SetTouchIndicators": Endpoint.unary(
+                    method=MethodInfo(
+                        name="SetTouchIndicators",
+                        service_name="tap.watcher.v1.WatcherService",
+                        input=watch__pb2.SetTouchIndicatorsRequest,
+                        output=watch__pb2.SetTouchIndicatorsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=svc.set_touch_indicators,
                 ),
                 "/tap.watcher.v1.WatcherService/Watch": Endpoint.server_stream(
                     method=MethodInfo(
@@ -189,6 +215,46 @@ class WatcherServiceClient(ConnectClient):
                 service_name="tap.watcher.v1.WatcherService",
                 input=device__pb2.ListDevicesRequest,
                 output=device__pb2.ListDevicesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def get_touch_indicators(
+        self,
+        request: watch__pb2.GetTouchIndicatorsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> watch__pb2.GetTouchIndicatorsResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetTouchIndicators",
+                service_name="tap.watcher.v1.WatcherService",
+                input=watch__pb2.GetTouchIndicatorsRequest,
+                output=watch__pb2.GetTouchIndicatorsResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    async def set_touch_indicators(
+        self,
+        request: watch__pb2.SetTouchIndicatorsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> watch__pb2.SetTouchIndicatorsResponse:
+        return await self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetTouchIndicators",
+                service_name="tap.watcher.v1.WatcherService",
+                input=watch__pb2.SetTouchIndicatorsRequest,
+                output=watch__pb2.SetTouchIndicatorsResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,
@@ -341,6 +407,10 @@ class WatcherServiceSync(Protocol):
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def list_devices(self, request: device__pb2.ListDevicesRequest, ctx: RequestContext) -> device__pb2.ListDevicesResponse:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def get_touch_indicators(self, request: watch__pb2.GetTouchIndicatorsRequest, ctx: RequestContext) -> watch__pb2.GetTouchIndicatorsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
+    def set_touch_indicators(self, request: watch__pb2.SetTouchIndicatorsRequest, ctx: RequestContext) -> watch__pb2.SetTouchIndicatorsResponse:
+        raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def watch(self, request: watch__pb2.WatchRequest, ctx: RequestContext) -> Iterator[watch__pb2.WatchResponse]:
         raise ConnectError(Code.UNIMPLEMENTED, "Not implemented")
     def watch_video(self, request: watch__pb2.WatchVideoRequest, ctx: RequestContext) -> Iterator[watch__pb2.WatchVideoResponse]:
@@ -380,6 +450,26 @@ class WatcherServiceWSGIApplication(ConnectWSGIApplication):
                         idempotency_level=IdempotencyLevel.UNKNOWN,
                     ),
                     function=service.list_devices,
+                ),
+                "/tap.watcher.v1.WatcherService/GetTouchIndicators": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="GetTouchIndicators",
+                        service_name="tap.watcher.v1.WatcherService",
+                        input=watch__pb2.GetTouchIndicatorsRequest,
+                        output=watch__pb2.GetTouchIndicatorsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.get_touch_indicators,
+                ),
+                "/tap.watcher.v1.WatcherService/SetTouchIndicators": EndpointSync.unary(
+                    method=MethodInfo(
+                        name="SetTouchIndicators",
+                        service_name="tap.watcher.v1.WatcherService",
+                        input=watch__pb2.SetTouchIndicatorsRequest,
+                        output=watch__pb2.SetTouchIndicatorsResponse,
+                        idempotency_level=IdempotencyLevel.UNKNOWN,
+                    ),
+                    function=service.set_touch_indicators,
                 ),
                 "/tap.watcher.v1.WatcherService/Watch": EndpointSync.server_stream(
                     method=MethodInfo(
@@ -498,6 +588,46 @@ class WatcherServiceClientSync(ConnectClientSync):
                 service_name="tap.watcher.v1.WatcherService",
                 input=device__pb2.ListDevicesRequest,
                 output=device__pb2.ListDevicesResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def get_touch_indicators(
+        self,
+        request: watch__pb2.GetTouchIndicatorsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> watch__pb2.GetTouchIndicatorsResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="GetTouchIndicators",
+                service_name="tap.watcher.v1.WatcherService",
+                input=watch__pb2.GetTouchIndicatorsRequest,
+                output=watch__pb2.GetTouchIndicatorsResponse,
+                idempotency_level=IdempotencyLevel.UNKNOWN,
+            ),
+            headers=headers,
+            timeout_ms=timeout_ms,
+        )
+
+    def set_touch_indicators(
+        self,
+        request: watch__pb2.SetTouchIndicatorsRequest,
+        *,
+        headers: Headers | Mapping[str, str] | None = None,
+        timeout_ms: int | None = None,
+    ) -> watch__pb2.SetTouchIndicatorsResponse:
+        return self.execute_unary(
+            request=request,
+            method=MethodInfo(
+                name="SetTouchIndicators",
+                service_name="tap.watcher.v1.WatcherService",
+                input=watch__pb2.SetTouchIndicatorsRequest,
+                output=watch__pb2.SetTouchIndicatorsResponse,
                 idempotency_level=IdempotencyLevel.UNKNOWN,
             ),
             headers=headers,

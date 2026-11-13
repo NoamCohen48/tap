@@ -9,9 +9,11 @@ using it, every action that connection runs on it, and the device's screen as vi
 test suite while it runs, look back at what happened just before a failure, compare the screen
 before and after an action, and save clips and recordings to a Library.
 
-It is **read-only**: it never attaches a device, sends a command, wakes the screen, keeps a
-connection alive or turns on screenshot tracing, so it can watch any test run (Kotlin, Python,
-`tap-agent`, Tap Studio) without changing it. To inspect elements and record steps, use
+Watching is **read-only**: it never attaches a device, sends driver commands, wakes the screen,
+keeps a connection alive or turns on screenshot tracing. It can watch any test run (Kotlin,
+Python, `tap-agent`, Tap Studio). The separate **On phone** controls are an explicit exception:
+they change Android’s device-wide touch indicators ([Action marks and phone indicators](live.md#on-phone-indicators)).
+Nothing enables those settings automatically. To inspect elements and record steps, use
 [Tap Studio](../studio/index.md) instead.
 
 ## Install

@@ -9,6 +9,42 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class GetTouchIndicatorsRequest(_message.Message):
+    __slots__ = ("serial",)
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    def __init__(self, serial: _Optional[str] = ...) -> None: ...
+
+class SetTouchIndicatorsRequest(_message.Message):
+    __slots__ = ("serial", "show_taps", "pointer_location")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    SHOW_TAPS_FIELD_NUMBER: _ClassVar[int]
+    POINTER_LOCATION_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    show_taps: bool
+    pointer_location: bool
+    def __init__(self, serial: _Optional[str] = ..., show_taps: _Optional[bool] = ..., pointer_location: _Optional[bool] = ...) -> None: ...
+
+class GetTouchIndicatorsResponse(_message.Message):
+    __slots__ = ("indicators",)
+    INDICATORS_FIELD_NUMBER: _ClassVar[int]
+    indicators: TouchIndicators
+    def __init__(self, indicators: _Optional[_Union[TouchIndicators, _Mapping]] = ...) -> None: ...
+
+class SetTouchIndicatorsResponse(_message.Message):
+    __slots__ = ("indicators",)
+    INDICATORS_FIELD_NUMBER: _ClassVar[int]
+    indicators: TouchIndicators
+    def __init__(self, indicators: _Optional[_Union[TouchIndicators, _Mapping]] = ...) -> None: ...
+
+class TouchIndicators(_message.Message):
+    __slots__ = ("show_taps", "pointer_location")
+    SHOW_TAPS_FIELD_NUMBER: _ClassVar[int]
+    POINTER_LOCATION_FIELD_NUMBER: _ClassVar[int]
+    show_taps: bool
+    pointer_location: bool
+    def __init__(self, show_taps: _Optional[bool] = ..., pointer_location: _Optional[bool] = ...) -> None: ...
+
 class WatchRequest(_message.Message):
     __slots__ = ("after_seq",)
     AFTER_SEQ_FIELD_NUMBER: _ClassVar[int]

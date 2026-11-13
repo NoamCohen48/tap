@@ -3,6 +3,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Action } from "./activity";
+import { ActionMarks } from "./ActionMarks";
+import { PhoneIndicators } from "./PhoneIndicators";
 import { api, errorText } from "./api";
 import { bytes, clock, duration } from "./format";
 import type { ActiveRecording, Recording } from "./gen/watcher_pb";
@@ -44,6 +46,10 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
   const [comparing, setComparing] = useState(false);
   const [busy, setBusy] = useState(false);
   const [decodeError, setDecodeError] = useState("");
+  const [showMarks, setShowMarks] = useState(() => {
+    try { return localStorage.getItem("tap-watcher.action-marks.v1") !== "off"; }
+    catch { return true; }
+  });
 
   const setMode = useCallback((next: Mode) => {
     modeRef.current = next;
@@ -293,18 +299,34 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
           ? "Waiting for the first frame…"
           : "";
 
+  const overlay = (index: number, live = false, selection?: Action) => {
+    if (!showMarks || empty) return null;
+    const header = buffer.headerAt(index);
+    return <ActionMarks actions={actions} clockId={header.clockId} ns={buffer.at(index).receivedMonotonicNs}
+      width={header.width} height={header.height} live={live} selected={selection} />;
+  };
+
   return (
     <section className="stage" aria-label="Device screen">
       <div className={`screens${showCompare ? " comparing" : ""}`}>
         <figure className="screen" hidden={showCompare}>
-          <canvas ref={canvas} hidden={empty} aria-label="Device screen" />
+          <div className="screen-image" hidden={empty}>
+            <canvas ref={canvas} aria-label="Device screen" />
+            {!showCompare && overlay(position, mode.kind === "live", mode.kind === "paused" && compare?.before === position ? selected : undefined)}
+          </div>
         </figure>
         <figure className="screen" hidden={!showCompare}>
-          <canvas ref={beforeCanvas} aria-label="Screen before the action" />
+          <div className="screen-image">
+            <canvas ref={beforeCanvas} aria-label="Screen before the action" />
+            {showCompare && overlay(compare.before, false, selected)}
+          </div>
           <figcaption>Before{compare && ` · ${clock(buffer.at(compare.before).receivedEpochMs)}`}</figcaption>
         </figure>
         <figure className="screen" hidden={!showCompare}>
-          <canvas ref={afterCanvas} aria-label="Screen after the action" />
+          <div className="screen-image">
+            <canvas ref={afterCanvas} aria-label="Screen after the action" />
+            {showCompare && overlay(compare.after, false, selected)}
+          </div>
           <figcaption>After{compare && ` · +${duration(Math.max(0, compare.afterMs) / 1000)}`}</figcaption>
         </figure>
         {placeholder && <p className="placeholder">{placeholder}</p>}
@@ -403,6 +425,16 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
         >
           <Icon.Live /> <span className="label">Live</span>
         </button>
+        <button className={`button${showMarks ? " on" : ""}`} aria-pressed={showMarks}
+          aria-label="Action marks" title="Show touch locations and illustrative gesture trails (not an input trace)"
+          onClick={() => {
+            const next = !showMarks;
+            setShowMarks(next);
+            try { localStorage.setItem("tap-watcher.action-marks.v1", next ? "on" : "off"); } catch { /* Storage may be disabled. */ }
+          }}>
+          <Icon.TouchMarks /> <span className="label">Marks</span>
+        </button>
+        <PhoneIndicators key={serial} serial={serial} />
         <button
           className={`button${comparing ? " on" : ""}`}
           disabled={empty}

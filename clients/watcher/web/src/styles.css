@@ -529,6 +529,42 @@ kbd {
   justify-content: center;
   gap: 8px;
 }
+.screen-image {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+}
+.screen-image canvas {
+  width: 100%;
+  height: 100%;
+}
+.action-marks {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  color: var(--accent-fill);
+}
+.action-marks > svg {
+  width: 100%;
+  height: 100%;
+}
+.action-marks circle, .action-marks path {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 3px;
+  vector-effect: non-scaling-stroke;
+}
+.action-marks .touch-dot { fill: currentColor; stroke: none; }
+.action-marks .touch-outline circle, .action-marks .touch-outline path {
+  stroke: var(--screen-bg);
+  stroke-width: 7px;
+  stroke-dasharray: none;
+}
+.action-marks .touch-outline .touch-dot { fill: var(--screen-bg); stroke: none; }
+.action-marks .hold { stroke-dasharray: 5 3; }
 .screen canvas {
   display: block;
   max-width: 100%;
@@ -536,10 +572,10 @@ kbd {
   min-height: 0;
   object-fit: contain;
   border-radius: 6px;
-  background: #000;
+  background: transparent;
 }
-.screens.comparing .screen canvas {
-  max-height: calc(100% - 28px);
+.screens.comparing .screen-image {
+  height: calc(100% - 28px);
 }
 .screen figcaption {
   color: #c8d0d9;
@@ -634,6 +670,7 @@ kbd {
 }
 /* The Live stage: the scrubber (and its zoom) gets a row of its own above the buttons. */
 .transport.stacked {
+  position: relative;
   flex-wrap: wrap;
   row-gap: 2px;
 }
@@ -647,6 +684,40 @@ kbd {
 .transport.stacked .time {
   margin-right: auto;
 }
+.phone-indicators summary {
+  list-style: none;
+  cursor: pointer;
+}
+.phone-indicators summary::-webkit-details-marker { display: none; }
+.phone-indicators-panel {
+  position: absolute;
+  z-index: 1; /* Above the screen, within the stage's transport controls. */
+  right: 12px;
+  bottom: calc(100% + 8px);
+  width: min(320px, calc(100% - 24px));
+  max-height: min(70dvh, 420px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.phone-indicators-panel p { margin: 8px 0 12px; color: var(--muted); }
+.phone-indicators-panel label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.phone-indicators-panel input { accent-color: var(--accent); margin: 3px 0 0; }
+.phone-indicators-panel small { display: block; margin-top: 3px; color: var(--muted); }
+.phone-indicators-panel .phone-indicators-error { color: var(--bad); overflow-wrap: anywhere; }
 .clip-bar {
   font-size: 13px;
   background: var(--surface-2);

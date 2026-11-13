@@ -1,7 +1,8 @@
 """The page's Connect service (`tap.watcher.v1.WatcherService`).
 
 Every method reads from the back end's own state (activity history, video feeds, library) or
-makes a read-only daemon call; none attaches, executes, observes or renews a connection.
+makes a read-only daemon call, except explicit touch-indicator changes. None attaches,
+executes, observes or renews a connection.
 """
 
 from __future__ import annotations
@@ -90,6 +91,16 @@ class Watcher:
         self, request: device.ListDevicesRequest, ctx: RequestContext
     ) -> device.ListDevicesResponse:
         return await self.daemon.list_devices()
+
+    async def get_touch_indicators(
+        self, request: watch.GetTouchIndicatorsRequest, ctx: RequestContext
+    ) -> watch.GetTouchIndicatorsResponse:
+        return await self.daemon.get_touch_indicators(request)
+
+    async def set_touch_indicators(
+        self, request: watch.SetTouchIndicatorsRequest, ctx: RequestContext
+    ) -> watch.SetTouchIndicatorsResponse:
+        return await self.daemon.set_touch_indicators(request)
 
     async def watch(
         self, request: watch.WatchRequest, ctx: RequestContext

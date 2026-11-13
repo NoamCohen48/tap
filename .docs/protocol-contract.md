@@ -303,6 +303,16 @@ optional `last_state` and `condition_holds` for `wait_state`, optional `narrowin
 on failure. The daemon hands `result` to the
 client as it is.
 
+`CommandResult.touch_feedback` (field 18) optionally carries `TouchFeedback` for default-display
+tap-family and gesture commands (tap, long tap, double/multi tap, hold, swipe, scroll, fling,
+drag and pinch): display width/height, visible target bounds and the checked touch point in
+screen pixels; drag also includes its resolved destination. Geometry is read before the mutation
+gate and attached only once that gate opens. It is cleared for every command; other displays,
+pre-input refusals and older drivers omit it. It is diagnostic geometry, not proof of injection
+or a sampled pointer trace: UiAutomator gestures may refresh bounds after the check. The daemon
+copies it to `LoggedEvent.touch_feedback` (field 14). No new capability or version is required
+for these additive optional fields, and no mutation is retried to obtain them.
+
 ### Selectors
 
 A selector is a small versioned expression tree (`selector.proto`), never a string expression

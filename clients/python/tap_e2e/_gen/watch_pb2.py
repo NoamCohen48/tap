@@ -26,7 +26,7 @@ from . import client_connection_pb2 as client__connection__pb2
 from . import event_log_pb2 as event__log__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bwatch.proto\x12\x06tap.v1\x1a\x17\x63lient_connection.proto\x1a\x0f\x65vent_log.proto\"!\n\x0cWatchRequest\x12\x11\n\tafter_seq\x18\x01 \x01(\x03\"t\n\rWatchResponse\x12,\n\x0b\x63onnections\x18\x01 \x03(\x0b\x32\x17.tap.v1.ConnectionEntry\x12$\n\nactivities\x18\x02 \x03(\x0b\x32\x10.tap.v1.Activity\x12\x0f\n\x07\x64ropped\x18\x03 \x01(\x03\"\xcc\x02\n\x08\x41\x63tivity\x12\x0b\n\x03seq\x18\x01 \x01(\x03\x12\x13\n\x0b\x61t_epoch_ms\x18\x02 \x01(\x03\x12\x1c\n\x14\x63lient_connection_id\x18\x03 \x01(\t\x12\x35\n\x11\x63onnection_opened\x18\x04 \x01(\x0b\x32\x18.tap.v1.ConnectionOpenedH\x00\x12\x35\n\x11\x63onnection_closed\x18\x05 \x01(\x0b\x32\x18.tap.v1.ConnectionClosedH\x00\x12\x31\n\x0f\x64\x65vice_attached\x18\x06 \x01(\x0b\x32\x16.tap.v1.DeviceAttachedH\x00\x12\x31\n\x0f\x64\x65vice_detached\x18\x07 \x01(\x0b\x32\x16.tap.v1.DeviceDetachedH\x00\x12$\n\x05\x65vent\x18\x08 \x01(\x0b\x32\x13.tap.v1.LoggedEventH\x00\x42\x06\n\x04kind\".\n\x10\x43onnectionOpened\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04held\x18\x02 \x01(\x08\"\"\n\x10\x43onnectionClosed\x12\x0e\n\x06reason\x18\x01 \x01(\t\"P\n\x0e\x44\x65viceAttached\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x03 \x01(\x03\"L\n\x0e\x44\x65viceDetached\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"#\n\x11WatchVideoRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"h\n\x0bVideoHeader\x12\x11\n\tstream_id\x18\x01 \x01(\t\x12\x10\n\x08\x63lock_id\x18\x02 \x01(\t\x12\r\n\x05width\x18\x03 \x01(\r\x12\x0e\n\x06height\x18\x04 \x01(\r\x12\x15\n\rconfiguration\x18\x05 \x01(\x0c\"\x84\x01\n\nVideoFrame\x12\x0b\n\x03seq\x18\x01 \x01(\x04\x12\x0e\n\x06pts_us\x18\x02 \x01(\x03\x12\x11\n\tkey_frame\x18\x03 \x01(\x08\x12\x0c\n\x04\x64\x61ta\x18\x04 \x01(\x0c\x12\x1d\n\x15received_monotonic_ns\x18\x05 \x01(\x03\x12\x19\n\x11received_epoch_ms\x18\x06 \x01(\x03\"j\n\x12WatchVideoResponse\x12%\n\x06header\x18\x01 \x01(\x0b\x32\x13.tap.v1.VideoHeaderH\x00\x12#\n\x05\x66rame\x18\x02 \x01(\x0b\x32\x12.tap.v1.VideoFrameH\x00\x42\x08\n\x06update2\x8d\x01\n\x0cWatchService\x12\x36\n\x05Watch\x12\x14.tap.v1.WatchRequest\x1a\x15.tap.v1.WatchResponse0\x01\x12\x45\n\nWatchVideo\x12\x19.tap.v1.WatchVideoRequest\x1a\x1a.tap.v1.WatchVideoResponse0\x01\x42\x30\n io.github.noamcohen48.tap.api.v1B\nWatchProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x0bwatch.proto\x12\x06tap.v1\x1a\x17\x63lient_connection.proto\x1a\x0f\x65vent_log.proto\"+\n\x19GetTouchIndicatorsRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"\x85\x01\n\x19SetTouchIndicatorsRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x16\n\tshow_taps\x18\x02 \x01(\x08H\x00\x88\x01\x01\x12\x1d\n\x10pointer_location\x18\x03 \x01(\x08H\x01\x88\x01\x01\x42\x0c\n\n_show_tapsB\x13\n\x11_pointer_location\"I\n\x1aGetTouchIndicatorsResponse\x12+\n\nindicators\x18\x01 \x01(\x0b\x32\x17.tap.v1.TouchIndicators\"I\n\x1aSetTouchIndicatorsResponse\x12+\n\nindicators\x18\x01 \x01(\x0b\x32\x17.tap.v1.TouchIndicators\">\n\x0fTouchIndicators\x12\x11\n\tshow_taps\x18\x01 \x01(\x08\x12\x18\n\x10pointer_location\x18\x02 \x01(\x08\"!\n\x0cWatchRequest\x12\x11\n\tafter_seq\x18\x01 \x01(\x03\"t\n\rWatchResponse\x12,\n\x0b\x63onnections\x18\x01 \x03(\x0b\x32\x17.tap.v1.ConnectionEntry\x12$\n\nactivities\x18\x02 \x03(\x0b\x32\x10.tap.v1.Activity\x12\x0f\n\x07\x64ropped\x18\x03 \x01(\x03\"\xcc\x02\n\x08\x41\x63tivity\x12\x0b\n\x03seq\x18\x01 \x01(\x03\x12\x13\n\x0b\x61t_epoch_ms\x18\x02 \x01(\x03\x12\x1c\n\x14\x63lient_connection_id\x18\x03 \x01(\t\x12\x35\n\x11\x63onnection_opened\x18\x04 \x01(\x0b\x32\x18.tap.v1.ConnectionOpenedH\x00\x12\x35\n\x11\x63onnection_closed\x18\x05 \x01(\x0b\x32\x18.tap.v1.ConnectionClosedH\x00\x12\x31\n\x0f\x64\x65vice_attached\x18\x06 \x01(\x0b\x32\x16.tap.v1.DeviceAttachedH\x00\x12\x31\n\x0f\x64\x65vice_detached\x18\x07 \x01(\x0b\x32\x16.tap.v1.DeviceDetachedH\x00\x12$\n\x05\x65vent\x18\x08 \x01(\x0b\x32\x13.tap.v1.LoggedEventH\x00\x42\x06\n\x04kind\".\n\x10\x43onnectionOpened\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x0c\n\x04held\x18\x02 \x01(\x08\"\"\n\x10\x43onnectionClosed\x12\x0e\n\x06reason\x18\x01 \x01(\t\"P\n\x0e\x44\x65viceAttached\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x03 \x01(\x03\"L\n\x0e\x44\x65viceDetached\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x0e\n\x06reason\x18\x03 \x01(\t\"#\n\x11WatchVideoRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"h\n\x0bVideoHeader\x12\x11\n\tstream_id\x18\x01 \x01(\t\x12\x10\n\x08\x63lock_id\x18\x02 \x01(\t\x12\r\n\x05width\x18\x03 \x01(\r\x12\x0e\n\x06height\x18\x04 \x01(\r\x12\x15\n\rconfiguration\x18\x05 \x01(\x0c\"\x84\x01\n\nVideoFrame\x12\x0b\n\x03seq\x18\x01 \x01(\x04\x12\x0e\n\x06pts_us\x18\x02 \x01(\x03\x12\x11\n\tkey_frame\x18\x03 \x01(\x08\x12\x0c\n\x04\x64\x61ta\x18\x04 \x01(\x0c\x12\x1d\n\x15received_monotonic_ns\x18\x05 \x01(\x03\x12\x19\n\x11received_epoch_ms\x18\x06 \x01(\x03\"j\n\x12WatchVideoResponse\x12%\n\x06header\x18\x01 \x01(\x0b\x32\x13.tap.v1.VideoHeaderH\x00\x12#\n\x05\x66rame\x18\x02 \x01(\x0b\x32\x12.tap.v1.VideoFrameH\x00\x42\x08\n\x06update2\x8d\x01\n\x0cWatchService\x12\x36\n\x05Watch\x12\x14.tap.v1.WatchRequest\x1a\x15.tap.v1.WatchResponse0\x01\x12\x45\n\nWatchVideo\x12\x19.tap.v1.WatchVideoRequest\x1a\x1a.tap.v1.WatchVideoResponse0\x01\x32\xd1\x01\n\x15TouchIndicatorService\x12[\n\x12GetTouchIndicators\x12!.tap.v1.GetTouchIndicatorsRequest\x1a\".tap.v1.GetTouchIndicatorsResponse\x12[\n\x12SetTouchIndicators\x12!.tap.v1.SetTouchIndicatorsRequest\x1a\".tap.v1.SetTouchIndicatorsResponseB0\n io.github.noamcohen48.tap.api.v1B\nWatchProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -34,28 +34,40 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'watch_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n io.github.noamcohen48.tap.api.v1B\nWatchProtoP\001'
-  _globals['_WATCHREQUEST']._serialized_start=65
-  _globals['_WATCHREQUEST']._serialized_end=98
-  _globals['_WATCHRESPONSE']._serialized_start=100
-  _globals['_WATCHRESPONSE']._serialized_end=216
-  _globals['_ACTIVITY']._serialized_start=219
-  _globals['_ACTIVITY']._serialized_end=551
-  _globals['_CONNECTIONOPENED']._serialized_start=553
-  _globals['_CONNECTIONOPENED']._serialized_end=599
-  _globals['_CONNECTIONCLOSED']._serialized_start=601
-  _globals['_CONNECTIONCLOSED']._serialized_end=635
-  _globals['_DEVICEATTACHED']._serialized_start=637
-  _globals['_DEVICEATTACHED']._serialized_end=717
-  _globals['_DEVICEDETACHED']._serialized_start=719
-  _globals['_DEVICEDETACHED']._serialized_end=795
-  _globals['_WATCHVIDEOREQUEST']._serialized_start=797
-  _globals['_WATCHVIDEOREQUEST']._serialized_end=832
-  _globals['_VIDEOHEADER']._serialized_start=834
-  _globals['_VIDEOHEADER']._serialized_end=938
-  _globals['_VIDEOFRAME']._serialized_start=941
-  _globals['_VIDEOFRAME']._serialized_end=1073
-  _globals['_WATCHVIDEORESPONSE']._serialized_start=1075
-  _globals['_WATCHVIDEORESPONSE']._serialized_end=1181
-  _globals['_WATCHSERVICE']._serialized_start=1184
-  _globals['_WATCHSERVICE']._serialized_end=1325
+  _globals['_GETTOUCHINDICATORSREQUEST']._serialized_start=65
+  _globals['_GETTOUCHINDICATORSREQUEST']._serialized_end=108
+  _globals['_SETTOUCHINDICATORSREQUEST']._serialized_start=111
+  _globals['_SETTOUCHINDICATORSREQUEST']._serialized_end=244
+  _globals['_GETTOUCHINDICATORSRESPONSE']._serialized_start=246
+  _globals['_GETTOUCHINDICATORSRESPONSE']._serialized_end=319
+  _globals['_SETTOUCHINDICATORSRESPONSE']._serialized_start=321
+  _globals['_SETTOUCHINDICATORSRESPONSE']._serialized_end=394
+  _globals['_TOUCHINDICATORS']._serialized_start=396
+  _globals['_TOUCHINDICATORS']._serialized_end=458
+  _globals['_WATCHREQUEST']._serialized_start=460
+  _globals['_WATCHREQUEST']._serialized_end=493
+  _globals['_WATCHRESPONSE']._serialized_start=495
+  _globals['_WATCHRESPONSE']._serialized_end=611
+  _globals['_ACTIVITY']._serialized_start=614
+  _globals['_ACTIVITY']._serialized_end=946
+  _globals['_CONNECTIONOPENED']._serialized_start=948
+  _globals['_CONNECTIONOPENED']._serialized_end=994
+  _globals['_CONNECTIONCLOSED']._serialized_start=996
+  _globals['_CONNECTIONCLOSED']._serialized_end=1030
+  _globals['_DEVICEATTACHED']._serialized_start=1032
+  _globals['_DEVICEATTACHED']._serialized_end=1112
+  _globals['_DEVICEDETACHED']._serialized_start=1114
+  _globals['_DEVICEDETACHED']._serialized_end=1190
+  _globals['_WATCHVIDEOREQUEST']._serialized_start=1192
+  _globals['_WATCHVIDEOREQUEST']._serialized_end=1227
+  _globals['_VIDEOHEADER']._serialized_start=1229
+  _globals['_VIDEOHEADER']._serialized_end=1333
+  _globals['_VIDEOFRAME']._serialized_start=1336
+  _globals['_VIDEOFRAME']._serialized_end=1468
+  _globals['_WATCHVIDEORESPONSE']._serialized_start=1470
+  _globals['_WATCHVIDEORESPONSE']._serialized_end=1576
+  _globals['_WATCHSERVICE']._serialized_start=1579
+  _globals['_WATCHSERVICE']._serialized_end=1720
+  _globals['_TOUCHINDICATORSERVICE']._serialized_start=1723
+  _globals['_TOUCHINDICATORSERVICE']._serialized_end=1932
 # @@protoc_insertion_point(module_scope)

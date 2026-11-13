@@ -122,7 +122,12 @@ class EventLogServiceTest {
                         connections.events(EventsRequest.newBuilder().setClientConnectionId(connection.id).setAfterSeq(after).build())
 
                     val tap = Commands.tap(Selectors.text("OK"))
-                    execute(tap, CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
+                    val feedback = io.github.noamcohen48.tap.api.v1.TouchFeedback.newBuilder()
+                        .setDisplayWidth(1080).setDisplayHeight(1920).setX(250).setY(400)
+                        .setBounds(io.github.noamcohen48.tap.api.v1.Bounds.newBuilder()
+                            .setLeft(100).setTop(300).setRight(400).setBottom(500)).build()
+                    val tapResult = execute(tap, CommandResult.newBuilder().setDone(Done.getDefaultInstance()).setTouchFeedback(feedback))
+                    assertEquals(feedback, tapResult.touchFeedback)
                     execute(Commands.deviceInfo(), CommandResult.newBuilder().setDeviceInfo(DeviceInfo.getDefaultInstance()))
                     val missing = Commands.tap(Selectors.text("Nope"))
                     execute(missing, CommandResult.newBuilder().setError(CommandError.newBuilder().setCode(ErrorCode.ERR_NOT_FOUND)))
@@ -133,6 +138,8 @@ class EventLogServiceTest {
                     val (first, second) = all.eventsList
                     assertEquals(LoggedEvent.CallCase.COMMAND, first.callCase)
                     assertEquals(tap, first.command)
+                    assertEquals(feedback, first.touchFeedback)
+                    assertFalse(second.hasTouchFeedback())
                     assertEquals("log-serial", first.serial)
                     assertTrue(first.atEpochMs > 0)
                     for (event in all.eventsList) {

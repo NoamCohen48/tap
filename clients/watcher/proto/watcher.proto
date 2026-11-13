@@ -1,4 +1,5 @@
-// tap.watcher.v1 — the watcher page ↔ its loopback back end. Read-only towards the daemon:
+// tap.watcher.v1 — the watcher page ↔ its loopback back end. Read-only towards the daemon
+// except explicit opt-in Android touch-indicator settings:
 // nothing here attaches, executes, observes or renews a connection. Activity and video are the
 // daemon's `tap.v1` messages, relayed by the back end (which keeps the daemon token); recordings
 // and clips are written by the back end, so they do not depend on a browser tab staying open.
@@ -14,6 +15,9 @@ service WatcherService {
   rpc Status(StatusRequest) returns (StatusResponse);
   // The daemon's ADB inventory (`tap.v1.DeviceService.ListDevices`).
   rpc ListDevices(tap.v1.ListDevicesRequest) returns (tap.v1.ListDevicesResponse);
+  // Explicit device-wide developer overlays; never enabled automatically or restored on close.
+  rpc GetTouchIndicators(tap.v1.GetTouchIndicatorsRequest) returns (tap.v1.GetTouchIndicatorsResponse);
+  rpc SetTouchIndicators(tap.v1.SetTouchIndicatorsRequest) returns (tap.v1.SetTouchIndicatorsResponse);
   // The back end's activity history after `after_seq`, then live activity. Sequence numbers
   // are the back end's own, so they stay valid across daemon restarts; a restart closes the
   // old daemon's connections with reason "daemon restarted".

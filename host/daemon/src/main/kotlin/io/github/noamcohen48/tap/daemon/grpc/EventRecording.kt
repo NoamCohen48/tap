@@ -17,6 +17,7 @@ import kotlinx.coroutines.CancellationException
 internal suspend fun <T> AttachedDevice.recorded(
     call: LoggedEvent.Builder.() -> Unit,
     errorOf: (T) -> CommandError? = { null },
+    feedbackOf: (T) -> io.github.noamcohen48.tap.api.v1.TouchFeedback? = { null },
     block: suspend () -> T,
 ): T {
     val started = MediaClock.nowNs()
@@ -45,6 +46,7 @@ internal suspend fun <T> AttachedDevice.recorded(
             throw status
         }
     errorOf(result)?.let { event.error = it }
+    feedbackOf(result)?.let { event.touchFeedback = it }
     finish()
     return result
 }

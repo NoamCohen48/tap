@@ -1,4 +1,4 @@
-# Test watcher — a read-only live view of running tests
+# Test watcher: live view and opt-in phone indicators
 
 Date: 2026-10-02. Handout + decision record (**proposed**; the direction was approved by the
 owner on 2026-10-02, the details below are for the implementing session to confirm or change
@@ -23,6 +23,48 @@ These decisions supersede the corresponding parts of the original proposal below
   owner-configured opt-in capability; no viewer toggle enables driver captures.
 - The original phase list and marker-dependent trace retention/final capture below
   are historical proposals, not an approved implementation checklist for this scope.
+
+### Explicit on-phone diagnostics (owner-approved exception)
+
+The owner requested Android’s native tap circles and pointer trails on the physical phone,
+not just browser annotations. This deliberately narrows the earlier read-only rule: ordinary
+watching stays read-only, while the separate **On phone** panel may explicitly change only
+`show_touches` and `pointer_location` for the current Android user. `TouchIndicatorService`
+(`watch.proto`) is separate from the read-only `WatchService`; it takes a serial, never a
+connection/attachment, so the watcher does not borrow a test’s identity or device lock.
+
+Opening the panel only reads actual settings. The two switches write independently, only on
+explicit user action. Host-core typed ADB calls are serial-specific, bounded, serialized per
+serial and read back; there is no driver input, capture, implicit enable, mutation retry or
+cleanup write. Settings persist until explicitly changed, including after a page, watcher or
+daemon closes. Automatic restoration was rejected because it could undo another page’s or
+operator’s subsequent choice. Errors may leave a partially applied state: the UI exposes the
+failure and requires a read before further changes. This exception is device-wide diagnostics,
+not a general mutation/Execute surface. The page labels the scope and Android’s extra debug bar.
+Native overlays may be captured in video depending on Android/capture behavior; browser Marks
+still never alter video pixels. The original proposal below remains historical where it conflicts.
+
+Important native limitation: `show_touches` only marks physical finger touches, not injected
+test taps. This is explicitly documented by the pinned [scrcpy 4.1 device guide](https://github.com/Genymobile/scrcpy/blob/2926c06c5dc3064ae6d8db706f1a98a37cfcf3f0/doc/device.md#show-touches)
+and is now stated in the panel and public guide. `pointer_location` is Android’s diagnostic
+crosshair/trail view (AOSP `android-14.0.0_r1` `DisplayPolicy.enablePointerLocation` registers
+`PointerLocationView` as a pointer-event listener). No device validation of its injected-input
+appearance was run. Clean circles for Tap-injected actions remain the browser overlay, not a
+promise made by the native Show taps switch.
+
+### Toggleable touch marks
+
+The Live stage's **Marks** toggle (on by default, browser-persisted) overlays driver-resolved
+touch points and illustrative gesture trails on live, retained replay and selected Before / After
+frames. `CommandResult.touch_feedback` is copied to `LoggedEvent.touch_feedback`; no selector
+lookup, screenshot or input is added by the watcher. Feedback is captured before the driver's
+mutation gate, published only after it opens, reset per command and omitted for other displays.
+Tap-family marks use the checked point; drag uses its resolved destination; directional and
+pinch trails are schematic from the visible bounds. Failed calls and incompatible orientations
+are hidden. Live marks expire without needing a new video frame; replay uses only matching daemon
+monotonic clocks. The overlay never modifies retained/exported video or the Library player.
+Unit coverage: daemon Execute-to-event propagation, marker geometry/direction/clock filtering,
+and page toggle persistence and expiry. Device matrix not run for this change.
 
 ### Implementation checkpoint
 
@@ -356,7 +398,9 @@ service WatchService {
 
 ## Constraints to keep (from CLAUDE.md and memory)
 
-- The watcher is read-only: no mutations, no attach, no ref-state changes on the owner's device.
+- Ordinary watching is read-only: no attach, driver mutations or ref-state changes on the owner's device.
+  The owner-approved exception is explicit native touch-indicator settings, isolated in
+  `TouchIndicatorService` and the On phone panel above; no automatic enable or cleanup writes.
 - `host/*` never depends on `clients/`; clients depend only on `:contracts:api`. All ADB/scrcpy
   stays in `:host:core`; every ADB call uses `-s`.
 - Proto edit: same change updates `server-api.md`, Python stubs, and studio protos.

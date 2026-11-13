@@ -43,6 +43,8 @@ message LoggedEvent {
   optional int64 started_monotonic_ns = 11;
   optional int64 finished_monotonic_ns = 12;
   string clock_id = 13;
+  // Driver-resolved touch geometry, when available; diagnostic, not proof of injection.
+  optional TouchFeedback touch_feedback = 14;
 }
 
 // An AppService call. `operation` is the RPC in snake_case: install, uninstall, force_stop,
