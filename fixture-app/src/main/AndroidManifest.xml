@@ -63,6 +63,12 @@
             android:name=".ComposeDrawerActivity"
             android:exported="true" />
         <activity
+            android:name=".InWindowCoverActivity"
+            android:exported="true" />
+        <activity
+            android:name=".ComposeInWindowCoverActivity"
+            android:exported="true" />
+        <activity
             android:name=".GestureActivity"
             android:exported="true" />
         <activity

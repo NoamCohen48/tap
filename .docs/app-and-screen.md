@@ -75,9 +75,15 @@ Date: 2026-10-01. Status: accepted (user, 2026-09-30); implemented in protocol 5
   is open, but UiAutomator still reports it visible with its own bounds. A target that is not
   important for accessibility under a `DrawerLayout` with another child on screen is `OBSCURED`
   (`DrawerScrimTest`, 2026-11-09; both signals are needed: apps mark views not important
-  themselves, and many wrap their whole content in a `DrawerLayout`). Other views covering the
-  target in the same window (a floating bar, an in-window bottom sheet, a custom scrim) are not
-  detected. A Compose `ModalNavigationDrawer` leaves the content out of the tree while open, so
+  themselves, and many wrap their whole content in a `DrawerLayout`). Any other control drawn
+  over the touch point in the same window is found by a hit test from the window's root (the
+  visible child containing the point that is drawn last, by drawing order, ties to the later
+  child, down to the deepest node): when the deepest node there that is important for
+  accessibility and takes touches is not the target, an ancestor or a descendant of it, the
+  gesture is `OBSCURED` (`InWindowCoverTest`, Views and Compose, 2026-11-13). A view on top that
+  takes no touches (a label, a badge) lets the touch through and passes; a view that handles
+  touches without exposing itself as actionable (a custom `onTouchEvent`, a custom scrim) is not
+  seen. A Compose `ModalNavigationDrawer` leaves the content out of the tree while open, so
   it is `NOT_FOUND`.
 - Only the default display is checked. A momentarily stale window list, or no window at the
   point, is not refused.
