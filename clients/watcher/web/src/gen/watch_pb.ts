@@ -19,7 +19,107 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file watch.proto.
  */
 export const file_watch: GenFile = /*@__PURE__*/
-  fileDesc("Cgt3YXRjaC5wcm90bxIGdGFwLnYxIiEKDFdhdGNoUmVxdWVzdBIRCglhZnRlcl9zZXEYASABKAMidAoNV2F0Y2hSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkSJAoKYWN0aXZpdGllcxgCIAMoCzIQLnRhcC52MS5BY3Rpdml0eRIPCgdkcm9wcGVkGAMgASgDIswCCghBY3Rpdml0eRILCgNzZXEYASABKAMSEwoLYXRfZXBvY2hfbXMYAiABKAMSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYAyABKAkSNQoRY29ubmVjdGlvbl9vcGVuZWQYBCABKAsyGC50YXAudjEuQ29ubmVjdGlvbk9wZW5lZEgAEjUKEWNvbm5lY3Rpb25fY2xvc2VkGAUgASgLMhgudGFwLnYxLkNvbm5lY3Rpb25DbG9zZWRIABIxCg9kZXZpY2VfYXR0YWNoZWQYBiABKAsyFi50YXAudjEuRGV2aWNlQXR0YWNoZWRIABIxCg9kZXZpY2VfZGV0YWNoZWQYByABKAsyFi50YXAudjEuRGV2aWNlRGV0YWNoZWRIABIkCgVldmVudBgIIAEoCzITLnRhcC52MS5Mb2dnZWRFdmVudEgAQgYKBGtpbmQiLgoQQ29ubmVjdGlvbk9wZW5lZBIMCgRuYW1lGAEgASgJEgwKBGhlbGQYAiABKAgiIgoQQ29ubmVjdGlvbkNsb3NlZBIOCgZyZWFzb24YASABKAkiUAoORGV2aWNlQXR0YWNoZWQSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDIkwKDkRldmljZURldGFjaGVkEhoKEmF0dGFjaGVkX2RldmljZV9pZBgBIAEoCRIOCgZzZXJpYWwYAiABKAkSDgoGcmVhc29uGAMgASgJIiMKEVdhdGNoVmlkZW9SZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCSJoCgtWaWRlb0hlYWRlchIRCglzdHJlYW1faWQYASABKAkSEAoIY2xvY2tfaWQYAiABKAkSDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQgASgNEhUKDWNvbmZpZ3VyYXRpb24YBSABKAwihAEKClZpZGVvRnJhbWUSCwoDc2VxGAEgASgEEg4KBnB0c191cxgCIAEoAxIRCglrZXlfZnJhbWUYAyABKAgSDAoEZGF0YRgEIAEoDBIdChVyZWNlaXZlZF9tb25vdG9uaWNfbnMYBSABKAMSGQoRcmVjZWl2ZWRfZXBvY2hfbXMYBiABKAMiagoSV2F0Y2hWaWRlb1Jlc3BvbnNlEiUKBmhlYWRlchgBIAEoCzITLnRhcC52MS5WaWRlb0hlYWRlckgAEiMKBWZyYW1lGAIgASgLMhIudGFwLnYxLlZpZGVvRnJhbWVIAEIICgZ1cGRhdGUyjQEKDFdhdGNoU2VydmljZRI2CgVXYXRjaBIULnRhcC52MS5XYXRjaFJlcXVlc3QaFS50YXAudjEuV2F0Y2hSZXNwb25zZTABEkUKCldhdGNoVmlkZW8SGS50YXAudjEuV2F0Y2hWaWRlb1JlcXVlc3QaGi50YXAudjEuV2F0Y2hWaWRlb1Jlc3BvbnNlMAFCMAogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCCldhdGNoUHJvdG9QAWIGcHJvdG8z", [file_client_connection, file_event_log]);
+  fileDesc("Cgt3YXRjaC5wcm90bxIGdGFwLnYxIisKGUdldFRvdWNoSW5kaWNhdG9yc1JlcXVlc3QSDgoGc2VyaWFsGAEgASgJIoUBChlTZXRUb3VjaEluZGljYXRvcnNSZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCRIWCglzaG93X3RhcHMYAiABKAhIAIgBARIdChBwb2ludGVyX2xvY2F0aW9uGAMgASgISAGIAQFCDAoKX3Nob3dfdGFwc0ITChFfcG9pbnRlcl9sb2NhdGlvbiJJChpHZXRUb3VjaEluZGljYXRvcnNSZXNwb25zZRIrCgppbmRpY2F0b3JzGAEgASgLMhcudGFwLnYxLlRvdWNoSW5kaWNhdG9ycyJJChpTZXRUb3VjaEluZGljYXRvcnNSZXNwb25zZRIrCgppbmRpY2F0b3JzGAEgASgLMhcudGFwLnYxLlRvdWNoSW5kaWNhdG9ycyI+Cg9Ub3VjaEluZGljYXRvcnMSEQoJc2hvd190YXBzGAEgASgIEhgKEHBvaW50ZXJfbG9jYXRpb24YAiABKAgiIQoMV2F0Y2hSZXF1ZXN0EhEKCWFmdGVyX3NlcRgBIAEoAyJ0Cg1XYXRjaFJlc3BvbnNlEiwKC2Nvbm5lY3Rpb25zGAEgAygLMhcudGFwLnYxLkNvbm5lY3Rpb25FbnRyeRIkCgphY3Rpdml0aWVzGAIgAygLMhAudGFwLnYxLkFjdGl2aXR5Eg8KB2Ryb3BwZWQYAyABKAMizAIKCEFjdGl2aXR5EgsKA3NlcRgBIAEoAxITCgthdF9lcG9jaF9tcxgCIAEoAxIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgDIAEoCRI1ChFjb25uZWN0aW9uX29wZW5lZBgEIAEoCzIYLnRhcC52MS5Db25uZWN0aW9uT3BlbmVkSAASNQoRY29ubmVjdGlvbl9jbG9zZWQYBSABKAsyGC50YXAudjEuQ29ubmVjdGlvbkNsb3NlZEgAEjEKD2RldmljZV9hdHRhY2hlZBgGIAEoCzIWLnRhcC52MS5EZXZpY2VBdHRhY2hlZEgAEjEKD2RldmljZV9kZXRhY2hlZBgHIAEoCzIWLnRhcC52MS5EZXZpY2VEZXRhY2hlZEgAEiQKBWV2ZW50GAggASgLMhMudGFwLnYxLkxvZ2dlZEV2ZW50SABCBgoEa2luZCIuChBDb25uZWN0aW9uT3BlbmVkEgwKBG5hbWUYASABKAkSDAoEaGVsZBgCIAEoCCIiChBDb25uZWN0aW9uQ2xvc2VkEg4KBnJlYXNvbhgBIAEoCSJQCg5EZXZpY2VBdHRhY2hlZBIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSDgoGc2VyaWFsGAIgASgJEhIKCmdlbmVyYXRpb24YAyABKAMiTAoORGV2aWNlRGV0YWNoZWQSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRIOCgZyZWFzb24YAyABKAkiIwoRV2F0Y2hWaWRlb1JlcXVlc3QSDgoGc2VyaWFsGAEgASgJImgKC1ZpZGVvSGVhZGVyEhEKCXN0cmVhbV9pZBgBIAEoCRIQCghjbG9ja19pZBgCIAEoCRINCgV3aWR0aBgDIAEoDRIOCgZoZWlnaHQYBCABKA0SFQoNY29uZmlndXJhdGlvbhgFIAEoDCKEAQoKVmlkZW9GcmFtZRILCgNzZXEYASABKAQSDgoGcHRzX3VzGAIgASgDEhEKCWtleV9mcmFtZRgDIAEoCBIMCgRkYXRhGAQgASgMEh0KFXJlY2VpdmVkX21vbm90b25pY19ucxgFIAEoAxIZChFyZWNlaXZlZF9lcG9jaF9tcxgGIAEoAyJqChJXYXRjaFZpZGVvUmVzcG9uc2USJQoGaGVhZGVyGAEgASgLMhMudGFwLnYxLlZpZGVvSGVhZGVySAASIwoFZnJhbWUYAiABKAsyEi50YXAudjEuVmlkZW9GcmFtZUgAQggKBnVwZGF0ZTKNAQoMV2F0Y2hTZXJ2aWNlEjYKBVdhdGNoEhQudGFwLnYxLldhdGNoUmVxdWVzdBoVLnRhcC52MS5XYXRjaFJlc3BvbnNlMAESRQoKV2F0Y2hWaWRlbxIZLnRhcC52MS5XYXRjaFZpZGVvUmVxdWVzdBoaLnRhcC52MS5XYXRjaFZpZGVvUmVzcG9uc2UwATLRAQoVVG91Y2hJbmRpY2F0b3JTZXJ2aWNlElsKEkdldFRvdWNoSW5kaWNhdG9ycxIhLnRhcC52MS5HZXRUb3VjaEluZGljYXRvcnNSZXF1ZXN0GiIudGFwLnYxLkdldFRvdWNoSW5kaWNhdG9yc1Jlc3BvbnNlElsKElNldFRvdWNoSW5kaWNhdG9ycxIhLnRhcC52MS5TZXRUb3VjaEluZGljYXRvcnNSZXF1ZXN0GiIudGFwLnYxLlNldFRvdWNoSW5kaWNhdG9yc1Jlc3BvbnNlQjAKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQgpXYXRjaFByb3RvUAFiBnByb3RvMw", [file_client_connection, file_event_log]);
+
+/**
+ * @generated from message tap.v1.GetTouchIndicatorsRequest
+ */
+export type GetTouchIndicatorsRequest = Message<"tap.v1.GetTouchIndicatorsRequest"> & {
+  /**
+   * @generated from field: string serial = 1;
+   */
+  serial: string;
+};
+
+/**
+ * Describes the message tap.v1.GetTouchIndicatorsRequest.
+ * Use `create(GetTouchIndicatorsRequestSchema)` to create a new message.
+ */
+export const GetTouchIndicatorsRequestSchema: GenMessage<GetTouchIndicatorsRequest> = /*@__PURE__*/
+  messageDesc(file_watch, 0);
+
+/**
+ * @generated from message tap.v1.SetTouchIndicatorsRequest
+ */
+export type SetTouchIndicatorsRequest = Message<"tap.v1.SetTouchIndicatorsRequest"> & {
+  /**
+   * @generated from field: string serial = 1;
+   */
+  serial: string;
+
+  /**
+   * @generated from field: optional bool show_taps = 2;
+   */
+  showTaps?: boolean | undefined;
+
+  /**
+   * @generated from field: optional bool pointer_location = 3;
+   */
+  pointerLocation?: boolean | undefined;
+};
+
+/**
+ * Describes the message tap.v1.SetTouchIndicatorsRequest.
+ * Use `create(SetTouchIndicatorsRequestSchema)` to create a new message.
+ */
+export const SetTouchIndicatorsRequestSchema: GenMessage<SetTouchIndicatorsRequest> = /*@__PURE__*/
+  messageDesc(file_watch, 1);
+
+/**
+ * @generated from message tap.v1.GetTouchIndicatorsResponse
+ */
+export type GetTouchIndicatorsResponse = Message<"tap.v1.GetTouchIndicatorsResponse"> & {
+  /**
+   * @generated from field: tap.v1.TouchIndicators indicators = 1;
+   */
+  indicators?: TouchIndicators | undefined;
+};
+
+/**
+ * Describes the message tap.v1.GetTouchIndicatorsResponse.
+ * Use `create(GetTouchIndicatorsResponseSchema)` to create a new message.
+ */
+export const GetTouchIndicatorsResponseSchema: GenMessage<GetTouchIndicatorsResponse> = /*@__PURE__*/
+  messageDesc(file_watch, 2);
+
+/**
+ * @generated from message tap.v1.SetTouchIndicatorsResponse
+ */
+export type SetTouchIndicatorsResponse = Message<"tap.v1.SetTouchIndicatorsResponse"> & {
+  /**
+   * @generated from field: tap.v1.TouchIndicators indicators = 1;
+   */
+  indicators?: TouchIndicators | undefined;
+};
+
+/**
+ * Describes the message tap.v1.SetTouchIndicatorsResponse.
+ * Use `create(SetTouchIndicatorsResponseSchema)` to create a new message.
+ */
+export const SetTouchIndicatorsResponseSchema: GenMessage<SetTouchIndicatorsResponse> = /*@__PURE__*/
+  messageDesc(file_watch, 3);
+
+/**
+ * @generated from message tap.v1.TouchIndicators
+ */
+export type TouchIndicators = Message<"tap.v1.TouchIndicators"> & {
+  /**
+   * @generated from field: bool show_taps = 1;
+   */
+  showTaps: boolean;
+
+  /**
+   * @generated from field: bool pointer_location = 2;
+   */
+  pointerLocation: boolean;
+};
+
+/**
+ * Describes the message tap.v1.TouchIndicators.
+ * Use `create(TouchIndicatorsSchema)` to create a new message.
+ */
+export const TouchIndicatorsSchema: GenMessage<TouchIndicators> = /*@__PURE__*/
+  messageDesc(file_watch, 4);
 
 /**
  * @generated from message tap.v1.WatchRequest
@@ -38,7 +138,7 @@ export type WatchRequest = Message<"tap.v1.WatchRequest"> & {
  * Use `create(WatchRequestSchema)` to create a new message.
  */
 export const WatchRequestSchema: GenMessage<WatchRequest> = /*@__PURE__*/
-  messageDesc(file_watch, 0);
+  messageDesc(file_watch, 5);
 
 /**
  * @generated from message tap.v1.WatchResponse
@@ -71,7 +171,7 @@ export type WatchResponse = Message<"tap.v1.WatchResponse"> & {
  * Use `create(WatchResponseSchema)` to create a new message.
  */
 export const WatchResponseSchema: GenMessage<WatchResponse> = /*@__PURE__*/
-  messageDesc(file_watch, 1);
+  messageDesc(file_watch, 6);
 
 /**
  * One thing that happened, numbered 1, 2, 3, … for the daemon's lifetime.
@@ -137,7 +237,7 @@ export type Activity = Message<"tap.v1.Activity"> & {
  * Use `create(ActivitySchema)` to create a new message.
  */
 export const ActivitySchema: GenMessage<Activity> = /*@__PURE__*/
-  messageDesc(file_watch, 2);
+  messageDesc(file_watch, 7);
 
 /**
  * @generated from message tap.v1.ConnectionOpened
@@ -161,7 +261,7 @@ export type ConnectionOpened = Message<"tap.v1.ConnectionOpened"> & {
  * Use `create(ConnectionOpenedSchema)` to create a new message.
  */
 export const ConnectionOpenedSchema: GenMessage<ConnectionOpened> = /*@__PURE__*/
-  messageDesc(file_watch, 3);
+  messageDesc(file_watch, 8);
 
 /**
  * @generated from message tap.v1.ConnectionClosed
@@ -178,7 +278,7 @@ export type ConnectionClosed = Message<"tap.v1.ConnectionClosed"> & {
  * Use `create(ConnectionClosedSchema)` to create a new message.
  */
 export const ConnectionClosedSchema: GenMessage<ConnectionClosed> = /*@__PURE__*/
-  messageDesc(file_watch, 4);
+  messageDesc(file_watch, 9);
 
 /**
  * @generated from message tap.v1.DeviceAttached
@@ -205,7 +305,7 @@ export type DeviceAttached = Message<"tap.v1.DeviceAttached"> & {
  * Use `create(DeviceAttachedSchema)` to create a new message.
  */
 export const DeviceAttachedSchema: GenMessage<DeviceAttached> = /*@__PURE__*/
-  messageDesc(file_watch, 5);
+  messageDesc(file_watch, 10);
 
 /**
  * @generated from message tap.v1.DeviceDetached
@@ -234,7 +334,7 @@ export type DeviceDetached = Message<"tap.v1.DeviceDetached"> & {
  * Use `create(DeviceDetachedSchema)` to create a new message.
  */
 export const DeviceDetachedSchema: GenMessage<DeviceDetached> = /*@__PURE__*/
-  messageDesc(file_watch, 6);
+  messageDesc(file_watch, 11);
 
 /**
  * @generated from message tap.v1.WatchVideoRequest
@@ -251,7 +351,7 @@ export type WatchVideoRequest = Message<"tap.v1.WatchVideoRequest"> & {
  * Use `create(WatchVideoRequestSchema)` to create a new message.
  */
 export const WatchVideoRequestSchema: GenMessage<WatchVideoRequest> = /*@__PURE__*/
-  messageDesc(file_watch, 7);
+  messageDesc(file_watch, 12);
 
 /**
  * @generated from message tap.v1.VideoHeader
@@ -290,7 +390,7 @@ export type VideoHeader = Message<"tap.v1.VideoHeader"> & {
  * Use `create(VideoHeaderSchema)` to create a new message.
  */
 export const VideoHeaderSchema: GenMessage<VideoHeader> = /*@__PURE__*/
-  messageDesc(file_watch, 8);
+  messageDesc(file_watch, 13);
 
 /**
  * @generated from message tap.v1.VideoFrame
@@ -337,7 +437,7 @@ export type VideoFrame = Message<"tap.v1.VideoFrame"> & {
  * Use `create(VideoFrameSchema)` to create a new message.
  */
 export const VideoFrameSchema: GenMessage<VideoFrame> = /*@__PURE__*/
-  messageDesc(file_watch, 9);
+  messageDesc(file_watch, 14);
 
 /**
  * @generated from message tap.v1.WatchVideoResponse
@@ -371,7 +471,7 @@ export type WatchVideoResponse = Message<"tap.v1.WatchVideoResponse"> & {
  * Use `create(WatchVideoResponseSchema)` to create a new message.
  */
 export const WatchVideoResponseSchema: GenMessage<WatchVideoResponse> = /*@__PURE__*/
-  messageDesc(file_watch, 10);
+  messageDesc(file_watch, 15);
 
 /**
  * @generated from service tap.v1.WatchService
@@ -403,4 +503,33 @@ export const WatchService: GenService<{
   },
 }> = /*@__PURE__*/
   serviceDesc(file_watch, 0);
+
+/**
+ * Explicit opt-in device diagnostics, separate from the read-only watch streams. These
+ * system settings persist until changed, affect every user of the device, and need no
+ * client connection or attachment. Nothing is enabled automatically or restored on disconnect.
+ *
+ * @generated from service tap.v1.TouchIndicatorService
+ */
+export const TouchIndicatorService: GenService<{
+  /**
+   * @generated from rpc tap.v1.TouchIndicatorService.GetTouchIndicators
+   */
+  getTouchIndicators: {
+    methodKind: "unary";
+    input: typeof GetTouchIndicatorsRequestSchema;
+    output: typeof GetTouchIndicatorsResponseSchema;
+  },
+  /**
+   * No retry after transmission. Omitted switches are left unchanged. At least one is required.
+   *
+   * @generated from rpc tap.v1.TouchIndicatorService.SetTouchIndicators
+   */
+  setTouchIndicators: {
+    methodKind: "unary";
+    input: typeof SetTouchIndicatorsRequestSchema;
+    output: typeof SetTouchIndicatorsResponseSchema;
+  },
+}> = /*@__PURE__*/
+  serviceDesc(file_watch, 1);
 

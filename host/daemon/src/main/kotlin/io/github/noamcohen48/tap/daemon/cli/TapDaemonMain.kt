@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
 import io.github.noamcohen48.tap.daemon.grpc.DeviceService
 import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
+import io.github.noamcohen48.tap.daemon.grpc.TouchIndicatorService
 import io.github.noamcohen48.tap.daemon.grpc.WatchService
 import io.github.noamcohen48.tap.host.Adb
 import io.grpc.ManagedChannelBuilder
@@ -231,6 +232,7 @@ private fun serve(
             .addService(AppService(daemon))
             .addService(AppDataService(daemon))
             .addService(WatchService(daemon))
+            .addService(TouchIndicatorService(daemon))
             .intercept(TokenAuthInterceptor(token))
             .maxInboundMessageSize(8 * 1024 * 1024)
             .build()
@@ -327,8 +329,7 @@ private const val START_TIMEOUT_MS = 30_000L
 private enum class Probe { OK, REJECTED, DOWN }
 
 /** The descriptor in [stateDir], if the daemon it names answers `Info` with its token. */
-private fun liveDaemon(stateDir: Path): DaemonDescriptor? =
-    DaemonDescriptor.read(stateDir)?.takeIf { probe(it) == Probe.OK }
+private fun liveDaemon(stateDir: Path): DaemonDescriptor? = DaemonDescriptor.read(stateDir)?.takeIf { probe(it) == Probe.OK }
 
 /**
  * `Info` against the descriptor's port with its token. [Probe.REJECTED] means something else
@@ -392,10 +393,12 @@ internal fun status(
             out("running 127.0.0.1:${descriptor.port} pid=${descriptor.pid} version=${descriptor.daemonVersion} adb=${descriptor.adb}")
             0
         }
+
         Probe.REJECTED -> {
             out("stale descriptor: port ${descriptor.port} is served by something else")
             1
         }
+
         Probe.DOWN -> {
             out("not responding: daemon pid ${descriptor.pid} at 127.0.0.1:${descriptor.port} does not answer")
             1

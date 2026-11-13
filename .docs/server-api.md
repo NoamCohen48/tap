@@ -408,6 +408,26 @@ gates that serial. Daemon shutdown stops all producers within its existing deadl
 capture failures are `UNAVAILABLE` with `DAEMON_PRECONDITION`. No owner or journal state is
 changed.
 
+### TouchIndicatorService: explicit device-wide diagnostics (`watch.proto`)
+
+This authenticated service is deliberately separate from read-only watch streams. It needs no
+connection or attachment and never renews one; it may operate while a test holds the device.
+
+- `GetTouchIndicators{serial}` returns `GetTouchIndicatorsResponse{indicators: TouchIndicators{show_taps, pointer_location}}` for the
+  current Android user. It reads only; an absent Android setting is false.
+- `SetTouchIndicators{serial, show_taps?, pointer_location?}` changes only supplied switches
+  (`settings --user current put system show_touches|pointer_location 0|1`), then returns the
+  read-back state in `SetTouchIndicatorsResponse.indicators`. At least one switch is required. Each serial’s reads/writes are serialized;
+  every ADB child is serial-specific and bounded to 5 seconds. Writes are never retried.
+
+Blank, unknown or offline serials and empty updates are `INVALID_ARGUMENT`. Malformed output
+or settings Android did not apply are `FAILED_PRECONDITION` / `DEVICE_SETTING`; ordinary ADB
+failures retain their mapped status. A failed multi-switch change may be partial: read actual
+state before deciding what to do next. These settings persist until explicitly changed; there
+is no journal capture, detach restoration or disconnect/daemon-shutdown write. They affect all
+users of that device and may affect captured pixels. This is the owner-approved exception to
+the watcher’s read-only behavior, not a general mutation or driver-command API.
+
 ### Failures (`failure.proto`, `daemon/grpc/common.kt` `Throwable.toStatus()`)
 
 Every non-OK status carries a serialized `tap.v1.Failure` in the binary trailer

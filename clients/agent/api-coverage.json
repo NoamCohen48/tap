@@ -24,7 +24,9 @@
     "tap.v1.ClientConnectionService.Observe": "Observed test-client liveness is infrastructure; agents use held connections.",
     "tap.v1.AppService.AwaitIdle": "Synchronization is work in progress and intentionally deferred; state/tree/pixel waits are independent.",
     "tap.v1.WatchService.Watch": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
-    "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording."
+    "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
+    "tap.v1.TouchIndicatorService.GetTouchIndicators": "Native touch-indicator diagnostics belong to tap-watcher's explicit On phone panel, not the agent surface.",
+    "tap.v1.TouchIndicatorService.SetTouchIndicators": "Persistent device-wide touch indicators require an explicit choice in tap-watcher's On phone panel; agents do not change them."
   },
   "operations": {
     "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["logs", "capture"],

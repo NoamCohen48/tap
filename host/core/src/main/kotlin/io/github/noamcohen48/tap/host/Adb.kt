@@ -431,6 +431,64 @@ open class Adb internal constructor(
         execResult(serial, "shell", "wm", "dismiss-keyguard", timeoutMs = 10_000)
     }
 
+    private val touchIndicatorLocks = java.util.concurrent.ConcurrentHashMap<String, Mutex>()
+
+    /** Read Android's Show taps and Pointer location for the current Android user. */
+    open suspend fun touchIndicators(serial: String): TouchIndicatorState =
+        touchIndicatorLocks.computeIfAbsent(serial) { Mutex() }.withLock { readTouchIndicators(serial) }
+
+    /**
+     * Explicit device-wide diagnostics, not session state: persist until explicitly changed.
+     * Null leaves a switch untouched. Writes are never retried or restored on disconnect;
+     * if a write/readback fails, callers must read the actual state before deciding what to do.
+     */
+    open suspend fun setTouchIndicators(
+        serial: String,
+        showTaps: Boolean?,
+        pointerLocation: Boolean?,
+    ): TouchIndicatorState =
+        touchIndicatorLocks.computeIfAbsent(serial) { Mutex() }.withLock {
+            require(showTaps != null || pointerLocation != null) { "set at least one touch indicator" }
+            for ((name, enabled) in listOf("show_touches" to showTaps, "pointer_location" to pointerLocation)) {
+                if (enabled !=
+                    null
+                ) {
+                    exec(
+                        serial,
+                        "shell",
+                        "settings",
+                        "--user",
+                        "current",
+                        "put",
+                        "system",
+                        name,
+                        if (enabled) "1" else "0",
+                        timeoutMs = 5_000,
+                    )
+                }
+            }
+            readTouchIndicators(serial).also { actual ->
+                if ((showTaps != null && showTaps != actual.showTaps) ||
+                    (pointerLocation != null && pointerLocation != actual.pointerLocation)
+                ) {
+                    throw DeviceSettingException(
+                        serial,
+                        "Android did not apply the requested touch indicators; read the current settings before trying again",
+                    )
+                }
+            }
+        }
+
+    private suspend fun readTouchIndicators(serial: String): TouchIndicatorState {
+        suspend fun read(name: String): Boolean =
+            when (val value = exec(serial, "shell", "settings", "--user", "current", "get", "system", name, timeoutMs = 5_000).trim()) {
+                "1" -> true
+                "0", "null" -> false
+                else -> throw DeviceSettingException(serial, "Invalid $name value: $value")
+            }
+        return TouchIndicatorState(read("show_touches"), read("pointer_location"))
+    }
+
     // ---- device identity and kernel state ----------------------------------------------------
 
     /** The kernel's boot identity; changes exactly when the device reboots. */
@@ -577,6 +635,7 @@ open class Adb internal constructor(
             is StateKey.Setting -> {
                 exec(serial, "shell", "settings", "get", parsed.namespace, parsed.name).trim().takeUnless { it == "null" }
             }
+
             StateKey.NightMode -> {
                 val output = exec(serial, "shell", "cmd", "uimode", "night").trim()
                 output.removePrefix("Night mode: ").takeIf { it != output && it.isNotBlank() }
@@ -588,6 +647,7 @@ open class Adb internal constructor(
                         "Unreadable night mode on $serial: $output",
                     )
             }
+
             StateKey.Density -> {
                 val output = exec(serial, "shell", "wm", "density")
                 if (!output.contains("Physical density:")) {
@@ -600,18 +660,26 @@ open class Adb internal constructor(
                     )
                 }
                 output.lineSequence().firstNotNullOfOrNull { line ->
-                    line.trim().removePrefix("Override density:").takeIf { it != line.trim() }?.trim()
+                    line
+                        .trim()
+                        .removePrefix("Override density:")
+                        .takeIf { it != line.trim() }
+                        ?.trim()
                 }
             }
+
             is StateKey.Network -> {
                 val raw = exec(serial, "shell", "settings", "get", "global", parsed.setting).trim().takeUnless { it == "null" }
                 when (parsed) {
                     // wifi_on: 1 on, 2 on while airplane mode is on, 3 off by airplane mode (back on with it), 0 off.
                     StateKey.Network.WIFI -> raw?.let { if (it == "1" || it == "2") "1" else "0" } ?: "0"
+
                     StateKey.Network.AIRPLANE -> if (raw == "1") "1" else "0"
+
                     StateKey.Network.MOBILE_DATA -> raw
                 }
             }
+
             StateKey.SystemLocales -> {
                 // A device whose locale was never changed has no system_locales: the property
                 // the system persists, then the build's default.
@@ -664,6 +732,7 @@ open class Adb internal constructor(
                         )
                 }
             }
+
             is StateKey.AppLocales -> {
                 val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -737,10 +806,16 @@ open class Adb internal constructor(
             }
 
             StateKey.MockLocationProviders -> {
-                val keep = value.orEmpty().split(',').filter(String::isNotEmpty).toSet()
+                val keep =
+                    value
+                        .orEmpty()
+                        .split(',')
+                        .filter(String::isNotEmpty)
+                        .toSet()
                 val remove = mockLocationProviders(serial) - keep
                 if (remove.isNotEmpty()) removeTestProviders(serial, remove.sorted())
             }
+
             is StateKey.DeviceFile -> {
                 // Only ever captured as absent: restoring removes what the session created.
                 check(value == null) { "a device file can only be restored as absent, not $value" }
@@ -751,6 +826,7 @@ open class Adb internal constructor(
                     execResult(serial, "shell", "rmdir", shellQuote(parsed.path.substringBeforeLast('/')))
                 }
             }
+
             StateKey.DriverNotificationListener -> {
                 val allow = value == "allowed"
                 exec(
@@ -808,8 +884,12 @@ open class Adb internal constructor(
             if ("No such file" in result.output) return null
             throw AdbCommandException(serial, command, result.exitCode, result.output, "Unable to stat $path on $serial: ${result.output}")
         }
-        val (type, size) = result.output.trim().split('|').takeIf { it.size == 2 }
-            ?: throw AdbCommandException(serial, command, null, result.output, "Unreadable stat of $path on $serial: ${result.output}")
+        val (type, size) =
+            result.output
+                .trim()
+                .split('|')
+                .takeIf { it.size == 2 }
+                ?: throw AdbCommandException(serial, command, null, result.output, "Unreadable stat of $path on $serial: ${result.output}")
         return DeviceFileInfo(regular = type == "regular file" || type == "regular empty file", sizeBytes = size.toLongOrNull() ?: -1)
     }
 
@@ -1010,7 +1090,12 @@ open class Adb internal constructor(
     private suspend fun mockLocationProviders(serial: String): Set<String> {
         val lines = exec(serial, "shell", "dumpsys", "location").lines().map(String::trim)
         val current = lines.mapNotNull { MOCK_PROVIDER.matchEntire(it)?.groupValues?.get(1) }
-        val legacy = lines.zipWithNext().filter { (name, next) -> next.startsWith("mHasLocation=") && PROVIDER_NAME.matches(name) }.map { it.first }
+        val legacy =
+            lines
+                .zipWithNext()
+                .filter { (name, next) ->
+                    next.startsWith("mHasLocation=") && PROVIDER_NAME.matches(name)
+                }.map { it.first }
         return (current + legacy).toSet()
     }
 
@@ -1346,8 +1431,13 @@ open class Adb internal constructor(
         val result = execResult(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
         val lines = result.output.lines()
         val marker = lines.indexOfFirst { it.startsWith("tap-pm-status:") }
-        val status = lines.getOrNull(marker)?.removePrefix("tap-pm-status:")?.trim()?.toIntOrNull()
-            ?: throw AdbCommandException(serial, command, result.exitCode, result.output, "APK listing status missing on $serial")
+        val status =
+            lines
+                .getOrNull(marker)
+                ?.removePrefix("tap-pm-status:")
+                ?.trim()
+                ?.toIntOrNull()
+                ?: throw AdbCommandException(serial, command, result.exitCode, result.output, "APK listing status missing on $serial")
         val paths = packagePaths(serial, command, Result(status, lines.take(marker).joinToString("\n")))
         if (paths.isEmpty()) return emptyList()
         val digests = lines.drop(marker + 1).mapNotNull { SHA256SUM_LINE.matchEntire(it.trim())?.groupValues?.get(1) }
@@ -1836,8 +1926,7 @@ private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
  * (POSIX `sh`, like Python's `shlex.quote`): tokens made only of safe characters pass through
  * unchanged, anything else is single-quoted with embedded `'` spelled `'\''`.
  */
-fun shellQuote(token: String): String =
-    if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"
+fun shellQuote(token: String): String = if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"
 
 /** A device file as `stat` reports it; [sizeBytes] is -1 when unreadable. */
 data class DeviceFileInfo(

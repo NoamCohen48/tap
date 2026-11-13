@@ -144,3 +144,128 @@ class WatchService:
             timeout,
             metadata,
             _registered_method=True)
+
+
+class TouchIndicatorServiceStub:
+    """Explicit opt-in device diagnostics, separate from the read-only watch streams. These
+    system settings persist until changed, affect every user of the device, and need no
+    client connection or attachment. Nothing is enabled automatically or restored on disconnect.
+    """
+
+    def __init__(self, channel):
+        """Constructor.
+
+        Args:
+            channel: A grpc.Channel.
+        """
+        self.GetTouchIndicators = channel.unary_unary(
+                '/tap.v1.TouchIndicatorService/GetTouchIndicators',
+                request_serializer=watch__pb2.GetTouchIndicatorsRequest.SerializeToString,
+                response_deserializer=watch__pb2.GetTouchIndicatorsResponse.FromString,
+                _registered_method=True)
+        self.SetTouchIndicators = channel.unary_unary(
+                '/tap.v1.TouchIndicatorService/SetTouchIndicators',
+                request_serializer=watch__pb2.SetTouchIndicatorsRequest.SerializeToString,
+                response_deserializer=watch__pb2.SetTouchIndicatorsResponse.FromString,
+                _registered_method=True)
+
+
+class TouchIndicatorServiceServicer:
+    """Explicit opt-in device diagnostics, separate from the read-only watch streams. These
+    system settings persist until changed, affect every user of the device, and need no
+    client connection or attachment. Nothing is enabled automatically or restored on disconnect.
+    """
+
+    def GetTouchIndicators(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SetTouchIndicators(self, request, context):
+        """No retry after transmission. Omitted switches are left unchanged. At least one is required.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+
+def add_TouchIndicatorServiceServicer_to_server(servicer, server):
+    rpc_method_handlers = {
+            'GetTouchIndicators': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetTouchIndicators,
+                    request_deserializer=watch__pb2.GetTouchIndicatorsRequest.FromString,
+                    response_serializer=watch__pb2.GetTouchIndicatorsResponse.SerializeToString,
+            ),
+            'SetTouchIndicators': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetTouchIndicators,
+                    request_deserializer=watch__pb2.SetTouchIndicatorsRequest.FromString,
+                    response_serializer=watch__pb2.SetTouchIndicatorsResponse.SerializeToString,
+            ),
+    }
+    generic_handler = grpc.method_handlers_generic_handler(
+            'tap.v1.TouchIndicatorService', rpc_method_handlers)
+    server.add_generic_rpc_handlers((generic_handler,))
+    server.add_registered_method_handlers('tap.v1.TouchIndicatorService', rpc_method_handlers)
+
+
+ # This class is part of an EXPERIMENTAL API.
+class TouchIndicatorService:
+    """Explicit opt-in device diagnostics, separate from the read-only watch streams. These
+    system settings persist until changed, affect every user of the device, and need no
+    client connection or attachment. Nothing is enabled automatically or restored on disconnect.
+    """
+
+    @staticmethod
+    def GetTouchIndicators(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.TouchIndicatorService/GetTouchIndicators',
+            watch__pb2.GetTouchIndicatorsRequest.SerializeToString,
+            watch__pb2.GetTouchIndicatorsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetTouchIndicators(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.TouchIndicatorService/SetTouchIndicators',
+            watch__pb2.SetTouchIndicatorsRequest.SerializeToString,
+            watch__pb2.SetTouchIndicatorsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
