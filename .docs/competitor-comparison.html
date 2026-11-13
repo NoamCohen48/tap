@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>Tap Competitive Landscape</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: report column with a sticky section index on wide screens; tables scroll in their own boxes. */
+:root {
+  --bg: #FBFBFC; --surface: #F1F3F6; --ink: #17202A; --muted: #556170; --line: rgba(23,32,42,.12);
+  --accent: #C2410C; --accent-soft: rgba(255,106,61,.12);
+  --good: #067647; --good-soft: rgba(6,118,71,.1); --warn: #9A6700; --warn-soft: rgba(154,103,0,.12);
+  --bad: #B42318; --bad-soft: rgba(180,35,24,.1); --info: #2F5E9E; --info-soft: rgba(47,94,158,.1);
+  --code-bg: #17202A; --code-fg: #E6EAF0;
+  --f-display: "Space Grotesk", "Segoe UI", system-ui, sans-serif;
+  --f-body: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --f-mono: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0F151B; --surface: #18212B; --ink: #E6EAF0; --muted: #98A4B3; --line: rgba(255,255,255,.12);
+  --accent: #FF8A66; --accent-soft: rgba(255,138,102,.14);
+  --good: #56D364; --good-soft: rgba(86,211,100,.12); --warn: #E3B341; --warn-soft: rgba(227,179,65,.14);
+  --bad: #FF7B72; --bad-soft: rgba(255,123,114,.13); --info: #79A8F2; --info-soft: rgba(121,168,242,.13);
+  --code-bg: #0A0F14; --code-fg: #E6EAF0; color-scheme: dark; } }
+:root[data-theme="dark"] {
+  --bg: #0F151B; --surface: #18212B; --ink: #E6EAF0; --muted: #98A4B3; --line: rgba(255,255,255,.12);
+  --accent: #FF8A66; --accent-soft: rgba(255,138,102,.14);
+  --good: #56D364; --good-soft: rgba(86,211,100,.12); --warn: #E3B341; --warn-soft: rgba(227,179,65,.14);
+  --bad: #FF7B72; --bad-soft: rgba(255,123,114,.13); --info: #79A8F2; --info-soft: rgba(121,168,242,.13);
+  --code-bg: #0A0F14; --code-fg: #E6EAF0; color-scheme: dark; }
+
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--f-body); font-size: 15px; line-height: 1.6;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.wrap { max-width: 1180px; margin: 0 auto; display: grid; grid-template-columns: 210px minmax(0,1fr); gap: 48px; padding-block: 40px 80px; }
+@media (max-width: 900px) { .wrap { grid-template-columns: minmax(0,1fr); gap: 0; padding-block: 24px 60px; } nav.toc { display: none; } }
+nav.toc { position: sticky; top: calc(env(safe-area-inset-top, 0px) + 24px); align-self: start; font-size: 13px; }
+nav.toc .brand { font-family: var(--f-display); font-weight: 700; font-size: 18px; margin-bottom: 14px; display: flex; gap: 8px; align-items: center; }
+nav.toc .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+nav.toc ol { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; counter-reset: s; }
+nav.toc a { color: var(--muted); text-decoration: none; display: block; padding: 4px 8px; border-radius: 6px; }
+nav.toc a:hover, nav.toc a:focus-visible { color: var(--ink); background: var(--surface); outline: none; }
+nav.toc a.on { color: var(--accent); background: var(--accent-soft); }
+main { min-width: 0; }
+h1, h2, h3 { font-family: var(--f-display); text-wrap: balance; line-height: 1.2; margin: 0; }
+h1 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 700; letter-spacing: -.01em; }
+h2 { font-size: 24px; font-weight: 600; margin-top: 56px; padding-top: 8px; scroll-margin-top: 16px; }
+h3 { font-size: 17px; font-weight: 600; margin-top: 28px; }
+p, li { max-width: 72ch; }
+p { margin: 10px 0; }
+.eyebrow { font-size: 12px; font-weight: 600; text-transform: uppercase; letter-spacing: .08em; color: var(--accent); }
+.lede { font-size: 17px; color: var(--muted); margin-top: 12px; }
+.meta { font-size: 13px; color: var(--muted); margin-top: 14px; }
+code, .mono { font-family: var(--f-mono); font-size: .88em; }
+:not(pre) > code { background: var(--surface); padding: 1px 5px; border-radius: 4px; }
+a { color: var(--accent); }
+
+.pcards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; margin-top: 28px; }
+.pcard { border: 1px solid var(--line); border-radius: 10px; padding: 16px 18px; background: var(--bg); display: flex; flex-direction: column; gap: 6px; }
+.pcard.tap { border-color: var(--accent); background: var(--accent-soft); }
+.pcard h3 { margin: 0; font-size: 16px; }
+.pcard .role { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; font-weight: 600; }
+.pcard p { margin: 0; font-size: 14px; }
+.pcard .tag { margin-top: auto; padding-top: 8px; font-size: 13px; font-weight: 500; }
+
+.callouts { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px; margin-top: 20px; }
+.callout { padding: 14px 16px; border-radius: 10px; background: var(--surface); }
+.callout b { display: block; font-family: var(--f-display); font-size: 15px; margin-bottom: 4px; }
+.callout.lead b { color: var(--good); } .callout.gap b { color: var(--bad); } .callout.lesson b { color: var(--info); }
+.callout p { margin: 0; font-size: 14px; }
+
+.tbl { overflow-x: auto; margin-top: 16px; border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 760px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+th { background: var(--surface); font-weight: 600; font-size: 12.5px; position: sticky; top: 0; }
+tr:last-child td { border-bottom: 0; }
+td:first-child { font-weight: 500; }
+td.tapcol, th.tapcol { background: var(--accent-soft); }
+.narrow table { min-width: 560px; }
+tr.grp th { background: var(--bg); color: var(--accent); font-family: var(--f-display); font-size: 13px; text-transform: none; padding-top: 14px; position: static; }
+.tier-b { font: 700 13px var(--f-display); color: var(--accent); }
+
+.chip { display: inline-block; font-size: 11.5px; font-weight: 600; padding: 1px 8px; border-radius: 999px; white-space: nowrap; }
+.c-easy { color: var(--good); background: var(--good-soft); }
+.c-medium { color: var(--warn); background: var(--warn-soft); }
+.c-large { color: var(--info); background: var(--info-soft); }
+.c-conflict { color: var(--bad); background: var(--bad-soft); }
+.c-owner { color: var(--accent); background: var(--accent-soft); }
+.c-out { color: var(--muted); background: var(--surface); }
+
+.tabs { margin-top: 16px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.tablist { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px; background: var(--surface); border-bottom: 1px solid var(--line); }
+.tablist button { font: 500 13px var(--f-body); color: var(--muted); background: transparent; border: 0; padding: 6px 12px; border-radius: 6px; cursor: pointer; }
+.tablist button[aria-selected="true"] { background: var(--bg); color: var(--ink); box-shadow: 0 0 0 1px var(--line); }
+.tablist button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+pre { margin: 0; background: var(--code-bg); color: var(--code-fg); padding: 16px 18px; overflow-x: auto; font: 13px/1.6 var(--f-mono); }
+.tabnote { padding: 10px 16px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); }
+
+.filters { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; align-items: center; font-size: 13px; color: var(--muted); }
+.filters button { font: 500 12.5px var(--f-body); border: 1px solid var(--line); background: var(--bg); color: var(--ink); padding: 4px 11px; border-radius: 999px; cursor: pointer; }
+.filters button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--accent); }
+.filters button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+.flow { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 10px; margin-top: 16px; }
+@media (max-width: 760px) { .flow { grid-template-columns: minmax(0,1fr); } }
+.step { border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.step .n { font: 600 12px var(--f-mono); color: var(--accent); }
+.step b { display: block; font-family: var(--f-display); margin: 2px 0 6px; }
+.step dl { margin: 0; font-size: 13px; display: grid; gap: 6px; }
+.step dt { font-weight: 600; font-size: 11.5px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.step dd { margin: 0; }
+.insight { margin-top: 14px; border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; }
+
+.lessons { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 14px; }
+.lesson { border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.lesson h3 { margin: 0 0 6px; font-size: 15px; }
+.lesson ol { margin: 0; padding-left: 18px; font-size: 13.5px; display: grid; gap: 6px; }
+
+.recs { display: grid; gap: 12px; margin-top: 16px; }
+.rec { display: grid; grid-template-columns: 54px minmax(0,1fr); gap: 14px; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; }
+.rec .tier { font: 700 26px var(--f-display); color: var(--accent); line-height: 1; }
+.rec h3 { margin: 0 0 4px; font-size: 16px; }
+.rec ul { margin: 6px 0 0; padding-left: 18px; font-size: 14px; display: grid; gap: 4px; }
+.keep { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.keep span { border: 1px dashed var(--line); border-radius: 8px; padding: 6px 10px; font-size: 13.5px; }
+footer { margin-top: 64px; font-size: 13px; color: var(--muted); border-top: 1px solid var(--line); padding-top: 16px; }
+@media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
+</style>
+
+<div class="wrap">
+<nav class="toc" aria-label="Sections">
+  <div class="brand"><span class="dot"></span>Tap vs. the field</div>
+  <ol>
+    <li><a href="#summary">Summary</a></li>
+    <li><a href="#glance">At a glance</a></li>
+    <li><a href="#api">API comparison</a></li>
+    <li><a href="#internals">Inner workings</a></li>
+    <li><a href="#missing">Gaps (44)</a></li>
+    <li><a href="#ours">What only Tap has</a></li>
+    <li><a href="#better">What they do better</a></li>
+    <li><a href="#keep">Deliberate differences</a></li>
+    <li><a href="#recs">Recommendations</a></li>
+    <li><a href="#sources">Sources</a></li>
+  </ol>
+</nav>
+
+<main>
+<header>
+  <div class="eyebrow">Research note · 2026-11-13</div>
+  <h1>Tap vs. agent-device, Maestro and Appium</h1>
+  <p class="lede">How Tap compares with three other Android automation tools: what each is built for, how its API looks, how an action reaches the screen, what is missing on each side, and what Tap should adopt.</p>
+  <p class="meta">Based on the source code and docs of each project at its current head; nothing was run against a device. Source: <code>.docs/competitor-comparison.md</code>.</p>
+
+  <div class="pcards">
+    <div class="pcard tap"><span class="role">This project</span><h3>Tap</h3><p>A deterministic Android E2E engine. You write tests in Kotlin/JUnit 5 or Python/pytest against a typed gRPC server, with tap-agent, Studio and tap-watcher on the same engine.</p><span class="tag">Strength: correctness</span></div>
+    <div class="pcard"><span class="role">Agents first</span><h3>agent-device</h3><p>A device layer for AI agents: CLI, MCP and a Node API across nine platform families. Agents explore at run time and can save replay scripts. About 352k lines of TypeScript and 39 ADRs.</p><span class="tag">Strength: agent ergonomics, breadth</span></div>
+    <div class="pcard"><span class="role">YAML flows</span><h3>Maestro</h3><p>A flow runner with implicit waits, settling and retries. Ships Studio, an MCP server, a cloud service and AI assertions.</p><span class="tag">Strength: time to first test</span></div>
+    <div class="pcard"><span class="role">The standard</span><h3>Appium UiA2</h3><p>W3C WebDriver for mobile, about 100 <code>mobile:</code> extensions, web view contexts, Inspector, Grid, and clients in every language.</p><span class="tag">Strength: breadth, ecosystem</span></div>
+  </div>
+</header>
+
+<section>
+<h2 id="summary">Summary</h2>
+<div class="callouts">
+  <div class="callout lead"><b>Where Tap leads</b><p>Tap finds the element on the device and requires exactly one match in the same call that sends the input. It never replays a mutation, fences request IDs and session generations, keeps crash-resumable journals, restores every device setting it changes, and runs several devices in one test. No competitor does all of this.</p></div>
+  <div class="callout gap"><b>Where Tap is behind</b><p>It supports one platform. It has no web views, no crash or ANR codes, no performance capture, no streamed app logs, no visual regression, no replay runner, no remote devices, no emulator boot, no telephony or biometrics, and no sharding.</p></div>
+  <div class="callout lesson"><b>Cheapest wins</b><p>agent-device's agent output: off-screen summaries, typed <code>reason</code> + hint + <code>dispatched</code> on every failure, scaled screenshots with refs drawn on, scroll movement reports, per-device capabilities, MCP instructions. All of it fits in tap-agent without changing the engine.</p></div>
+</div>
+</section>
+
+<section>
+<h2 id="glance">At a glance</h2>
+<div class="tbl"><table>
+<thead><tr><th></th><th class="tapcol">Tap</th><th>agent-device</th><th>Maestro</th><th>Appium UiA2</th></tr></thead>
+<tbody>
+<tr><td>Primary user</td><td class="tapcol">Test engineers (Kotlin/Python), then agents</td><td>AI coding agents, then CI replay</td><td>QA and mobile devs writing YAML</td><td>WebDriver users in any language</td></tr>
+<tr><td>Platforms</td><td class="tapcol">Android</td><td>iOS, Android, HarmonyOS, TV, web, macOS, Linux</td><td>Android, iOS sim, web</td><td>Android (others through other drivers)</td></tr>
+<tr><td>Host process</td><td class="tapcol"><code>tap</code> daemon, native image, loopback gRPC + token, started explicitly</td><td>Node daemon, auto-started, loopback with token; remote tenants and leases</td><td>CLI per run</td><td>Appium server (Node, HTTP)</td></tr>
+<tr><td>On-device part</td><td class="tapcol">Driver APK pair, framed protobuf, authenticated</td><td>Snapshot/automation helper (persistent socket), optional test IME</td><td>Instrumentation with a gRPC server</td><td>Instrumentation with an HTTP JSON server</td></tr>
+<tr><td>Selector resolution</td><td class="tapcol"><b>On the device</b>, exactly one before input</td><td>On the host over a fresh capture, then a tap at coordinates</td><td>On the host over a full dump, then coordinates</td><td>On the device, first match; XPath over a dump</td></tr>
+<tr><td>Waiting</td><td class="tapcol">Explicit only, one deadline per call</td><td>Explicit <code>wait</code>, opt-in <code>--settle</code>, post-gesture stabilisation</td><td>Implicit: 17 s lookups (7 s optional), settle after every command</td><td>Implicit wait + WebDriverWait</td></tr>
+<tr><td>Retry</td><td class="tapcol">Never replays; <code>INDETERMINATE</code></td><td>Never resends; <code>dispatched: unknown</code></td><td><code>retryIfNoChange</code>, <code>retry</code> blocks</td><td>Client/Grid retries are common</td></tr>
+<tr><td>Multi-device</td><td class="tapcol">One test, structured concurrency, <code>DeviceBarrier</code></td><td>Parallel sessions, no coordination</td><td>Parallel shards</td><td>One session per device</td></tr>
+<tr><td>GUI tools</td><td class="tapcol">Studio (selector recorder), tap-watcher (live view of every connection, video)</td><td>None (<code>takeover</code>, contact sheets)</td><td>Studio, MCP viewer</td><td>Appium Inspector</td></tr>
+<tr><td>Agent surface</td><td class="tapcol">tap-agent CLI + MCP (~40 tools), experimental</td><td>The product itself</td><td><code>maestro mcp</code> (10 coarse tools)</td><td>Community MCP servers only</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2 id="api">API comparison</h2>
+<h3>The same login in each API</h3>
+<div class="tabs" id="codeTabs">
+  <div class="tablist" role="tablist" aria-label="Code samples">
+    <button role="tab" id="t-tap" aria-selected="true" aria-controls="p-tap">Tap (Python)</button>
+    <button role="tab" id="t-ad" aria-selected="false" aria-controls="p-ad" tabindex="-1">agent-device (Node)</button>
+    <button role="tab" id="t-mae" aria-selected="false" aria-controls="p-mae" tabindex="-1">Maestro (YAML)</button>
+    <button role="tab" id="t-app" aria-selected="false" aria-controls="p-app" tabindex="-1">Appium (Java)</button>
+  </div>
+  <div role="tabpanel" id="p-tap" aria-labelledby="t-tap"><pre>shop = tap_device.app("com.example.shop")
+shop.cold_launch()
+shop.element(res("email")).set_text("a@b.c")
+shop.element(text("Log in")).tap()      # AMBIGUOUS / NOT_FOUND before any input
+shop.wait(text("Welcome")).visible()     # explicit, one deadline</pre>
+  <div class="tabnote">Lazy typed selectors. Each call resolves again on the device. The wait is explicit.</div></div>
+  <div role="tabpanel" id="p-ad" aria-labelledby="t-ad" hidden><pre>const c = createAgentDeviceClient({ session: 'qa' });
+await c.apps.open({ app: 'com.example.shop', platform: 'android', relaunch: true });
+await c.interactions.fill({ selector: 'id="email"', text: 'a@b.c' });
+await c.interactions.press({ selector: 'label="Log in"', settle: true }); // returns a diff
+await c.command.wait({ text: 'Welcome', timeoutMs: 5000 });</pre>
+  <div class="tabnote">Options objects grouped by area. Selectors are strings. <code>settle</code> and <code>verify</code> are options on any mutation.</div></div>
+  <div role="tabpanel" id="p-mae" aria-labelledby="t-mae" hidden><pre>appId: com.example.shop
+---
+- launchApp: { clearState: true }
+- tapOn: { id: "email" }
+- inputText: "a@b.c"
+- tapOn: "Log in"        # waits up to 17 s, settles, taps the first match's centre
+- assertVisible: "Welcome"</pre>
+  <div class="tabnote">No programmatic API. The YAML is the contract, and every step waits implicitly.</div></div>
+  <div role="tabpanel" id="p-app" aria-labelledby="t-app" hidden><pre>driver.activateApp("com.example.shop");
+driver.findElement(AppiumBy.id("email")).sendKeys("a@b.c");
+driver.findElement(AppiumBy.androidUIAutomator("new UiSelector().text(\"Log in\")")).click();
+new WebDriverWait(driver, Duration.ofSeconds(10))
+    .until(ExpectedConditions.visibilityOfElementLocated(AppiumBy.xpath("//*[@text='Welcome']")));</pre>
+  <div class="tabnote">Persistent element handles, string selectors (UiSelector, XPath), first match wins.</div></div>
+</div>
+
+<h3>Shape of the API</h3>
+<div class="tbl"><table>
+<thead><tr><th></th><th class="tapcol">Tap</th><th>agent-device</th><th>Maestro</th><th>Appium</th></tr></thead>
+<tbody>
+<tr><td>Wire contract</td><td class="tapcol">One protobuf schema (<code>tap.v1</code>), gRPC, <code>buf breaking</code> in CI</td><td>Internal JSON RPC; client and daemon must match exactly</td><td>Internal gRPC; the YAML is the API</td><td>W3C WebDriver JSON + <code>mobile:</code> extensions + Settings API</td></tr>
+<tr><td>Main object model</td><td class="tapcol"><code>Device</code> → <code>App</code> → <code>Element</code> → <code>ElementWait</code></td><td><code>client.&lt;group&gt;.&lt;verb&gt;({…})</code>, 15 groups</td><td>48 YAML command types</td><td><code>findElement</code> → <code>WebElement</code>; <code>executeScript("mobile: …")</code></td></tr>
+<tr><td>Element model</td><td class="tapcol">Lazy selector, nothing persists</td><td>Positional refs (<code>@e12~s42</code>) valid until the next mutation, or selector strings</td><td>Selector maps, resolved per command</td><td>Persistent handles, <code>StaleElementReference</code></td></tr>
+<tr><td>Selectors</td><td class="tapcol">Typed AST: <code>res</code>, <code>text*</code> (RE2), <code>desc</code>, <code>hint</code>, <code>class_name</code>, flags, <code>any_of</code>/<code>all_of</code>, relations, <code>first</code>/<code>at</code>, package predicate</td><td>String DSL <code>key=value</code>, <code>||</code> alternatives, boolean keys; <code>find</code> for partial matches</td><td>text (regex), id, index, childOf, above/below/leftOf/rightOf, contains*, traits</td><td>id, accessibility id, class, UiSelector strings, XPath, image plugin</td></tr>
+<tr><td>Ambiguity</td><td class="tapcol">Mutations need exactly one</td><td>Mutations refuse and list 5 candidate refs; reads take the first match</td><td>First match + index</td><td>First match</td></tr>
+<tr><td>Waits</td><td class="tapcol">Named predicates: visible, one, gone, enabled, checked, focused, text, count; stability TREE/PIXELS; toast, notification, permission prompt</td><td><code>wait</code> text/ref/selector, strict <code>absent</code>, <code>is</code> predicates; per-poll diagnostics</td><td>Implicit, plus <code>extendedWaitUntil</code></td><td>Implicit wait + expected conditions</td></tr>
+<tr><td>Errors</td><td class="tapcol">Closed list of 28 codes with typed details; typed client exceptions</td><td><code>code</code> + typed <code>reason</code> + <code>hint</code> + <code>dispatched</code> + <code>retriable</code></td><td>Exceptions + messages</td><td>W3C error codes</td></tr>
+<tr><td>Test-framework fit</td><td class="tapcol">JUnit 5 extension, pytest plugin, roles, artifacts on failure</td><td>None (<code>test</code> runs .ad suites)</td><td>Its own runner</td><td>Any framework through clients</td></tr>
+</tbody></table></div>
+
+<h3>Where each API is stronger</h3>
+<div class="lessons">
+  <div class="lesson"><h3>Tap</h3><ol><li>No stale state: no handles, and no refs on the test side.</li><li>Selectors are typed values. A typo fails at compile time in Kotlin and at call time in Python.</li><li>The Kotlin and Python surfaces match, and the gRPC contract is public.</li><li>It has the most complete JUnit/pytest integration of the four.</li></ol></div>
+  <div class="lesson"><h3>agent-device</h3><ol><li>One command registry feeds the CLI, MCP, Node and batch, so they cannot drift.</li><li>Every error has a reason, a hint and a <code>dispatched</code> flag.</li><li><code>capabilities</code> lists what each device supports; <code>batch</code> runs N steps in one request.</li></ol></div>
+  <div class="lesson"><h3>Maestro</h3><ol><li>Readable, diffable YAML with no programming.</li><li>Composition without a language: <code>runFlow</code>, <code>repeat</code>, <code>retry</code>, env and tags.</li></ol></div>
+  <div class="lesson"><h3>Appium</h3><ol><li>A standard: clients in every language, and WebDriver skills carry over.</li><li>About 100 <code>mobile:</code> methods; a per-session Settings API.</li></ol></div>
+</div>
+
+<h3>API lessons for Tap</h3>
+<ul>
+  <li>Derive <code>dispatched: no|unknown</code> on the client from the error code and show it with a hint in tap-agent. No protocol change needed.</li>
+  <li>Add <code>capabilities()</code> per device: which API levels gate <code>ime_action</code>, per-app locales and page scrolls.</li>
+  <li>Close the Kotlin gaps: held connections, snapshots, and JUnit device criteria (all exist in Python).</li>
+  <li>Don't copy: string selector DSLs, element handles, implicit waits.</li>
+</ul>
+</section>
+
+<section>
+<h2 id="internals">Inner workings: how a tap reaches the screen</h2>
+<div class="flow">
+  <div class="step"><span class="n">1 · find</span><b>Locate the target</b><dl>
+    <dt>Tap</dt><dd>Driver compiles the selector to a native UiAutomator plan over all windows</dd>
+    <dt>agent-device</dt><dd>Helper captures every window's tree (6–17 ms p50); the host resolves it</dd>
+    <dt>Maestro</dt><dd>Full hierarchy dump, matched on the host</dd>
+    <dt>Appium</dt><dd>UiAutomator or XPath, handle cached</dd></dl></div>
+  <div class="step"><span class="n">2 · gate</span><b>Check before input</b><dl>
+    <dt>Tap</dt><dd>Exactly one; <code>OBSCURED</code> from the window list; <code>STALE_BEFORE_INPUT</code></dd>
+    <dt>agent-device</dt><dd>Ref-frame admission, covered-by-drawing-order, moving-target gate (still for 100 ms within 1.5 s)</dd>
+    <dt>Maestro</dt><dd>Implicit visible wait, then settle</dd>
+    <dt>Appium</dt><dd>None</dd></dl></div>
+  <div class="step"><span class="n">3 · input</span><b>Send it</b><dl>
+    <dt>Tap</dt><dd>MotionEvent at the visible centre, in the same call</dd>
+    <dt>agent-device</dt><dd>UiAutomation injection at coordinates, falling back to <code>input tap</code></dd>
+    <dt>Maestro</dt><dd>gRPC tap(x, y); text one character at a time, 75 ms apart</dd>
+    <dt>Appium</dt><dd><code>UiObject2.click()</code> / W3C actions</dd></dl></div>
+  <div class="step"><span class="n">4 · after</span><b>Report</b><dl>
+    <dt>Tap</dt><dd>Android's acceptance; the test asserts the effect</dd>
+    <dt>agent-device</dt><dd>Optional settle diff, verify, movement report</dd>
+    <dt>Maestro</dt><dd>Settle; re-tap if nothing changed</dd>
+    <dt>Appium</dt><dd>Returns</dd></dl></div>
+</div>
+<p class="insight">The key difference: Tap finds the element and sends the input in one call on the device. agent-device and Maestro read the tree on the host and then send coordinates, so the screen can change in between. agent-device has built a lot of machinery to close that gap: ADRs 0011, 0014 and 0039 on guarantee matrices, ref frames and pre-dispatch admission. Tap avoids most of it by construction.</p>
+
+<h3>Reliability model</h3>
+<div class="tbl"><table>
+<thead><tr><th>Concern</th><th class="tapcol">Tap</th><th>agent-device</th><th>Maestro</th><th>Appium</th></tr></thead>
+<tbody>
+<tr><td>Duplicate / late mutations</td><td class="tapcol">Request IDs per generation, <code>INDETERMINATE</code>, quarantine</td><td>Never resends; <code>dispatched</code> ledger</td><td>Retries by design</td><td>No fencing</td></tr>
+<tr><td>Device ownership</td><td class="tapcol">Per-serial journal lock, held connections, <code>tap doctor</code></td><td>Host-global claims, stale-owner proof, scoped to the worktree</td><td>—</td><td>IPC claim handler</td></tr>
+<tr><td>State restoration</td><td class="tapcol">Read back + restore everything on detach, and after a crash</td><td>Mostly manual (orientation lock persists)</td><td>Manual</td><td>Manual</td></tr>
+<tr><td>Path consistency</td><td class="tapcol">One path per command on the device</td><td>Machine-checked path × guarantee matrix</td><td>—</td><td>—</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2 id="missing">Gaps: what Tap lacks</h2>
+<p>All 44 gaps from the review, by area. Tier is the recommendation tier below (A first, E needs your decision, — not recommended). Details for each are in <code>.docs/competitor-comparison.md</code> §5.</p>
+<div class="filters" role="group" aria-label="Filter by fit">
+  <span>Fit:</span>
+  <button aria-pressed="true" data-f="all">All</button>
+  <button aria-pressed="false" data-f="easy">Easy</button>
+  <button aria-pressed="false" data-f="medium">Medium</button>
+  <button aria-pressed="false" data-f="large">Large</button>
+  <button aria-pressed="false" data-f="owner">Needs owner decision</button>
+  <button aria-pressed="false" data-f="conflict">Conflicts</button>
+</div>
+<div class="tbl"><table id="gapTable">
+<thead><tr><th>#</th><th>Gap</th><th>Who has it</th><th>Fit</th><th>Tier</th></tr></thead>
+<tbody>
+<tr class="grp" data-f="hdr"><th colspan="5">Platform and context</th></tr>
+<tr data-f="out"><td class="mono">G1</td><td>iOS / tvOS / web / desktop / HarmonyOS</td><td>agent-device, Maestro, Appium</td><td><span class="chip c-out">out of scope</span></td><td>—</td></tr>
+<tr data-f="large"><td class="mono">G2</td><td>Web views / hybrid app contexts</td><td>Appium, Maestro</td><td><span class="chip c-large">large</span></td><td><span class="tier-b">E</span></td></tr>
+<tr data-f="large"><td class="mono">G3</td><td>Remote / cloud devices, remote daemon</td><td>agent-device, Maestro, Appium</td><td><span class="chip c-large">large</span></td><td><span class="tier-b">E</span></td></tr>
+<tr data-f="easy medium"><td class="mono">G4</td><td>Boot and shut down emulators</td><td>agent-device, Maestro</td><td><span class="chip c-medium">easy–medium</span></td><td><span class="tier-b">D</span></td></tr>
+<tr data-f="medium"><td class="mono">G5</td><td>Foldable postures</td><td>agent-device</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+<tr class="grp" data-f="hdr"><th colspan="5">Evidence and diagnostics</th></tr>
+<tr data-f="medium"><td class="mono">G6</td><td>Crash / ANR reported as error codes</td><td>all three</td><td><span class="chip c-medium">medium</span></td><td><span class="tier-b">B</span></td></tr>
+<tr data-f="medium"><td class="mono">G7</td><td>Performance capture (frames, memory, CPU profiles, Perfetto, hprof)</td><td>agent-device, Appium</td><td><span class="chip c-medium">medium</span></td><td><span class="tier-b">D</span></td></tr>
+<tr data-f="easy medium"><td class="mono">G8</td><td>Streamed app logs with markers and redaction; network dump from logs</td><td>agent-device, Appium</td><td><span class="chip c-medium">easy–medium</span></td><td><span class="tier-b">B</span></td></tr>
+<tr data-f="easy"><td class="mono">G9</td><td>Event timeline with cursors and paging for agents</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="medium"><td class="mono">G10</td><td>Visual regression: screenshot vs. baseline, changed regions</td><td>Maestro, agent-device</td><td><span class="chip c-medium">medium</span></td><td><span class="tier-b">D</span></td></tr>
+<tr data-f="easy"><td class="mono">G11</td><td>Screenshot <code>--scale</code>, <code>--overlay-refs</code>, <code>--crop-on</code></td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="easy"><td class="mono">G12</td><td>Video contact sheet</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td>—</td></tr>
+<tr data-f="medium"><td class="mono">G13</td><td>Failure video attached to reports</td><td>Maestro, agent-device</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+<tr data-f="medium"><td class="mono">G14</td><td>HTML report, insights, per-step timing file</td><td>Maestro, agent-device</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+<tr data-f="owner"><td class="mono">G15</td><td>AI assertions</td><td>Maestro</td><td><span class="chip c-owner">owner</span></td><td><span class="tier-b">E</span></td></tr>
+<tr data-f="out"><td class="mono">G16</td><td>React Native tooling (devtools, Metro reload, overlays)</td><td>agent-device</td><td><span class="chip c-out">out of scope</span></td><td>—</td></tr>
+<tr class="grp" data-f="hdr"><th colspan="5">Device and app control</th></tr>
+<tr data-f="medium"><td class="mono">G17</td><td>Non-ASCII <code>type_text</code> (test IME)</td><td>agent-device</td><td><span class="chip c-medium">medium</span></td><td><span class="tier-b">D</span></td></tr>
+<tr data-f="easy"><td class="mono">G18</td><td>Telephony and SMS (emulator)</td><td>agent-device, Appium</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="easy"><td class="mono">G19</td><td>Biometrics: fingerprint match / no match</td><td>agent-device, Appium</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="easy"><td class="mono">G20</td><td>Bluetooth, NFC, GPS, battery and power, sensors, camera image, network speed</td><td>Appium, agent-device</td><td><span class="chip c-easy">easy each</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="easy medium"><td class="mono">G21</td><td>Install <code>.aab</code>, split APKs, from a URL; <code>reinstall</code></td><td>agent-device, Appium</td><td><span class="chip c-medium">easy–medium</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="easy"><td class="mono">G22</td><td>Push simulation by broadcast; app-event deep-link template</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="easy medium"><td class="mono">G23</td><td>Arbitrary intents and services, app strings, app list, trim memory, doze</td><td>Appium</td><td><span class="chip c-medium">easy–medium</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="medium"><td class="mono">G24</td><td>Multi-touch: 2–5 finger taps, rotate, transform</td><td>agent-device</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+<tr data-f="conflict"><td class="mono">G25</td><td>Coordinate taps and swipes</td><td>all three</td><td><span class="chip c-conflict">conflicts</span></td><td>—</td></tr>
+<tr data-f="easy"><td class="mono">G26</td><td>Status-bar demo mode for stable screenshots</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">C</span></td></tr>
+<tr data-f="easy medium"><td class="mono">G27</td><td>Scroll progress report (moved / at edge / no progress), keyboard-avoiding swipes</td><td>agent-device</td><td><span class="chip c-medium">easy–medium</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="conflict"><td class="mono">G28</td><td>Text read-back after fill (<code>unconfirmed</code>, before/after)</td><td>agent-device</td><td><span class="chip c-conflict">conflicts in the driver; easy on the client</span></td><td>—</td></tr>
+<tr class="grp" data-f="hdr"><th colspan="5">Workflow</th></tr>
+<tr data-f="owner"><td class="mono">G29</td><td>Replay runner for recordings (suites, retries, resume from step N)</td><td>agent-device, Maestro</td><td><span class="chip c-owner">owner</span></td><td><span class="tier-b">E</span></td></tr>
+<tr data-f="conflict"><td class="mono">G30</td><td>Run or export Maestro YAML</td><td>agent-device</td><td><span class="chip c-conflict">conflicts</span></td><td>—</td></tr>
+<tr data-f="easy"><td class="mono">G31</td><td><code>batch</code>: N steps in one request</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="medium"><td class="mono">G32</td><td>Sharding and tags across devices</td><td>Maestro</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+<tr data-f="owner"><td class="mono">G33</td><td>Human takeover hold</td><td>agent-device</td><td><span class="chip c-owner">owner</span></td><td><span class="tier-b">E</span></td></tr>
+<tr data-f="easy"><td class="mono">G34</td><td>Detect a newer server than the client</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td>—</td></tr>
+<tr data-f="easy"><td class="mono">G35</td><td>MCP <code>instructions</code>, a <code>help</code> tool, <code>llms-full.txt</code></td><td>agent-device, Maestro</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr class="grp" data-f="hdr"><th colspan="5">API and engine</th></tr>
+<tr data-f="easy"><td class="mono">G36</td><td><code>dispatched: no/unknown</code> and a hint on every failure</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="easy"><td class="mono">G37</td><td><code>capabilities()</code>: which commands this device supports</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="medium"><td class="mono">G38</td><td>Kotlin SDK: held connections and screen snapshots (Python only today)</td><td>— (Tap&#x27;s own parity gap)</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+<tr data-f="easy medium"><td class="mono">G39</td><td>JUnit device criteria (pytest has them)</td><td>— (Tap&#x27;s own parity gap)</td><td><span class="chip c-medium">easy–medium</span></td><td>—</td></tr>
+<tr data-f="medium"><td class="mono">G40</td><td>Covered views inside the same window (drawing order); occlusion check for <code>set_text</code></td><td>agent-device</td><td><span class="chip c-medium">medium</span></td><td><span class="tier-b">B</span></td></tr>
+<tr data-f="large"><td class="mono">G41</td><td>Fast attach: driver instrumentation kept alive (4–6 s per device per test today)</td><td>agent-device (persistent helper)</td><td><span class="chip c-large">large</span></td><td><span class="tier-b">B</span></td></tr>
+<tr data-f="easy"><td class="mono">G42</td><td>Snapshot off-screen summaries; short answer when nothing changed</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td><span class="tier-b">A</span></td></tr>
+<tr data-f="easy"><td class="mono">G43</td><td>A checked table of which guarantees each gesture path has</td><td>agent-device</td><td><span class="chip c-easy">easy</span></td><td>—</td></tr>
+<tr data-f="medium"><td class="mono">G44</td><td>Install without a GitHub token (Maven Central / PyPI)</td><td>Maestro, agent-device, Appium</td><td><span class="chip c-medium">medium</span></td><td>—</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2 id="ours">What only Tap has</h2>
+<div class="tbl narrow"><table>
+<thead><tr><th>Tap</th><th>Nearest equivalent elsewhere</th></tr></thead>
+<tbody>
+<tr><td>Exactly one match, checked on the device in the same call as the input</td><td>Appium: on the device, first match. Others: host-side capture, then coordinates</td></tr>
+<tr><td>No dump on the action path</td><td>agent-device captures the tree for each resolved action; Maestro dumps and settles for every command</td></tr>
+<tr><td>Generation fencing, <code>INDETERMINATE</code>, quarantine, journals</td><td>agent-device's <code>dispatched</code> ledger comes closest</td></tr>
+<tr><td>Read-back + restore of every device change, even after a crash</td><td>None</td></tr>
+<tr><td>Multiple devices in one test with structured concurrency</td><td>None</td></tr>
+<tr><td>JUnit 5 + pytest integrations with the same API</td><td>Appium has clients but no device fixtures</td></tr>
+<tr><td>Public typed contract (<code>tap.v1</code>)</td><td>Appium W3C (untyped JSON)</td></tr>
+<tr><td>Permission dialogs by resource id, 10 typed choices</td><td>agent-device ranks English labels; Appium <code>acceptAlert</code></td></tr>
+<tr><td>Accessibility actions (23 standard + custom) and <code>set_progress</code></td><td>agent-device lists iOS custom actions but cannot trigger them</td></tr>
+<tr><td>Clipboard on API 29+ through the shell permission</td><td>agent-device refuses on API 36</td></tr>
+<tr><td>Device conditions with read-back (font, density, locales, a11y display, stay awake)</td><td>Partial in each</td></tr>
+<tr><td>Refs stable across snapshots, and each is a selector that becomes test code</td><td>agent-device refs are positional and expire at every mutation</td></tr>
+<tr><td>Studio (selector recorder), tap-watcher (live multi-connection view), audio + video recording</td><td>Maestro Studio, Appium Inspector; nobody records audio</td></tr>
+<tr><td>Native-image daemon</td><td>Maestro needs Java 17, agent-device Node 22+</td></tr>
+</tbody></table></div>
+</section>
+
+<section>
+<h2 id="better">What they do better</h2>
+<div class="lessons">
+  <div class="lesson"><h3>agent-device</h3><ol>
+    <li>Agent output: off-screen summaries in their containers, a short answer when nothing changed, <code>[unmeasured]</code>, <code>truncated</code>, scaled screenshots.</li>
+    <li>Every failure says what to do next: reason, hint, <code>dispatched</code>, <code>retriable</code>, and the poll history of a wait.</li>
+    <li>Gestures report what they saw (<code>moved</code>, <code>at-edge</code>, <code>unchanged</code>); swipes avoid the keyboard.</li>
+    <li>Covered controls within one window are found from drawing order. This is Tap's open <code>OBSCURED</code> gap.</li>
+    <li>A machine-checked guarantee matrix catches a guarantee that one code path forgot.</li>
+    <li>A persistent helper cut snapshot p50 from 227 ms to 5.8 ms. Tap's equivalent cost is attach: 4–6 s per device per test.</li>
+    <li>Sessions scoped to the worktree, and proof that a stale claim's owner is gone before releasing it.</li>
+  </ol></div>
+  <div class="lesson"><h3>Maestro</h3><ol>
+    <li>Five minutes to a first test, one binary, no token.</li>
+    <li>The viewer starts inside <code>maestro mcp</code> and prints its URL. tap-agent could offer the watcher the same way.</li>
+    <li>JUnit/HTML reports, sharding and tags out of the box.</li>
+    <li>Web view hierarchy merged over CDP.</li>
+    <li>A crash is a result, even without a crash report.</li>
+  </ol></div>
+  <div class="lesson"><h3>Appium</h3><ol>
+    <li>About 100 thin, independent <code>mobile:</code> wrappers: breadth by accumulation.</li>
+    <li>Web view contexts with Chromedriver matching.</li>
+    <li>A per-session Settings API for OEMs that stall.</li>
+    <li>The ecosystem: Inspector, plugins, Grid.</li>
+  </ol></div>
+</div>
+</section>
+
+<section>
+<h2 id="keep">Deliberate differences: keep</h2>
+<p>Every competitor has these. The reasons Tap rejected them still hold after this review.</p>
+<div class="keep">
+  <span>Coordinate input</span><span>Implicit waits and settling</span><span>Retry by default / <code>retryIfNoChange</code></span><span>XPath and element handles</span><span>YAML as the test language</span><span>Watchers that dismiss popups</span><span>Silent foreground repair</span>
+</div>
+</section>
+
+<section>
+<h2 id="recs">Recommendations</h2>
+<div class="recs">
+  <div class="rec"><div class="tier">A</div><div><h3>Agent surface, client only (about a week)</h3><ul>
+    <li>In tap-agent output: a <code>dispatched</code> field and a hint on every failure, off-screen summaries, a short answer for an unchanged snapshot, <code>--scale</code> and <code>--overlay-refs</code>.</li>
+    <li>MCP <code>instructions</code>, a <code>help</code> tool, <code>llms-full.txt</code>.</li>
+    <li><code>capabilities</code>, <code>batch</code>, and a reason when <code>scroll_until</code> stops.</li></ul></div></div>
+  <div class="rec"><div class="tier">B</div><div><h3>Engine gaps that competitors treat as standard</h3><ul>
+    <li>Send <code>AUT_CRASHED</code> / <code>AUT_ANR</code>.</li>
+    <li>Detect covering views in the same window from drawing order; check <code>set_text</code> too.</li>
+    <li>Faster attach: keep the driver instrumentation alive.</li>
+    <li>Stream logcat with markers instead of reading the ring buffer at failure.</li></ul></div></div>
+  <div class="rec"><div class="tier">C</div><div><h3>Cheap device actions, journaled with read-back</h3><ul>
+    <li>Emulator console: telephony, SMS, fingerprint, battery, sensors. <code>svc bluetooth</code>, status-bar demo mode, broadcast with extras, trim memory, <code>.aab</code> and split installs.</li></ul></div></div>
+  <div class="rec"><div class="tier">D</div><div><h3>Medium</h3><ul>
+    <li>Performance evidence (gfxinfo, meminfo, Perfetto), screenshot baseline diff, Unicode typing through a test IME, emulator boot/stop.</li></ul></div></div>
+  <div class="rec"><div class="tier">E</div><div><h3>Needs owner decision</h3><ul>
+    <li>Replay runner for <code>tap-recording/1</code>, web view support, human takeover hold, AI assertions, remote daemons.</li></ul></div></div>
+</div>
+</section>
+
+<section>
+<h2 id="sources">Sources</h2>
+<div class="tbl narrow"><table>
+<thead><tr><th>Project</th><th>Commit</th><th>Date</th><th>Version</th></tr></thead>
+<tbody>
+<tr><td>callstack/agent-device</td><td class="mono">ddbfc855</td><td>2026-11-13</td><td>0.21.38-dev</td></tr>
+<tr><td>mobile-dev-inc/Maestro</td><td class="mono">0ccf5a9c</td><td>2026-11-13</td><td>2.12.1</td></tr>
+<tr><td>appium-uiautomator2-driver</td><td class="mono">911af30a</td><td>2026-11-13</td><td>9.0.3</td></tr>
+<tr><td>appium-uiautomator2-server</td><td class="mono">56bf27a2</td><td>2026-10-06</td><td>—</td></tr>
+<tr><td>appium-android-driver</td><td class="mono">ce35384b</td><td>2026-11-01</td><td>15.x</td></tr>
+<tr><td>Tap</td><td class="mono">1a3be893</td><td>2026-11-13</td><td>protocol 5.1</td></tr>
+</tbody></table></div>
+<p>These heads are newer than the pins in <code>upstream-reference-audit.md</code>. agent-device in particular changes daily, so re-check a detail before relying on it.</p>
+</section>
+
+<footer>Research note, not a decision record. Nothing here changes a Tap decision until the owner approves it.</footer>
+</main>
+</div>
+
+<script>
+(function () {
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('#codeTabs [role="tab"]'));
+  function select(t) {
+    tabs.forEach(function (b) {
+      var on = b === t;
+      b.setAttribute('aria-selected', on ? 'true' : 'false');
+      b.tabIndex = on ? 0 : -1;
+      document.getElementById(b.getAttribute('aria-controls')).hidden = !on;
+    });
+  }
+  tabs.forEach(function (b, i) {
+    b.addEventListener('click', function () { select(b); });
+    b.addEventListener('keydown', function (e) {
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      var n = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+      select(n); n.focus();
+    });
+  });
+
+  var fbtns = Array.prototype.slice.call(document.querySelectorAll('.filters button'));
+  var rows = Array.prototype.slice.call(document.querySelectorAll('#gapTable tbody tr'));
+  fbtns.forEach(function (b) {
+    b.addEventListener('click', function () {
+      var f = b.getAttribute('data-f');
+      fbtns.forEach(function (x) { x.setAttribute('aria-pressed', x === b ? 'true' : 'false'); });
+      rows.forEach(function (r) { var k = r.getAttribute('data-f').split(' '); r.hidden = k[0] === 'hdr' ? f !== 'all' : !(f === 'all' || k.indexOf(f) >= 0); });
+    });
+  });
+
+  var links = Array.prototype.slice.call(document.querySelectorAll('nav.toc a'));
+  if ('IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (en) {
+        if (!en.isIntersecting) return;
+        links.forEach(function (a) { a.classList.toggle('on', a.getAttribute('href') === '#' + en.target.id); });
+      });
+    }, { rootMargin: '0px 0px -75% 0px' });
+    document.querySelectorAll('main h2[id]').forEach(function (h) { io.observe(h); });
+  }
+})();
+</script>
+
+</body>
+</html>
