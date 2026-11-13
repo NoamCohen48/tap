@@ -9,6 +9,7 @@ import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.ErrorDetail
+import io.github.noamcohen48.tap.protocol.OperationRequirements
 
 /**
  * The soft keyboard: whether one is showing (`device_info`), `hide_keyboard` and
@@ -57,7 +58,7 @@ internal class KeyboardCommands(
         target: CompiledSelector,
     ) {
         context.checkpoint()
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) {
+        if (Build.VERSION.SDK_INT < OperationRequirements.IME_ACTION_API) {
             throw CommandFailure(
                 ErrorCode.ERR_UNSUPPORTED,
                 ErrorDetail.REQUIRES_API_30,

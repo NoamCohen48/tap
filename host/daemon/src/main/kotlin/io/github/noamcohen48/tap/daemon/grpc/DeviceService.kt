@@ -15,6 +15,8 @@ import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
 import io.github.noamcohen48.tap.api.v1.DeviceCall
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest
+import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse
 import io.github.noamcohen48.tap.api.v1.DeviceProperties
 import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
@@ -61,6 +63,8 @@ import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
 import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
 import io.github.noamcohen48.tap.daemon.core.DeviceEvidence
+import io.github.noamcohen48.tap.host.CapabilityFacts
+import io.github.noamcohen48.tap.host.DeviceCapabilities
 import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceConditions
 import io.github.noamcohen48.tap.host.canonicalLocales
@@ -74,6 +78,7 @@ import io.github.noamcohen48.tap.host.CommandTransportException
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
+import io.github.noamcohen48.tap.protocol.OperationRequirements
 import io.github.noamcohen48.tap.protocol.Requests
 import io.grpc.Context
 import kotlinx.coroutines.Dispatchers
@@ -157,6 +162,19 @@ class DeviceService(
                 .setDeviceInfo(info)
                 .apply { attachedDevice.deviceSession.inspectedQuarantine?.let { quarantineReason = it } }
                 .build()
+        }
+
+    override suspend fun getDeviceCapabilities(request: GetDeviceCapabilitiesRequest): GetDeviceCapabilitiesResponse =
+        reply {
+            val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val client = attached.deviceSession.client
+            val facts = CapabilityFacts(
+                apiLevel = client.driverContract.androidApiLevel.takeIf { it > 0 },
+                serial = attached.deviceSession.serial,
+                negotiatedCapabilities = client.enabledCapabilities,
+                scrcpyAvailable = attached.recording.executableAvailable(),
+            )
+            GetDeviceCapabilitiesResponse.newBuilder().addAllCapabilities(DeviceCapabilities.discover(facts)).build()
         }
 
     override suspend fun detach(request: DetachRequest): DetachResponse =
@@ -265,7 +283,7 @@ class DeviceService(
             val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             if (source != null) {
                 val api = attached.deviceSession.client.execute(Commands.deviceInfo(), Defaults.ACTION_TIMEOUT_MS).deviceInfo.apiLevel
-                if (api < 30 || (source == "playback" && api < 33)) {
+                if (api < OperationRequirements.RECORD_AUDIO_API || (source == "playback" && api < OperationRequirements.RECORD_PLAYBACK_API)) {
                     throw RecordingException("$source audio capture is unsupported on Android API $api")
                 }
             }

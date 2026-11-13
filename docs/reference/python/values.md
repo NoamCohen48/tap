@@ -23,3 +23,7 @@ extras.
 ::: tap_e2e.models.ForegroundActivity
 
 ::: tap_e2e.models.Long
+
+::: tap_e2e.capabilities.DeviceCapability
+
+::: tap_e2e.capabilities.DeviceCapabilities

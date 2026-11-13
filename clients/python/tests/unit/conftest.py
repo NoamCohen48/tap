@@ -12,7 +12,12 @@ import grpc
 import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import _gen as pb
-from tap_e2e._gen import app_data_pb2_grpc, app_pb2_grpc, client_connection_pb2_grpc, device_pb2_grpc
+from tap_e2e._gen import (
+    app_data_pb2_grpc,
+    app_pb2_grpc,
+    client_connection_pb2_grpc,
+    device_pb2_grpc,
+)
 from tap_e2e._gen.engine_version import API_COMPATIBILITY
 
 TOKEN = "ab" * 32
@@ -174,6 +179,8 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.files: dict[str, bytes] = {}
         self.file_headers: list = []
         self.file_chunks: list[int] = []
+        self.capabilities = pb.GetDeviceCapabilitiesResponse()
+        self.capability_requests: list[pb.GetDeviceCapabilitiesRequest] = []
         self.corrupt_png = False
         # Accepted attaches per client connection id.
         self.attached: dict[str, list[pb.AttachRequest]] = {}
@@ -191,6 +198,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
                 pb.FAILURE_REASON_NOT_OWNER,
                 "not your device",
             )
+
+    def GetDeviceCapabilities(self, request, context):
+        self._own("GetDeviceCapabilities", request, context)
+        self.capability_requests.append(request)
+        return self.capabilities
 
     def Attach(self, request, context):
         self.attach_requests.append(request)

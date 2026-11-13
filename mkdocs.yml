@@ -132,6 +132,7 @@ nav:
           - Waits: guide/waits.md
           - Keys, screen and rotation: guide/device-control.md
       - Apps and the device:
+          - Supported operations: guide/capabilities.md
           - App lifecycle: guide/app-lifecycle.md
           - Private app data: guide/app-data.md
           - Permissions: guide/permissions.md

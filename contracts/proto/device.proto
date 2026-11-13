@@ -9,6 +9,7 @@ syntax = "proto3";
 package tap.v1;
 
 import "command.proto";
+import "capabilities.proto";
 import "selector.proto";
 
 option java_package = "io.github.noamcohen48.tap.api.v1";
@@ -26,6 +27,9 @@ service DeviceService {
   rpc Unquarantine(UnquarantineRequest) returns (UnquarantineResponse);
   rpc Attach(AttachRequest) returns (AttachResponse);
   rpc Detach(DetachRequest) returns (DetachResponse);
+  // Read-only support discovery; never starts operations or changes device state. Requires
+  // the owning attachment, like Execute. Not a guarantee that a specific invocation succeeds.
+  rpc GetDeviceCapabilities(GetDeviceCapabilitiesRequest) returns (GetDeviceCapabilitiesResponse);
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
   rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);

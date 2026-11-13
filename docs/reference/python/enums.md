@@ -18,3 +18,11 @@ actions and stability signals.
 ::: tap_e2e.models.StandardAction
 
 ::: tap_e2e.models.StabilitySignal
+
+::: tap_e2e.capabilities.Capability
+
+::: tap_e2e.capabilities.CapabilityStatus
+
+::: tap_e2e.capabilities.CapabilityReason
+
+::: tap_e2e.capabilities.CapabilityRequirement

@@ -458,6 +458,19 @@ class Agent:
         """Complete current SDK device information as JSON."""
         return self._run(lambda: json_text(self._device(device).info()))
 
+    def capabilities(self, device: str | None = None, *, as_json: bool = False) -> str:
+        """Read SDK operation eligibility without input or implicit setup; not guaranteed success."""
+        def step() -> str:
+            capabilities = self._device(device).capabilities()
+            if as_json:
+                return json_text(capabilities)
+            return "\n".join(
+                f"{entry.id.name if entry.id.name != 'UNKNOWN' else f'UNKNOWN_{entry.raw_id}'}  "
+                f"{entry.status.name}  {entry.detail}"
+                for entry in capabilities.entries
+            )
+        return self._run(step)
+
     def devices(self) -> str:
         """Every device ADB lists, its state, and the session holding it."""
 
