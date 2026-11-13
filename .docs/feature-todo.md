@@ -58,6 +58,15 @@ include them without approval.
   instance confirms the outcome", so it needs a decision record. Revisit if `INDETERMINATE`
   failures appear in CI or real use.
 
+- [ ] **Custom on-phone automation overlay.** Add an opt-in overlay to Tap’s driver that
+  draws tap circles and swipe/gesture trails for injected test actions on the physical phone.
+  Android’s native Show taps option only marks physical finger touches; it does not provide
+  this. Make overlay permission and enable/disable controls explicit. Keep the overlay
+  non-interactive and verify that it neither intercepts input nor affects touch reachability,
+  occlusion checks or test behavior. Define cleanup and rotation behavior, and cover the
+  supported device families with regression tests. Not implemented by the watcher’s current
+  browser marks or native Android indicator controls; see [Test watcher](test-watcher.md).
+
 ## References
 
 - [Private app data](app-data.md)

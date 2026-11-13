@@ -1,8 +1,10 @@
 # Tap Watcher (experimental)
 
-Standalone read-only browser client of the Tap daemon: devices and who uses them, every
+Standalone browser client of the Tap daemon: devices and who uses them, every
 connection's actions per device, shared live video, look-back with Before / After frames per
 action, clips and recordings saved to a local library (MP4 + `steps.json`, ZIP on download).
+Watching is read-only. The separate, explicit **On phone** controls change Android’s device-wide
+Show taps / Pointer location options; they are never enabled automatically or restored on close.
 Test-marker integration is deferred.
 
 Video needs a scrcpy **4.1 server JAR** on the daemon host: `tap start --scrcpy-server JAR`
@@ -19,12 +21,14 @@ uv pip install --python .venv/bin/python -e clients/python -e 'clients/watcher[d
 
 Open the printed login URL. The server binds loopback, guards Host/Origin and uses a
 per-launch HttpOnly cookie; the daemon token stays in the back end, which calls only
-`Info`, `ListDevices`, `WatchService.Watch` and `WatchService.WatchVideo`. It never
+`Info`, `ListDevices`, `WatchService.Watch` and `WatchService.WatchVideo` during ordinary watching.
+The On phone panel additionally calls `TouchIndicatorService.GetTouchIndicators` and, only on
+an explicit switch change, `SetTouchIndicators`. It never
 Connects, Attaches, Observes, takes screenshots or renews a connection.
 
 Layout:
 
-- `tap_watcher/daemon.py` — the read-only daemon channel.
+- `tap_watcher/daemon.py` — the daemon channel (read-only watching plus explicit phone indicators).
 - `activity.py` — one upstream `Watch`, renumbered so the page's cursor survives daemon
   restarts.
 - `video.py` — one `WatchVideo` per serial, a 120 s / 32 MiB GOP history kept as one

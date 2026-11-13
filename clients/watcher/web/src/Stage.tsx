@@ -4,6 +4,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import type { Action } from "./activity";
 import { ActionMarks } from "./ActionMarks";
+import { PhoneIndicators } from "./PhoneIndicators";
 import { api, errorText } from "./api";
 import { bytes, clock, duration } from "./format";
 import type { ActiveRecording, Recording } from "./gen/watcher_pb";
@@ -433,6 +434,7 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
           }}>
           <Icon.TouchMarks /> <span className="label">Marks</span>
         </button>
+        <PhoneIndicators key={serial} serial={serial} />
         <button
           className={`button${comparing ? " on" : ""}`}
           disabled={empty}

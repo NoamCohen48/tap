@@ -1,4 +1,4 @@
-"""Tap Watcher: a standalone, read-only client of the Tap daemon (``tap-watcher``)."""
+"""Tap Watcher: read-only watching with explicit on-phone touch-indicator controls."""
 
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version

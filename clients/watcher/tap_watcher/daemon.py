@@ -1,4 +1,4 @@
-"""The back end's one channel to the Tap daemon, limited to read-only calls.
+"""The back end's channel: read-only watching plus explicit Android touch-indicator settings.
 
 Nothing here calls Connect, Attach, Observe, Events (which renews a held connection), Execute,
 Screenshot or app lifecycle methods. The token stays in this process.
@@ -32,6 +32,7 @@ class Daemon:
         ) = None
         self._devices: device_pb2_grpc.DeviceServiceStub | None = None
         self._watch: watch_pb2_grpc.WatchServiceStub | None = None
+        self._indicators: watch_pb2_grpc.TouchIndicatorServiceStub | None = None
 
     async def _open(self) -> None:
         async with self._opening:
@@ -57,6 +58,7 @@ class Daemon:
             )
             self._devices = device_pb2_grpc.DeviceServiceStub(self._channel)
             self._watch = watch_pb2_grpc.WatchServiceStub(self._channel)
+            self._indicators = watch_pb2_grpc.TouchIndicatorServiceStub(self._channel)
 
     async def reset(self) -> None:
         """Drop the channel so the next call resolves the endpoint again (a restarted daemon
@@ -82,6 +84,32 @@ class Daemon:
         try:
             return await self._devices.ListDevices(
                 device.ListDevicesRequest(), metadata=self._metadata, timeout=30
+            )
+        except grpc.aio.AioRpcError as error:
+            raise to_connect(error) from error
+
+    async def get_touch_indicators(
+        self, request: watch.GetTouchIndicatorsRequest
+    ) -> watch.GetTouchIndicatorsResponse:
+        """Read the device's current Android developer-option overlays."""
+        await self._open()
+        assert self._indicators is not None
+        try:
+            return await self._indicators.GetTouchIndicators(
+                request, metadata=self._metadata, timeout=30
+            )
+        except grpc.aio.AioRpcError as error:
+            raise to_connect(error) from error
+
+    async def set_touch_indicators(
+        self, request: watch.SetTouchIndicatorsRequest
+    ) -> watch.SetTouchIndicatorsResponse:
+        """Change explicitly requested device-wide overlays once, without retry."""
+        await self._open()
+        assert self._indicators is not None
+        try:
+            return await self._indicators.SetTouchIndicators(
+                request, metadata=self._metadata, timeout=30
             )
         except grpc.aio.AioRpcError as error:
             raise to_connect(error) from error

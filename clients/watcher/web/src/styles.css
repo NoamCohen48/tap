@@ -670,6 +670,7 @@ kbd {
 }
 /* The Live stage: the scrubber (and its zoom) gets a row of its own above the buttons. */
 .transport.stacked {
+  position: relative;
   flex-wrap: wrap;
   row-gap: 2px;
 }
@@ -683,6 +684,40 @@ kbd {
 .transport.stacked .time {
   margin-right: auto;
 }
+.phone-indicators summary {
+  list-style: none;
+  cursor: pointer;
+}
+.phone-indicators summary::-webkit-details-marker { display: none; }
+.phone-indicators-panel {
+  position: absolute;
+  z-index: 1; /* Above the screen, within the stage's transport controls. */
+  right: 12px;
+  bottom: calc(100% + 8px);
+  width: min(320px, calc(100% - 24px));
+  max-height: min(70dvh, 420px);
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding: 16px;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 13px;
+}
+.phone-indicators-panel p { margin: 8px 0 12px; color: var(--muted); }
+.phone-indicators-panel label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 0;
+  min-height: 44px;
+  cursor: pointer;
+}
+.phone-indicators-panel input { accent-color: var(--accent); margin: 3px 0 0; }
+.phone-indicators-panel small { display: block; margin-top: 3px; color: var(--muted); }
+.phone-indicators-panel .phone-indicators-error { color: var(--bad); overflow-wrap: anywhere; }
 .clip-bar {
   font-size: 13px;
   background: var(--surface-2);

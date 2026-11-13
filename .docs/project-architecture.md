@@ -23,7 +23,7 @@ Test process (any language)
 +-- clients/python   tap-e2e (same API in Python), pytest plugin
 +-- clients/agent    tap-agent: CLI + MCP server for coding agents, over tap-e2e (.docs/agent-surface.md)
 +-- clients/studio   tap-studio (experimental): browser inspector + action recorder, over tap-e2e (.docs/recorder.md)
-+-- clients/watcher  tap-watcher (experimental): read-only activity/video viewer, look-back, clips and recordings
++-- clients/watcher  tap-watcher (experimental): activity/video viewer, look-back, clips, recordings and explicit on-phone touch indicators
         |
         | gRPC over loopback  (contracts/proto/*.proto, package tap.v1)
         v
@@ -196,6 +196,7 @@ tap/
 |   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording, device conditions, streamed PushFile/AddMedia (spooled to <state-dir>/uploads) and PullFile
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- WatchService.kt             read-only Watch (activity) and WatchVideo; names no connection
+|   |   |       +-- TouchIndicatorService.kt    explicit device-wide Android Show taps / Pointer location; serial-specific host-core ADB, no attachment
 |   |   |       +-- EventRecording.kt          records an Execute / app call and its outcome into the owner's EventLog
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
 |   |   |       +-- common.kt                  Defaults (echoed in Info), suspend reply wrapper, exception → status + `tap-failure-bin` Failure trailer
@@ -669,7 +670,7 @@ Python/Connect loopback back end and React/Bun page, talking `tap.watcher.v1`
 
 ```
 tap_watcher/
-  daemon.py      read-only channel to the daemon (lazy, re-resolved after a restart)
+  daemon.py      read-only watching plus explicit phone indicators (lazy channel, re-resolved after a restart)
   activity.py    ActivityHub: one upstream Watch, renumbered seq, restart detection, page readers
   video.py       VideoHub/Feed: one WatchVideo per serial, GOP History, readers and sinks
   recorder.py    Recorder (a Sink) and Recorders: start/stop, limits, SaveClip

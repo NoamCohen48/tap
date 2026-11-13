@@ -35,6 +35,27 @@ non-touch actions (such as Back or typing), older drivers without geometry, and 
 screen orientations show no mark. Marks do not change the device, saved clips, recordings or
 Library playback.
 
+## On-phone indicators
+
+**On phone** opens controls for the Android device itself, separate from **Marks**:
+
+- **Tap circles** changes Android’s **Show taps** developer option. It only marks physical
+  finger touches, not injected test taps.
+- **Swipe trails** changes **Pointer location**: touch crosshairs and trails, including Android’s
+  debug bar and coordinates. Use this native diagnostic view for injected test gestures;
+  its behavior still needs validation on your device.
+
+Opening the controls reads the actual settings; it does not enable anything. Each switch changes
+only that setting on the selected device, for the current Android user. The changes are device-wide:
+they change the phone’s diagnostic display for everyone using it. They persist after you close the panel,
+page or watcher. Turn them off explicitly when you no longer need them. Different pages share the
+same device settings; **Reload settings** reads changes made elsewhere.
+
+These are Android’s own overlays, not custom Tap graphics. Their appearance and whether they are
+included in captured video depend on Android and the capture path. If a change fails, the watcher
+does not retry it: reload the actual settings before deciding what to change next. An older daemon
+without these controls reports that the operation is unsupported; update the daemon to use them.
+
 ## Before and after
 
 **Compare** (or `C`) shows the selected action's **Before** and **After** frames side by side:
