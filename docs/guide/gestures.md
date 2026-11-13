@@ -106,7 +106,8 @@ It fails before any input, with `NOT_INTERACTABLE`, when there is nowhere safe t
   whatever is there. Pass `allow_reach_below=True` to send it anyway.
 
 Don't tap a scrim node (`desc("Close sheet")`, `id("touch_outside")`) directly instead: a tall
-sheet can cover its centre, and the tap then presses a row of the sheet.
+sheet can cover its centre, and the tap then fails with `OBSCURED`, because a row of the sheet is
+drawn over that point.
 
 Agent CLI/MCP: `tap-agent tap 'text=Delete photo?' --outside-panel [--allow-reach-below]`;
 MCP's `tap` takes `outside_panel` and `allow_reach_below`.
