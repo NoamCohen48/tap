@@ -50,7 +50,10 @@ Another window, such as a keyboard, a popup or another app's overlay, can hide a
 
 An open navigation drawer covers the screen behind it the same way, inside the app's own window:
 a gesture on a node under a Views `DrawerLayout` drawer is `OBSCURED`, and under a Compose
-`ModalNavigationDrawer` the node is not found while the drawer is open.
+`ModalNavigationDrawer` the node is not found while the drawer is open. So is a gesture whose
+touch point is under another control drawn on top of the node in the same window (a floating
+button, a row of a bottom sheet over its scrim): the touch would press that control. A label or
+badge on top that takes no touches is no reason to fail; the touch goes through it.
 
 Close the covering window or drawer (often `device.press_back()` or `device.hide_keyboard()`) or
 scroll the node clear first.
