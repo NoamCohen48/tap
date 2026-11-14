@@ -23,48 +23,55 @@ _sym_db = _symbol_database.Default()
 
 
 from tap_e2e.proto import device_pb2 as device__pb2
+from tap_e2e.proto import device_log_pb2 as device__log__pb2
 from tap_e2e.proto import watch_pb2 as watch__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rwatcher.proto\x12\x0etap.watcher.v1\x1a\x0c\x64\x65vice.proto\x1a\x0bwatch.proto\"\x0f\n\rStatusRequest\"\xa4\x01\n\x0eStatusResponse\x12\x18\n\x10\x64\x61\x65mon_connected\x18\x01 \x01(\x08\x12\x14\n\x0c\x64\x61\x65mon_error\x18\x02 \x01(\t\x12\x33\n\nrecordings\x18\x03 \x03(\x0b\x32\x1f.tap.watcher.v1.ActiveRecording\x12-\n\x07history\x18\x04 \x01(\x0b\x32\x1c.tap.watcher.v1.VideoHistory\"6\n\x0cVideoHistory\x12\x13\n\x0bmax_seconds\x18\x01 \x01(\r\x12\x11\n\tmax_bytes\x18\x02 \x01(\x04\"[\n\x0f\x41\x63tiveRecording\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x18\n\x10started_epoch_ms\x18\x02 \x01(\x03\x12\r\n\x05\x62ytes\x18\x03 \x01(\x04\x12\x0f\n\x07seconds\x18\x04 \x01(\x01\"\xf2\x01\n\tRecording\x12\n\n\x02id\x18\x01 \x01(\t\x12+\n\x04kind\x18\x02 \x01(\x0e\x32\x1d.tap.watcher.v1.RecordingKind\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x18\n\x10\x63reated_epoch_ms\x18\x04 \x01(\x03\x12\x18\n\x10\x64uration_seconds\x18\x05 \x01(\x01\x12\r\n\x05\x62ytes\x18\x06 \x01(\x04\x12\x18\n\x10\x63onnection_names\x18\x07 \x03(\t\x12\x0f\n\x07\x61\x63tions\x18\x08 \x01(\r\x12\x10\n\x08\x66\x61ilures\x18\t \x01(\r\x12\r\n\x05\x65nded\x18\n \x01(\t\x12\r\n\x05parts\x18\x0b \x01(\r\"\'\n\x15StartRecordingRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"L\n\x16StartRecordingResponse\x12\x32\n\trecording\x18\x01 \x01(\x0b\x32\x1f.tap.watcher.v1.ActiveRecording\"&\n\x14StopRecordingRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"E\n\x15StopRecordingResponse\x12,\n\trecording\x18\x01 \x01(\x0b\x32\x19.tap.watcher.v1.Recording\"q\n\x0fSaveClipRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x16\n\x0e\x66rom_stream_id\x18\x02 \x01(\t\x12\x10\n\x08\x66rom_seq\x18\x03 \x01(\x04\x12\x14\n\x0cto_stream_id\x18\x04 \x01(\t\x12\x0e\n\x06to_seq\x18\x05 \x01(\x04\"@\n\x10SaveClipResponse\x12,\n\trecording\x18\x01 \x01(\x0b\x32\x19.tap.watcher.v1.Recording\"\x17\n\x15ListRecordingsRequest\"\x94\x01\n\x16ListRecordingsResponse\x12-\n\nrecordings\x18\x01 \x03(\x0b\x32\x19.tap.watcher.v1.Recording\x12\x11\n\tdirectory\x18\x02 \x01(\t\x12\x12\n\nused_bytes\x18\x03 \x01(\x04\x12\x11\n\tmax_bytes\x18\x04 \x01(\x04\x12\x11\n\tkeep_days\x18\x05 \x01(\r\"&\n\x17\x44\x65leteRecordingsRequest\x12\x0b\n\x03ids\x18\x01 \x03(\t\"\x1a\n\x18\x44\x65leteRecordingsResponse*f\n\rRecordingKind\x12\x1e\n\x1aRECORDING_KIND_UNSPECIFIED\x10\x00\x12\x1c\n\x18RECORDING_KIND_RECORDING\x10\x01\x12\x17\n\x13RECORDING_KIND_CLIP\x10\x02\x32\xf6\x05\n\x0eWatcherService\x12G\n\x06Status\x12\x1d.tap.watcher.v1.StatusRequest\x1a\x1e.tap.watcher.v1.StatusResponse\x12\x46\n\x0bListDevices\x12\x1a.tap.v1.ListDevicesRequest\x1a\x1b.tap.v1.ListDevicesResponse\x12\x36\n\x05Watch\x12\x14.tap.v1.WatchRequest\x1a\x15.tap.v1.WatchResponse0\x01\x12\x45\n\nWatchVideo\x12\x19.tap.v1.WatchVideoRequest\x1a\x1a.tap.v1.WatchVideoResponse0\x01\x12_\n\x0eStartRecording\x12%.tap.watcher.v1.StartRecordingRequest\x1a&.tap.watcher.v1.StartRecordingResponse\x12\\\n\rStopRecording\x12$.tap.watcher.v1.StopRecordingRequest\x1a%.tap.watcher.v1.StopRecordingResponse\x12M\n\x08SaveClip\x12\x1f.tap.watcher.v1.SaveClipRequest\x1a .tap.watcher.v1.SaveClipResponse\x12_\n\x0eListRecordings\x12%.tap.watcher.v1.ListRecordingsRequest\x1a&.tap.watcher.v1.ListRecordingsResponse\x12\x65\n\x10\x44\x65leteRecordings\x12\'.tap.watcher.v1.DeleteRecordingsRequest\x1a(.tap.watcher.v1.DeleteRecordingsResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\rwatcher.proto\x12\x0etap.watcher.v1\x1a\x0c\x64\x65vice.proto\x1a\x10\x64\x65vice_log.proto\x1a\x0bwatch.proto\"\x0f\n\rStatusRequest\"\xa4\x01\n\x0eStatusResponse\x12\x18\n\x10\x64\x61\x65mon_connected\x18\x01 \x01(\x08\x12\x14\n\x0c\x64\x61\x65mon_error\x18\x02 \x01(\t\x12\x33\n\nrecordings\x18\x03 \x03(\x0b\x32\x1f.tap.watcher.v1.ActiveRecording\x12-\n\x07history\x18\x04 \x01(\x0b\x32\x1c.tap.watcher.v1.VideoHistory\"6\n\x0cVideoHistory\x12\x13\n\x0bmax_seconds\x18\x01 \x01(\r\x12\x11\n\tmax_bytes\x18\x02 \x01(\x04\"[\n\x0f\x41\x63tiveRecording\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x18\n\x10started_epoch_ms\x18\x02 \x01(\x03\x12\r\n\x05\x62ytes\x18\x03 \x01(\x04\x12\x0f\n\x07seconds\x18\x04 \x01(\x01\"4\n\x0fWatchLogRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x11\n\tafter_seq\x18\x02 \x01(\x03\"d\n\x10WatchLogResponse\x12*\n\x07records\x18\x01 \x03(\x0b\x32\x19.tap.watcher.v1.LogRecord\x12\x0f\n\x07\x64ropped\x18\x02 \x01(\x03\x12\x13\n\x0bunavailable\x18\x03 \x01(\t\"K\n\tLogRecord\x12\x0b\n\x03seq\x18\x01 \x01(\x03\x12\x10\n\x08\x63lock_id\x18\x02 \x01(\t\x12\x1f\n\x05\x65ntry\x18\x03 \x01(\x0b\x32\x10.tap.v1.LogEntry\"\x87\x02\n\tRecording\x12\n\n\x02id\x18\x01 \x01(\t\x12+\n\x04kind\x18\x02 \x01(\x0e\x32\x1d.tap.watcher.v1.RecordingKind\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x18\n\x10\x63reated_epoch_ms\x18\x04 \x01(\x03\x12\x18\n\x10\x64uration_seconds\x18\x05 \x01(\x01\x12\r\n\x05\x62ytes\x18\x06 \x01(\x04\x12\x18\n\x10\x63onnection_names\x18\x07 \x03(\t\x12\x0f\n\x07\x61\x63tions\x18\x08 \x01(\r\x12\x10\n\x08\x66\x61ilures\x18\t \x01(\r\x12\r\n\x05\x65nded\x18\n \x01(\t\x12\r\n\x05parts\x18\x0b \x01(\r\x12\x13\n\x0blog_entries\x18\x0c \x01(\r\"\'\n\x15StartRecordingRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"L\n\x16StartRecordingResponse\x12\x32\n\trecording\x18\x01 \x01(\x0b\x32\x1f.tap.watcher.v1.ActiveRecording\"&\n\x14StopRecordingRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\"E\n\x15StopRecordingResponse\x12,\n\trecording\x18\x01 \x01(\x0b\x32\x19.tap.watcher.v1.Recording\"q\n\x0fSaveClipRequest\x12\x0e\n\x06serial\x18\x01 \x01(\t\x12\x16\n\x0e\x66rom_stream_id\x18\x02 \x01(\t\x12\x10\n\x08\x66rom_seq\x18\x03 \x01(\x04\x12\x14\n\x0cto_stream_id\x18\x04 \x01(\t\x12\x0e\n\x06to_seq\x18\x05 \x01(\x04\"@\n\x10SaveClipResponse\x12,\n\trecording\x18\x01 \x01(\x0b\x32\x19.tap.watcher.v1.Recording\"\x17\n\x15ListRecordingsRequest\"\x94\x01\n\x16ListRecordingsResponse\x12-\n\nrecordings\x18\x01 \x03(\x0b\x32\x19.tap.watcher.v1.Recording\x12\x11\n\tdirectory\x18\x02 \x01(\t\x12\x12\n\nused_bytes\x18\x03 \x01(\x04\x12\x11\n\tmax_bytes\x18\x04 \x01(\x04\x12\x11\n\tkeep_days\x18\x05 \x01(\r\"&\n\x17\x44\x65leteRecordingsRequest\x12\x0b\n\x03ids\x18\x01 \x03(\t\"\x1a\n\x18\x44\x65leteRecordingsResponse*f\n\rRecordingKind\x12\x1e\n\x1aRECORDING_KIND_UNSPECIFIED\x10\x00\x12\x1c\n\x18RECORDING_KIND_RECORDING\x10\x01\x12\x17\n\x13RECORDING_KIND_CLIP\x10\x02\x32\xc7\x06\n\x0eWatcherService\x12G\n\x06Status\x12\x1d.tap.watcher.v1.StatusRequest\x1a\x1e.tap.watcher.v1.StatusResponse\x12\x46\n\x0bListDevices\x12\x1a.tap.v1.ListDevicesRequest\x1a\x1b.tap.v1.ListDevicesResponse\x12\x36\n\x05Watch\x12\x14.tap.v1.WatchRequest\x1a\x15.tap.v1.WatchResponse0\x01\x12\x45\n\nWatchVideo\x12\x19.tap.v1.WatchVideoRequest\x1a\x1a.tap.v1.WatchVideoResponse0\x01\x12O\n\x08WatchLog\x12\x1f.tap.watcher.v1.WatchLogRequest\x1a .tap.watcher.v1.WatchLogResponse0\x01\x12_\n\x0eStartRecording\x12%.tap.watcher.v1.StartRecordingRequest\x1a&.tap.watcher.v1.StartRecordingResponse\x12\\\n\rStopRecording\x12$.tap.watcher.v1.StopRecordingRequest\x1a%.tap.watcher.v1.StopRecordingResponse\x12M\n\x08SaveClip\x12\x1f.tap.watcher.v1.SaveClipRequest\x1a .tap.watcher.v1.SaveClipResponse\x12_\n\x0eListRecordings\x12%.tap.watcher.v1.ListRecordingsRequest\x1a&.tap.watcher.v1.ListRecordingsResponse\x12\x65\n\x10\x44\x65leteRecordings\x12\'.tap.watcher.v1.DeleteRecordingsRequest\x1a(.tap.watcher.v1.DeleteRecordingsResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
 _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'watcher_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   DESCRIPTOR._loaded_options = None
-  _globals['_RECORDINGKIND']._serialized_start=1293
-  _globals['_RECORDINGKIND']._serialized_end=1395
-  _globals['_STATUSREQUEST']._serialized_start=60
-  _globals['_STATUSREQUEST']._serialized_end=75
-  _globals['_STATUSRESPONSE']._serialized_start=78
-  _globals['_STATUSRESPONSE']._serialized_end=242
-  _globals['_VIDEOHISTORY']._serialized_start=244
-  _globals['_VIDEOHISTORY']._serialized_end=298
-  _globals['_ACTIVERECORDING']._serialized_start=300
-  _globals['_ACTIVERECORDING']._serialized_end=391
-  _globals['_RECORDING']._serialized_start=394
-  _globals['_RECORDING']._serialized_end=636
-  _globals['_STARTRECORDINGREQUEST']._serialized_start=638
-  _globals['_STARTRECORDINGREQUEST']._serialized_end=677
-  _globals['_STARTRECORDINGRESPONSE']._serialized_start=679
-  _globals['_STARTRECORDINGRESPONSE']._serialized_end=755
-  _globals['_STOPRECORDINGREQUEST']._serialized_start=757
-  _globals['_STOPRECORDINGREQUEST']._serialized_end=795
-  _globals['_STOPRECORDINGRESPONSE']._serialized_start=797
-  _globals['_STOPRECORDINGRESPONSE']._serialized_end=866
-  _globals['_SAVECLIPREQUEST']._serialized_start=868
-  _globals['_SAVECLIPREQUEST']._serialized_end=981
-  _globals['_SAVECLIPRESPONSE']._serialized_start=983
-  _globals['_SAVECLIPRESPONSE']._serialized_end=1047
-  _globals['_LISTRECORDINGSREQUEST']._serialized_start=1049
-  _globals['_LISTRECORDINGSREQUEST']._serialized_end=1072
-  _globals['_LISTRECORDINGSRESPONSE']._serialized_start=1075
-  _globals['_LISTRECORDINGSRESPONSE']._serialized_end=1223
-  _globals['_DELETERECORDINGSREQUEST']._serialized_start=1225
-  _globals['_DELETERECORDINGSREQUEST']._serialized_end=1263
-  _globals['_DELETERECORDINGSRESPONSE']._serialized_start=1265
-  _globals['_DELETERECORDINGSRESPONSE']._serialized_end=1291
-  _globals['_WATCHERSERVICE']._serialized_start=1398
-  _globals['_WATCHERSERVICE']._serialized_end=2156
+  _globals['_RECORDINGKIND']._serialized_start=1565
+  _globals['_RECORDINGKIND']._serialized_end=1667
+  _globals['_STATUSREQUEST']._serialized_start=78
+  _globals['_STATUSREQUEST']._serialized_end=93
+  _globals['_STATUSRESPONSE']._serialized_start=96
+  _globals['_STATUSRESPONSE']._serialized_end=260
+  _globals['_VIDEOHISTORY']._serialized_start=262
+  _globals['_VIDEOHISTORY']._serialized_end=316
+  _globals['_ACTIVERECORDING']._serialized_start=318
+  _globals['_ACTIVERECORDING']._serialized_end=409
+  _globals['_WATCHLOGREQUEST']._serialized_start=411
+  _globals['_WATCHLOGREQUEST']._serialized_end=463
+  _globals['_WATCHLOGRESPONSE']._serialized_start=465
+  _globals['_WATCHLOGRESPONSE']._serialized_end=565
+  _globals['_LOGRECORD']._serialized_start=567
+  _globals['_LOGRECORD']._serialized_end=642
+  _globals['_RECORDING']._serialized_start=645
+  _globals['_RECORDING']._serialized_end=908
+  _globals['_STARTRECORDINGREQUEST']._serialized_start=910
+  _globals['_STARTRECORDINGREQUEST']._serialized_end=949
+  _globals['_STARTRECORDINGRESPONSE']._serialized_start=951
+  _globals['_STARTRECORDINGRESPONSE']._serialized_end=1027
+  _globals['_STOPRECORDINGREQUEST']._serialized_start=1029
+  _globals['_STOPRECORDINGREQUEST']._serialized_end=1067
+  _globals['_STOPRECORDINGRESPONSE']._serialized_start=1069
+  _globals['_STOPRECORDINGRESPONSE']._serialized_end=1138
+  _globals['_SAVECLIPREQUEST']._serialized_start=1140
+  _globals['_SAVECLIPREQUEST']._serialized_end=1253
+  _globals['_SAVECLIPRESPONSE']._serialized_start=1255
+  _globals['_SAVECLIPRESPONSE']._serialized_end=1319
+  _globals['_LISTRECORDINGSREQUEST']._serialized_start=1321
+  _globals['_LISTRECORDINGSREQUEST']._serialized_end=1344
+  _globals['_LISTRECORDINGSRESPONSE']._serialized_start=1347
+  _globals['_LISTRECORDINGSRESPONSE']._serialized_end=1495
+  _globals['_DELETERECORDINGSREQUEST']._serialized_start=1497
+  _globals['_DELETERECORDINGSREQUEST']._serialized_end=1535
+  _globals['_DELETERECORDINGSRESPONSE']._serialized_start=1537
+  _globals['_DELETERECORDINGSRESPONSE']._serialized_end=1563
+  _globals['_WATCHERSERVICE']._serialized_start=1670
+  _globals['_WATCHERSERVICE']._serialized_end=2509
 # @@protoc_insertion_point(module_scope)

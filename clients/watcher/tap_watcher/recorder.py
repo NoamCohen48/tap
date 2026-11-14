@@ -13,12 +13,15 @@ from tap_e2e.proto import watch_pb2 as watch
 
 from ._gen import watcher_pb2 as pb
 from .activity import ActivityHub
-from .media import Parts, steps, write_steps
+from .logs import LogHub
+from .media import Parts, log_document, steps, write_steps
 from .recordings import MAX_LIBRARY_BYTES, Library, LibraryFull
 from .video import Feed, Sink, VideoHub
 
 MAX_RECORDING_SECONDS = 30 * 60
 MAX_RECORDING_BYTES = 1024 * 1024 * 1024
+# Log entries one recording or clip saves; more are counted in `log.json` as omitted.
+MAX_LOG_ENTRIES = 200_000
 _log = logging.getLogger(__name__)
 
 Events = list[tuple[str, event_log.LoggedEvent]]
@@ -29,7 +32,12 @@ class Recorder(Sink):
     (rotation, encoder or daemon restart) continues it in a new part."""
 
     def __init__(
-        self, serial: str, feed: Feed, library: Library, activity: ActivityHub
+        self,
+        serial: str,
+        feed: Feed,
+        library: Library,
+        activity: ActivityHub,
+        logs: LogHub,
     ) -> None:
         self.serial = serial
         self.started_epoch_ms = int(time.time() * 1000)
@@ -38,6 +46,9 @@ class Recorder(Sink):
         self._feed = feed
         self._library = library
         self._activity = activity
+        self._logs = logs
+        self._log: dict[int, pb.LogRecord] = {}
+        self._log_omitted = 0
         self._budget = min(
             MAX_RECORDING_BYTES, MAX_LIBRARY_BYTES - library.used_bytes()
         )
@@ -82,6 +93,15 @@ class Recorder(Sink):
         if self.ended is None and event.serial == self.serial:
             self._events[(owner, event.seq)] = (owner, event)
 
+    def note_log(self, record: pb.LogRecord) -> None:
+        """A log entry of this serial while recording (kept even if the log history evicts it)."""
+        if self.ended is not None:
+            return
+        if len(self._log) < MAX_LOG_ENTRIES:
+            self._log[record.seq] = record
+        else:
+            self._log_omitted += 1
+
     def end(self, reason: str) -> None:
         if self.ended is not None:
             return
@@ -99,6 +119,7 @@ class Recorder(Sink):
                 Code.FAILED_PRECONDITION, "no video was received while recording"
             )
         events = _overlapping(self._activity, self.serial, parts, self._events)
+        log = _log_during(self._logs, self.serial, parts, self._log)
         record = _record(
             pb.RECORDING_KIND_RECORDING,
             self.serial,
@@ -106,8 +127,10 @@ class Recorder(Sink):
             events,
             self._activity,
             self.ended or "stopped",
+            len(log),
         )
         record.created_epoch_ms = self.started_epoch_ms
+        omitted = self._log_omitted
 
         def save() -> pb.Recording:
             try:
@@ -123,6 +146,15 @@ class Recorder(Sink):
                         ended=record.ended,
                     ),
                 )
+                write_steps(
+                    self._staging / "log.json",
+                    log_document(
+                        serial=self.serial,
+                        parts=parts.parts,
+                        records=log,
+                        omitted=omitted,
+                    ),
+                )
                 return self._library.commit(self._staging, record)
             except BaseException:
                 self._library.discard(self._staging)
@@ -133,13 +165,20 @@ class Recorder(Sink):
 
 class Recorders:
     def __init__(
-        self, library: Library, activity: ActivityHub, video: VideoHub
+        self, library: Library, activity: ActivityHub, video: VideoHub, logs: LogHub
     ) -> None:
         self.library = library
         self._activity = activity
         self._video = video
+        self._logs = logs
         self.active: dict[str, Recorder] = {}
         activity.listen(self._on_activity)
+        logs.listen(self._on_log)
+
+    def _on_log(self, serial: str, record: pb.LogRecord) -> None:
+        recorder = self.active.get(serial)
+        if recorder is not None:
+            recorder.note_log(record)
 
     def _on_activity(self, activity: watch.Activity) -> None:
         if activity.HasField("event"):
@@ -153,7 +192,9 @@ class Recorders:
             raise ConnectError(Code.ALREADY_EXISTS, f"{serial} is already recording")
         feed = self._video.feed(serial)
         try:
-            recorder = Recorder(serial, feed, self.library, self._activity)
+            recorder = Recorder(
+                serial, feed, self.library, self._activity, self._logs
+            )
         except LibraryFull as error:
             raise ConnectError(Code.RESOURCE_EXHAUSTED, str(error)) from error
         self.active[serial] = recorder
@@ -204,6 +245,7 @@ class Recorders:
                     parts.add(header, frame)
                 parts.close()
                 events = _overlapping(self._activity, request.serial, parts, {})
+                log = _log_during(self._logs, request.serial, parts, {})
                 record = _record(
                     pb.RECORDING_KIND_CLIP,
                     request.serial,
@@ -211,6 +253,7 @@ class Recorders:
                     events,
                     self._activity,
                     "",
+                    len(log),
                 )
                 write_steps(
                     staging / "steps.json",
@@ -221,6 +264,15 @@ class Recorders:
                         events=events,
                         names=self._activity.names,
                         ended="",
+                    ),
+                )
+                write_steps(
+                    staging / "log.json",
+                    log_document(
+                        serial=request.serial,
+                        parts=parts.parts,
+                        records=log,
+                        omitted=0,
                     ),
                 )
                 return self.library.commit(staging, record)
@@ -271,6 +323,28 @@ def _overlapping(
     )
 
 
+def _log_during(
+    logs: LogHub, serial: str, parts: Parts, noted: dict[int, pb.LogRecord]
+) -> list[pb.LogRecord]:
+    """Log entries the daemon got between a part's first and last frame, on that part's clock:
+    those noted live plus any still in the log history, oldest first, at most MAX_LOG_ENTRIES
+    (the newest)."""
+    found: dict[int, pb.LogRecord] = {}
+    for part in parts.parts:
+        clock = part.header.clock_id
+        first = part.frames[0].received_monotonic_ns
+        last = part.frames[-1].received_monotonic_ns
+        for record in logs.records(serial, clock, first, last):
+            found[record.seq] = record
+        for record in noted.values():
+            if (
+                record.clock_id == clock
+                and first <= record.entry.host_monotonic_ns <= last
+            ):
+                found[record.seq] = record
+    return [found[seq] for seq in sorted(found)][-MAX_LOG_ENTRIES:]
+
+
 def _record(
     kind: pb.RecordingKind,
     serial: str,
@@ -278,6 +352,7 @@ def _record(
     events: Events,
     activity: ActivityHub,
     ended: str,
+    log_entries: int,
 ) -> pb.Recording:
     return pb.Recording(
         kind=kind,
@@ -295,6 +370,7 @@ def _record(
             if event.HasField("error") or event.HasField("failure")
         ),
         ended=ended,
+        log_entries=log_entries,
     )
 
 

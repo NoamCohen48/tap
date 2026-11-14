@@ -8,6 +8,7 @@ import { bytes, clock, duration } from "./format";
 import type { ActiveRecording, Recording } from "./gen/watcher_pb";
 import { useVideo } from "./hooks";
 import * as Icon from "./icons";
+import { tickLabel, ticks, type LogRow } from "./log";
 import { FrameBuffer, Player, type Limits } from "./video";
 import { Overview, useZoom, ZoomControls } from "./zoom";
 
@@ -16,6 +17,11 @@ type Mode = { kind: "live" } | { kind: "paused"; index: number } | { kind: "play
 /** How long after an action ends its "After" frame may be. */
 const AFTER_NS = 1_000_000_000n;
 const CLIP_DEFAULT_NS = 10_000_000_000n;
+
+/** A moment on a daemon's monotonic clock. */
+export type Moment = { clockId: string; ns: bigint };
+/** Show the screen at a moment; a new `id` asks again for the same one. */
+export type SeekRequest = Moment & { id: number };
 
 type Props = {
   serial: string;
@@ -27,9 +33,16 @@ type Props = {
   onRecordingChanged: () => void;
   onSaved: (recording: Recording) => void;
   notify: (message: string, failed?: boolean) => void;
+  /** The device's log rows (changed in place: [logVersion]); the notable ones tick the scrubber. */
+  log: LogRow[];
+  logVersion: number;
+  seekRequest?: SeekRequest;
+  /** Where the video is while it is not live: the shown frame's host receipt. */
+  onPlayhead: (moment: Moment | undefined) => void;
+  onLogTick: (row: LogRow) => void;
 };
 
-export function Stage({ serial, limits, actions, selected, onSelect, recording, onRecordingChanged, onSaved, notify }: Props) {
+export function Stage({ serial, limits, actions, selected, onSelect, recording, onRecordingChanged, onSaved, notify, log, logVersion, seekRequest, onPlayhead, onLogTick }: Props) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const beforeCanvas = useRef<HTMLCanvasElement>(null);
   const afterCanvas = useRef<HTMLCanvasElement>(null);
@@ -180,6 +193,34 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
     pause(compare.before);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [compareKey]);
+
+  // A log entry was picked: show the last frame received at or before it.
+  useEffect(() => {
+    if (!seekRequest) return;
+    if (!buffer.covers(seekRequest.clockId, seekRequest.ns)) {
+      const newest = buffer.newest();
+      const ahead = newest && buffer.headerAt(buffer.end - 1).clockId === seekRequest.clockId && seekRequest.ns > newest.receivedMonotonicNs;
+      if (ahead) {
+        // Logged after the newest frame (a still screen sends none): that frame is the screen.
+        setComparing(false);
+        pause(buffer.end - 1);
+      } else {
+        notify(`The video of that moment is not retained (the watcher keeps the last ${limits?.maxSeconds ?? 120} s while a page watches the device).`, true);
+      }
+      return;
+    }
+    setComparing(false);
+    pause(buffer.indexAtTimeline(buffer.timelineOf(seekRequest.clockId, seekRequest.ns)!));
+    // Once per request: later frames must not pull the view back.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seekRequest?.id]);
+
+  const live = mode.kind === "live";
+  const headClock = current && !live ? buffer.headerAt(position).clockId : undefined;
+  const headNs = current && !live ? current.receivedMonotonicNs : undefined;
+  useEffect(() => {
+    onPlayhead(headClock !== undefined && headNs !== undefined ? { clockId: headClock, ns: headNs } : undefined);
+  }, [headClock, headNs, onPlayhead]);
 
   const showCompare = comparing && compare !== undefined;
   useEffect(() => {
@@ -385,11 +426,14 @@ export function Stage({ serial, limits, actions, selected, onSelect, recording, 
           actions={actions}
           selected={selected}
           clip={clip}
+          log={log}
+          logVersion={logVersion}
           onSeek={(index) => {
             browse();
             pause(index);
           }}
           onSelect={onSelect}
+          onLogTick={onLogTick}
         />
         <button
           className="button"
@@ -467,13 +511,17 @@ type TrackProps = {
   actions: Action[];
   selected?: Action;
   clip?: { from: number; to: number };
+  log: LogRow[];
+  logVersion: number;
   onSeek: (index: number) => void;
   onSelect: (key: string) => void;
+  onLogTick: (row: LogRow) => void;
 };
 
-/** The scrubber: time-proportional (a still screen sends no frames), with action markers and a
- * tick where the stream changed (a rotation or a capture restart). */
-function Track({ buffer, version, live, position, actions, selected, clip, onSeek, onSelect }: TrackProps) {
+/** The scrubber: time-proportional (a still screen sends no frames), with action markers, a
+ * tick where the stream changed (a rotation or a capture restart) and, under the rail, the log's
+ * markers, errors and gaps. */
+function Track({ buffer, version, live, position, actions, selected, clip, log, logVersion, onSeek, onSelect, onLogTick }: TrackProps) {
   const track = useRef<HTMLDivElement>(null);
   const empty = buffer.empty;
   const frozen = useRef<{ startNs: bigint; endNs: bigint }>(undefined);
@@ -507,6 +555,16 @@ function Track({ buffer, version, live, position, actions, selected, clip, onSee
       }),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [actions, buffer, version, startNs, endNs],
+  );
+  const notable = useMemo(
+    () =>
+      log.filter((row) => {
+        if (!row.notable || !buffer.covers(row.clockId, row.ns)) return false;
+        const ns = buffer.timelineOf(row.clockId, row.ns)!;
+        return ns >= startNs && ns <= endNs;
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [log, logVersion, buffer, version, startNs, endNs],
   );
   const changes = useMemo(
     () =>
@@ -566,6 +624,20 @@ function Track({ buffer, version, live, position, actions, selected, clip, onSee
           data-tip={action.summary}
           aria-label={action.summary}
           onClick={() => onSelect(action.key)}
+        />
+      ))}
+      {ticks(notable, (row) => fractionAt(buffer.timelineOf(row.clockId, row.ns)!)).map((tick) => (
+        <button
+          key={String(tick.row.seq)}
+          className={`marker log-tick${tick.row.bad ? " bad" : ""}`}
+          style={{ left: `${tick.at * 100}%` }}
+          data-tip={tickLabel(tick)}
+          aria-label={tickLabel(tick)}
+          tabIndex={-1}
+          onClick={() => {
+            onSeek(buffer.indexAtTimeline(buffer.timelineOf(tick.row.clockId, tick.row.ns)!));
+            onLogTick(tick.row);
+          }}
         />
       ))}
       {shown(at(position)) && <div className="head" style={{ left: `${at(position) * 100}%` }} />}

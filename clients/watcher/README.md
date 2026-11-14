@@ -2,7 +2,8 @@
 
 Standalone read-only browser client of the Tap daemon: devices and who uses them, every
 connection's actions per device, shared live video, look-back with Before / After frames per
-action, clips and recordings saved to a local library (MP4 + `steps.json`, ZIP on download).
+action, the device log beside the screen (pick an entry to see the screen at that moment), clips
+and recordings saved to a local library (MP4 + `steps.json` + `log.json`, ZIP on download).
 Test-marker integration is deferred.
 
 Video needs a scrcpy **4.1 server JAR** on the daemon host: `tap start --scrcpy-server JAR`
@@ -19,7 +20,8 @@ uv pip install --python .venv/bin/python -e clients/python -e 'clients/watcher[d
 
 Open the printed login URL. The server binds loopback, guards Host/Origin and uses a
 per-launch HttpOnly cookie; the daemon token stays in the back end, which calls only
-`Info`, `ListDevices`, `WatchService.Watch` and `WatchService.WatchVideo`. It never
+`Info`, `ListDevices`, `WatchService.Watch`, `WatchService.WatchVideo` and
+`WatchService.WatchLog`. It never
 Connects, Attaches, Observes, takes screenshots or renews a connection.
 
 Layout:
@@ -29,8 +31,9 @@ Layout:
   restarts.
 - `video.py` — one `WatchVideo` per serial, a 120 s / 32 MiB GOP history kept as one
   segment per stream (a rotation starts the next), readers and sinks.
+- `logs.py` — one `WatchLog` per attached device, the newest 50 000 entries kept per serial.
 - `recorder.py`, `media.py`, `recordings.py` — recordings and clips muxed to MP4 with PyAV,
-  one part per stream (`video-1.mp4`…), `steps.json`, and the library
+  one part per stream (`video-1.mp4`…), `steps.json`, `log.json`, and the library
   (`~/.tap/recordings/watcher`, `TAP_WATCHER_RECORDINGS`; `--keep-days N` deletes old entries).
 - `service.py`, `server.py` — the `tap.watcher.v1` Connect service (`proto/watcher.proto`)
   and the HTTP routes.

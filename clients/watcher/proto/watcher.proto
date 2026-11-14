@@ -1,12 +1,13 @@
 // tap.watcher.v1 — the watcher page ↔ its loopback back end. Read-only towards the daemon:
-// nothing here attaches, executes, observes or renews a connection. Activity and video are the
-// daemon's `tap.v1` messages, relayed by the back end (which keeps the daemon token); recordings
+// nothing here attaches, executes, observes or renews a connection. Activity, video and log
+// entries are the daemon's `tap.v1` messages, relayed by the back end (which keeps the daemon token); recordings
 // and clips are written by the back end, so they do not depend on a browser tab staying open.
 syntax = "proto3";
 
 package tap.watcher.v1;
 
 import "device.proto";
+import "device_log.proto";
 import "watch.proto";
 
 service WatcherService {
@@ -21,6 +22,11 @@ service WatcherService {
   // One device's video: the header and the back end's retained history (whole GOPs, within
   // `StatusResponse.history`), then live frames. Readers of a serial share one daemon stream.
   rpc WatchVideo(tap.v1.WatchVideoRequest) returns (stream tap.v1.WatchVideoResponse);
+  // One device's log (`tap.v1.WatchService.WatchLog`, for every attachment of the serial): the
+  // back end's retained entries after `after_seq`, then live ones. The back end follows each
+  // attached device whether or not a page reads it, and keeps the newest 50000 entries per
+  // serial, also after the device is detached.
+  rpc WatchLog(WatchLogRequest) returns (stream WatchLogResponse);
   // Records `serial` from its latest key frame until StopRecording or a limit. One per serial.
   // A new stream (rotation, encoder or daemon restart) continues it as the next part.
   rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
@@ -65,7 +71,33 @@ enum RecordingKind {
   RECORDING_KIND_CLIP = 2;
 }
 
-// A saved library entry: `video-1.mp4` … `video-<parts>.mp4` and `steps.json` under
+message WatchLogRequest {
+  string serial = 1;
+  // Only entries with a larger `LogRecord.seq`; 0 for everything retained. Must be >= 0.
+  int64 after_seq = 2;
+}
+
+message WatchLogResponse {
+  // In seq order.
+  repeated LogRecord records = 1;
+  // First response only: entries after `after_seq` the back end no longer has.
+  int64 dropped = 2;
+  // First response only: why the device's current attachment has no log (its capture is off,
+  // or the daemon is too old to serve it); empty otherwise.
+  string unavailable = 3;
+}
+
+// One log entry of a serial.
+message LogRecord {
+  // 1, 2, 3, … per serial for the back end's lifetime (an attachment's own cursors restart).
+  int64 seq = 1;
+  // The clock of `entry.host_monotonic_ns`: the `clock_id` of the video frames and actions the
+  // same daemon produced.
+  string clock_id = 2;
+  tap.v1.LogEntry entry = 3;
+}
+
+// A saved library entry: `video-1.mp4` … `video-<parts>.mp4`, `steps.json` and `log.json` under
 // `/recordings/<id>/`, and `/recordings/<id>.zip` with all of them.
 message Recording {
   string id = 1;
@@ -82,6 +114,8 @@ message Recording {
   string ended = 10;
   // One MP4 per video stream: more than one when the device rotated or its capture restarted.
   uint32 parts = 11;
+  // The device log entries saved with it (`log.json`).
+  uint32 log_entries = 12;
 }
 
 message StartRecordingRequest {
