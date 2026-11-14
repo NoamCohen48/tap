@@ -278,6 +278,71 @@ class TapTestBridgeTest {
         }
     }
 
+    private fun crash(
+        sequence: Long,
+        reported: Boolean = false,
+    ) = io.github.noamcohen48.tap.api.v1.AppDeath
+        .newBuilder()
+        .setSequence(sequence)
+        .setKind(io.github.noamcohen48.tap.api.v1.AppDeath.Kind.KIND_CRASH)
+        .setPackageName("com.example.shop")
+        .setProcessName("com.example.shop")
+        .setPid(23554)
+        .setAtEpochMs(1_790_000_000_000 + sequence)
+        .setExceptionClass("java.lang.IllegalStateException")
+        .setMessage("Out of stock")
+        .setWatched(true)
+        .setReported(reported)
+        .build()
+
+    @Test
+    fun `the end-of-test check fails a test whose app died unhandled and keeps its own failure suppressed`(): Unit =
+        runBlocking {
+            val connection = client().connect("test")
+            try {
+                val extension = TapExtension()
+                val config = TapConfig(serials = emptyList(), artifactsDir = Path.of("build/tap-test-artifacts"), acquireTimeout = kotlin.time.Duration.ZERO, pinnedRoles = emptyMap())
+                val devices = tapScope { extension.openAll(connection, mapOf("device" to "serial-aaa"), config) }
+                try {
+                    // Nothing died: the test's own outcome, both ways.
+                    extension.checkAppDeaths(devices, "passes") { }
+                    assertEquals("own", assertFailsWith<IllegalStateException> { extension.checkAppDeaths(devices, "fails") { error("own") } }.message)
+
+                    // A death before the test is not this test's.
+                    fakeDevices.deaths += crash(1)
+                    extension.checkAppDeaths(devices, "after an earlier death") { }
+
+                    // A passing test whose app died fails with the death.
+                    val died = assertFailsWith<io.github.noamcohen48.tap.sdk.AppDiedException> { extension.checkAppDeaths(devices, "silent") { fakeDevices.deaths += crash(2) } }
+                    assertEquals(listOf(2L), died.deaths.map { it.sequence })
+
+                    // A failing test whose app died fails with the death, its failure suppressed.
+                    val instead =
+                        assertFailsWith<io.github.noamcohen48.tap.sdk.AppDiedException> {
+                            extension.checkAppDeaths(devices, "fails too") {
+                                fakeDevices.deaths += crash(3)
+                                throw AssertionError("Order placed was not shown")
+                            }
+                        }
+                    assertEquals("Order placed was not shown", instead.suppressed.single().message)
+
+                    // A death a command's error already carried was handed to the test.
+                    extension.checkAppDeaths(devices, "reported") { fakeDevices.deaths += crash(4, reported = true) }
+                    // A skipped test stays skipped.
+                    assertFailsWith<org.opentest4j.TestAbortedException> {
+                        extension.checkAppDeaths(devices, "skipped") {
+                            fakeDevices.deaths += crash(5)
+                            throw org.opentest4j.TestAbortedException("no device")
+                        }
+                    }
+                } finally {
+                    tapScope { devices.values.forEach { it.detach() } }
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
     @Test
     fun `roles open in sorted serial order`() =
         runBlocking {
@@ -729,6 +794,18 @@ class TapTestBridgeTest {
         val opens = CopyOnWriteArrayList<String>()
         val closes = CopyOnWriteArrayList<String>()
         var quarantineSerial: String? = null
+
+        /** The server's death record; `run` blocks of the end-of-test check add to it. */
+        val deaths = CopyOnWriteArrayList<io.github.noamcohen48.tap.api.v1.AppDeath>()
+
+        override suspend fun listAppDeaths(
+            request: io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest,
+        ): io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse =
+            io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
+                .newBuilder()
+                .addAllDeaths(if (request.sequenceOnly) emptyList() else deaths.filter { it.sequence > request.afterSequence })
+                .setLastSequence(deaths.maxOfOrNull { it.sequence } ?: 0)
+                .build()
 
         // Sibling-cancellation support: wait-Execute entry/cancellation plus a count of
         // accepted mutation Executes (pressKey), proving exactly-once under cancellation.

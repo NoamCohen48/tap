@@ -70,6 +70,12 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Clients and tools
 
+- Kotlin: app crashes and ANRs as results. `device.appDeaths()` / `app.deaths()` list them,
+  `CommandException.appDeath` carries the one that failed a command, `guard { }` throws
+  `AppDiedException` for a death inside a block (also one that failed no command),
+  `watchDeaths { }` returns them, and `expectDeath { }` requires one. JUnit fails a test whose
+  watched app died with nothing handing the death to the test (`tap.appDeaths=fail`, the default;
+  `off` or `@AllowAppDeath` to opt out). See the new "Crashes and ANRs" guide page.
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
   `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:
   `TapClient.unquarantine(serial)`, `attach_device(serial, inspect_quarantined=True)`,

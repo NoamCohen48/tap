@@ -118,7 +118,8 @@ Only *watched* apps count: one started through this attachment (`launch`, `cold_
 that command on. Another app crashing in the background changes nothing, and each crash is
 reported once. Android reports an ANR only when input goes unanswered for about 5 s, so a hang
 with no input waiting stays a plain timeout. The logs of the crash are also in the
-[failure artifacts](artifacts.md#failure-artifacts).
+[failure artifacts](artifacts.md#failure-artifacts). [Crashes and ANRs](app-deaths.md) covers
+asking for deaths, catching them in a block, expecting one, and the end-of-test check.
 
 ## Wait timeouts
 

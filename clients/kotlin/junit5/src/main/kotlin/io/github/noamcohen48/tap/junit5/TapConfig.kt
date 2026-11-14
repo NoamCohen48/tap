@@ -22,6 +22,8 @@ data class TapConfig(
     val capture: CaptureMode = CaptureMode.ON_FAILURE,
     /** Write structured run metadata, lifecycle JSONL and artifact manifests (`tap.report`, default true). */
     val report: Boolean = true,
+    /** `tap.appDeaths`: `fail` (default) fails a test whose watched app died unhandled; `off` checks nothing. */
+    val appDeaths: AppDeathMode = AppDeathMode.FAIL,
 ) {
     companion object {
         val current: TapConfig by lazy { load() }
@@ -65,6 +67,7 @@ data class TapConfig(
                     require(value.trim().lowercase() in setOf("on", "off")) { "tap.report must be on or off" }
                     value.trim().equals("on", ignoreCase = true)
                 } ?: true,
+                appDeaths = property("tap.appDeaths")?.let(AppDeathMode::parse) ?: AppDeathMode.FAIL,
             )
         }
     }
@@ -85,5 +88,28 @@ enum class CaptureMode(
         internal fun parse(value: String): CaptureMode =
             entries.firstOrNull { it.value.equals(value.trim(), ignoreCase = true) }
                 ?: throw IllegalArgumentException("tap.capture must be one of ${entries.map { it.value }}, was '$value'")
+    }
+}
+
+/** What the JUnit extension does about an app that died during a test (`tap.appDeaths`). */
+enum class AppDeathMode(
+    val value: String,
+) {
+    /**
+     * After every test, ask each of its devices for watched deaths nothing handed to the test (no
+     * command failed with them, no `guard` / `watchDeaths` / `expectDeath` claimed them). A passing
+     * test then fails with [io.github.noamcohen48.tap.sdk.AppDiedException]; a failing one fails
+     * with it instead, its own failure suppressed. The default; [AllowAppDeath] opts a test out.
+     */
+    FAIL("fail"),
+
+    /** Check nothing: a death fails a test only through a command that fails because of it. */
+    OFF("off"),
+    ;
+
+    companion object {
+        internal fun parse(value: String): AppDeathMode =
+            entries.firstOrNull { it.value.equals(value.trim(), ignoreCase = true) }
+                ?: throw IllegalArgumentException("tap.appDeaths must be one of ${entries.map { it.value }}, was '$value'")
     }
 }

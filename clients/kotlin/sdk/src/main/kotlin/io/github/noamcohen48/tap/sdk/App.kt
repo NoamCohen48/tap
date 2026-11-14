@@ -104,6 +104,29 @@ class App internal constructor(
         }
     }
 
+    /** This app's crashes and ANRs since the attachment opened ([Device.appDeaths]), after [after]. */
+    suspend fun deaths(after: Long = 0): List<AppDeath> = listAppDeaths(device, "App.deaths", after, packageName).first
+
+    /** [Device.guard] for this app only: another app's death neither throws nor is claimed. */
+    suspend fun <T> guard(block: suspend () -> T): T = guarded(device, packageName, "App.guard", block)
+
+    /** [Device.watchDeaths] for this app only. */
+    suspend fun <T> watchDeaths(block: suspend () -> T): WatchedDeaths<T> = watching(device, packageName, "App.watchDeaths", block)
+
+    /**
+     * Runs [block], which should make this app crash or stop responding, and returns the death
+     * ([Device.expectDeath]); for crash-recovery and process-death tests:
+     *
+     * ```kotlin
+     * val death = app.expectDeath { app.element(desc("crash")).tap() }
+     * assertEquals("java.lang.IllegalStateException", death.exceptionClass)
+     * ```
+     */
+    suspend fun expectDeath(
+        timeout: Duration = device.timeouts.wait,
+        block: suspend () -> Unit,
+    ): AppDeath = expectedDeath(device, packageName, timeout, "App.expectDeath", block)
+
     /** Whether the package is installed. */
     suspend fun isInstalled(): Boolean =
         call(null) { it.isInstalled(IsInstalledRequest.newBuilder().setApp(target).build()) }.installed

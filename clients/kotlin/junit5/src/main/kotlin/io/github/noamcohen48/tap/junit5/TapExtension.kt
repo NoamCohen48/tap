@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.junit5
 
+import io.github.noamcohen48.tap.sdk.AppDeath
+import io.github.noamcohen48.tap.sdk.AppDiedException
 import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.DeviceBusyException
 import io.github.noamcohen48.tap.sdk.DeviceOptions
@@ -12,6 +14,7 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -109,14 +112,64 @@ class TapExtension :
         invocation: InvocationInterceptor.Invocation<Void>,
         invocationContext: ReflectiveInvocationContext<Method>,
         extensionContext: ExtensionContext,
-    ) = bound(invocation, extensionContext)
+    ) = checkingAppDeaths(extensionContext) { bound(invocation, extensionContext) }
 
     /** `@RepeatedTest`, `@ParameterizedTest` and other templates reach their method here. */
     override fun interceptTestTemplateMethod(
         invocation: InvocationInterceptor.Invocation<Void>,
         invocationContext: ReflectiveInvocationContext<Method>,
         extensionContext: ExtensionContext,
-    ) = bound(invocation, extensionContext)
+    ) = checkingAppDeaths(extensionContext) { bound(invocation, extensionContext) }
+
+    /**
+     * The end-of-test app death check (`tap.appDeaths`, [AllowAppDeath]): marks each device's death
+     * sequence before the test method and, after it, asks for watched deaths nothing handed to the
+     * test ([Device.takeUnhandledDeaths]). With any, a passing test fails with [AppDiedException];
+     * a failing one with it instead, its own failure suppressed (the death is the likelier cause).
+     * A failed assumption stays a skip. A device that cannot answer is left out, never a failure.
+     */
+    private fun checkingAppDeaths(
+        context: ExtensionContext,
+        run: () -> Unit,
+    ) {
+        val state = context.store.get(KEY, TestState::class.java)
+        if (state == null || TapConfig.current.appDeaths == AppDeathMode.OFF || allowsAppDeath(context)) return run()
+        checkAppDeaths(state.devices, state.method, run)
+    }
+
+    /** [checkingAppDeaths] over [devices]: runs [run] between the marks and the check. */
+    internal fun checkAppDeaths(
+        devices: Map<String, Device>,
+        method: String,
+        run: () -> Unit,
+    ) {
+        val marks =
+            runBlocking(TapContext("junit:$method:deaths")) {
+                devices.mapValues { (_, device) -> runCatching { device.deathSequence() }.getOrNull() }
+            }
+        val failure = runCatching(run).exceptionOrNull()
+        if (failure is TestAbortedException) throw failure
+        val deaths =
+            runBlocking(TapContext("junit:$method:deaths")) {
+                withContext(NonCancellable) {
+                    // A crash the test's last input caused is logged shortly after it.
+                    if (marks.values.any { it != null }) delay(AppDeath.SETTLE)
+                    devices.flatMap { (role, device) ->
+                        val mark = marks[role] ?: return@flatMap emptyList()
+                        runCatching { device.takeUnhandledDeaths(mark) }.getOrDefault(emptyList())
+                    }
+                }
+            }
+        if (deaths.isEmpty()) {
+            failure?.let { throw it }
+            return
+        }
+        throw AppDiedException(deaths.sortedBy { it.at }).apply { failure?.let(::addSuppressed) }
+    }
+
+    private fun allowsAppDeath(context: ExtensionContext): Boolean =
+        context.requiredTestMethod.isAnnotationPresent(AllowAppDeath::class.java) ||
+            context.requiredTestClass.isAnnotationPresent(AllowAppDeath::class.java)
 
     override fun interceptBeforeEachMethod(
         invocation: InvocationInterceptor.Invocation<Void>,

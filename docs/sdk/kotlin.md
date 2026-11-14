@@ -92,6 +92,7 @@ name with camelCase and dots turned into underscores, upper-cased (`tap.artifact
 | `tap.artifactsDir` | run records and failure artifacts root | `build/tap-artifacts` |
 | `tap.report` | `on` = structured run records; `off` = legacy failure-artifact layout only | `on` |
 | `tap.capture` | `onFailure` = `device.capture()` every device of a failed test into the artifacts root; `off` = capture nothing | `onFailure` |
+| `tap.appDeaths` | `fail` = a test whose watched app crashed or stopped responding, and nothing handed the death to the test, fails with `AppDiedException`; `off` = no end-of-test check ([Crashes and ANRs](../guide/app-deaths.md#the-end-of-test-check); `@AllowAppDeath` per test or class) | `fail` |
 | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds | `300` |
 | `tap.server` | `host:port` of a running server | the one in `daemon.json` |
 | `tap.token` | bearer token for an explicit `tap.server` | the one in `daemon.json` |
