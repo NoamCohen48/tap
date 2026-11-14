@@ -164,6 +164,34 @@ ok, `1` the step failed, `2` usage, `3` no server running.
 `screenshot` and `capture` (screenshot, hierarchy, device info, driver log) save evidence
 under `.tap/agent/` and print the paths.
 
+### When the app crashes
+
+The server keeps a record of every crash and ANR while the device is attached. Each step ends
+with the deaths of watched apps (launched by the session or named by a target) that no earlier
+step reported, whether the step itself failed or not:
+
+```console
+$ tap-agent tap text=Pay
+tapped text=Pay
+! com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock
+    at com.example.shop.Cart.pay(Cart.kt:41)
+    at com.example.shop.CheckoutActivity.onPay(CheckoutActivity.kt:88)
+    at android.view.View.performClick(View.java:7659)
+    at android.view.View.performClickInternal(View.java:7636)
+    at android.view.View.access$3600(View.java:829)
+  … 18 more frames; full trace: .tap/agent/deaths/emulator-5554-0001-com.example.shop.txt
+  its screen is gone; `app launch com.example.shop` to continue
+```
+
+The full trace goes to an owner-only file so it stays out of the agent's context until it is
+needed. A wait that is running when the app dies ends at once with `AUT_CRASHED` or `AUT_ANR`.
+
+To reproduce a crash on purpose, add `--expect-death` (MCP `expect_death: true`): the step then
+needs a watched app to die, during it or within the wait timeout after it, prints that death as
+`✓ … (expected)`, and does not fail for the command the death ended. `deaths` lists the
+record (`--package`, `--all` for apps the session did not watch, `--trace SEQ`, `--json`), and
+`history` has an `app_deaths` list next to the calls.
+
 ## History, named recordings and release
 
 The raw session log is now `history` (previously `export`):

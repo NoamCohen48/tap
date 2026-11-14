@@ -81,6 +81,10 @@ name the components affected. Earlier releases used independent version lines. T
   w:`, `with app.expect_death() as expected:`. The pytest plugin fails a test whose watched app
   died unhandled (`tap_app_deaths=fail`, the default; `off` or
   `@pytest.mark.tap_allow_app_death` to opt out).
+- Tap agent: every CLI/MCP step ends with the watched app crashes and ANRs no earlier step
+  reported (top frames inline, the full trace in a private file). `--expect-death` (MCP
+  `expect_death`) makes a step require one, `deaths` (CLI and MCP) lists the record, `history`
+  adds `app_deaths`, and recorded steps keep the deaths they reported without message or trace.
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
   `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:
   `TapClient.unquarantine(serial)`, `attach_device(serial, inspect_quarantined=True)`,

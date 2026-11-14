@@ -156,6 +156,12 @@ handed to the test: no command failed with them, and no `guard`, `watch_deaths` 
     check with `device.deathSequence()` before the test and `device.takeUnhandledDeaths(mark)`
     after it.
 
+## Tap agent
+
+`tap-agent` prints the new deaths of watched apps after every step and takes `--expect-death`
+on an action; `tap-agent deaths` lists the record. See
+[A session, step by step](../agent/session.md#when-the-app-crashes).
+
 ## Limits
 
 - Android reports an ANR only when input goes unanswered for about 5 s (and on Android 10 and

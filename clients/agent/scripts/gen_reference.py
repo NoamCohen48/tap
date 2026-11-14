@@ -39,7 +39,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
         "`screenshot`, which an agent has to look at.",
-        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "logs", "media-record"],
+        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "logs", "deaths", "media-record"],
     ),
     (
         "Acting on elements",

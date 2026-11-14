@@ -36,9 +36,12 @@ _SCHEMA = (
  seq INTEGER NOT NULL, action TEXT NOT NULL, kind TEXT NOT NULL, parameters TEXT NOT NULL,
  targets TEXT NOT NULL DEFAULT '{}', serial TEXT, started_at TEXT NOT NULL,
  finished_at TEXT, duration_ms INTEGER, status TEXT NOT NULL, error_type TEXT,
+ deaths TEXT NOT NULL DEFAULT '[]',
  PRIMARY KEY(record_id, seq)
 )""",
 )
+# The catalog version _SCHEMA creates. Version 1 had no `steps.deaths`; it is upgraded in place.
+_VERSION = 2
 
 
 class RecordError(Exception):
@@ -146,12 +149,21 @@ class RecordStore:
                 if version == 0:
                     for statement in _SCHEMA:
                         connection.execute(statement)
-                    connection.execute("PRAGMA user_version=1")
-                    version = 1
+                    connection.execute(f"PRAGMA user_version={_VERSION}")
+                    version = _VERSION
                 connection.execute("COMMIT")
             if version == 0:
                 raise _NoCatalog()
-            if version != 1:
+            if version == 1:
+                # Adds the app deaths each step noticed; earlier steps noticed none.
+                connection.execute("BEGIN IMMEDIATE")
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                if version == 1:
+                    connection.execute("ALTER TABLE steps ADD COLUMN deaths TEXT NOT NULL DEFAULT '[]'")
+                    connection.execute(f"PRAGMA user_version={_VERSION}")
+                    version = _VERSION
+                connection.execute("COMMIT")
+            if version != _VERSION:
                 raise RecordError("unknown agent recording catalog version")
             connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             yield connection
@@ -288,6 +300,16 @@ class RecordStore:
             if changed != 1:
                 raise RecordError("recording outcome could not be committed")
 
+    def deaths(self, identifier: str, sequence: int, deaths: list[dict[str, Any]]) -> None:
+        """Adds the app deaths noticed at the end of a finished step: identity and whether the
+        step expected them, never the exception message or stack trace (app output)."""
+        with self._db(write=True) as connection:
+            row = connection.execute("SELECT deaths FROM steps WHERE record_id=? AND seq=?", (identifier, sequence)).fetchone()
+            if row is None:
+                raise RecordError("recorded step disappeared")
+            encoded = json.dumps(json.loads(row[0]) + deaths, separators=(",", ":"), ensure_ascii=False)
+            connection.execute("UPDATE steps SET deaths=? WHERE record_id=? AND seq=?", (encoded, identifier, sequence))
+
     def stop(self, name: str | None, session: str, *, reason: str = "explicit") -> dict[str, Any]:
         recording = self.select(name, session) if name is not None else self.active(session)
         if recording is None:
@@ -310,6 +332,7 @@ class RecordStore:
                 step["parameters"] = _decode(row["parameters"])
                 step["targets"] = _decode(row["targets"])
                 step["outcome"] = {"status": row["status"], "error_type": row["error_type"]}
+                step["app_deaths"] = json.loads(row["deaths"])
                 steps.append(step)
         return {"format": FORMAT, **{key: recording[key] for key in ("name", "session", "connection_id", "state", "started_at", "stopped_at", "stop_reason")},
             "complete": recording["state"] == "stopped" and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}

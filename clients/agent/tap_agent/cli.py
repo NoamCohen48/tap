@@ -70,7 +70,13 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("-s", "--session", help="session name (default: $TAP_AGENT_SESSION or 'agent')")
     on_device = argparse.ArgumentParser(add_help=False, parents=[common])
     on_device.add_argument("-d", "--device", help="serial; needed only when the session has several devices")
-    settle = argparse.ArgumentParser(add_help=False)
+    expect = argparse.ArgumentParser(add_help=False)
+    expect.add_argument(
+        "--expect-death", action="store_true",
+        help="the step must make a watched app crash or stop responding (within 10 s after it); a command failing because of it is no failure",
+    )
+    # Every verb that can send input can expect the app to die of it.
+    settle = argparse.ArgumentParser(add_help=False, parents=[expect])
     settle.add_argument("--settle", action="store_true", help="wait for the screen to settle, then print what changed")
 
     budget = argparse.ArgumentParser(add_help=False)
@@ -109,6 +115,12 @@ def parser() -> argparse.ArgumentParser:
     p = verb("logs", "save device/driver logs or diagnostic hierarchy privately", on_device)
     p.add_argument("kind", choices=("device", "driver", "hierarchy"), nargs="?", default="device")
     p.add_argument("-o", "--out", help="new local output file; never overwrite")
+
+    p = verb("deaths", "app crashes and ANRs since the device was attached (watched apps; --all for every app)", on_device)
+    p.add_argument("--package", help="only this app's")
+    p.add_argument("--all", dest="all_apps", action="store_true", help="also apps the session did not start or target")
+    p.add_argument("--trace", type=int, metavar="SEQ", help="print one death's full stack trace")
+    p.add_argument("--json", dest="as_json", action="store_true", help="structured entries")
 
     p = verb("record", "start/stop/list/clean named action-and-wait recordings", common)
     p.add_argument("action", choices=("start", "stop", "list", "clean"), nargs="?", default="list")
@@ -290,7 +302,7 @@ def parser() -> argparse.ArgumentParser:
     p = verb("capture", "save screenshot, hierarchy, device info and driver log", on_device)
     p.add_argument("-o", "--out", help="directory (default .tap/agent/capture-<serial>-<time>)")
 
-    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device)
+    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device, expect)
     p.add_argument("action", choices=APP_ACTIONS)
     p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
@@ -324,6 +336,11 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+# Verbs after which no app deaths are reported: they need no device or session (record, export
+# and the inventory work without one), end the session, or list deaths themselves.
+UNREPORTED = frozenset({"attach", "sessions", "release", "devices", "unquarantine", "server-info", "record", "history", "export", "deaths"})
+
+
 def run(args: argparse.Namespace, agent: Agent) -> str:
     v = args.verb
     device = getattr(args, "device", None)
@@ -351,6 +368,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.capabilities(device, as_json=args.as_json)
     if v == "logs":
         return agent.logs(args.kind, device, args.out)
+    if v == "deaths":
+        return agent.deaths(device, package=args.package, all_apps=args.all_apps, trace=args.trace, as_json=args.as_json)
     if v == "record":
         return agent.record(args.action, args.name, all_records=args.all_records)
     if v == "media-record":
@@ -454,7 +473,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
     agent = Agent(args.session)
     try:
-        print(run(args, agent))
+        if args.verb in UNREPORTED:
+            print(run(args, agent))
+        else:
+            print(agent.reporting_deaths(lambda: run(args, agent), expect=getattr(args, "expect_death", False)))
         return EXIT_OK
     except AgentError as error:
         print(f"error: {error}", file=sys.stderr)

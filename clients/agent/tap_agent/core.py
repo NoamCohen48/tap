@@ -14,12 +14,14 @@ import json
 import math
 import os
 import pathlib
+import time
 import uuid
 from dataclasses import replace
 from collections.abc import Callable, Iterator, Sequence
 from typing import TypeVar
 
 from tap_e2e import (  # pyright: ignore[reportMissingImports]
+    AppDeath,
     CommandError,
     ConnectionEntry,
     Device,
@@ -44,10 +46,11 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
     WaitTimeoutError,
 )
 
+from . import deaths as deaths_output
 from . import render
 from .output import json_text, save_private
 from .records import RecordError, RecordStore
-from .step_capture import CURRENT, instrument, sending
+from .step_capture import CURRENT, INPUT_SENT, instrument, sending
 from .targets import Target, UsageError, format_duration, parse_condition, parse_int32, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
@@ -55,6 +58,9 @@ DEFAULT_SESSION = "agent"
 HISTORY_FORMAT = "tap-events/1"
 DEFAULT_IDLE = 15 * 60.0
 DEFAULT_WAIT = 10.0
+# Seconds the death check after a step that sent input waits first, as the SDK's guard does:
+# Android logs a crash 10-200 ms after the input that caused it.
+DEATH_SETTLE = 0.3
 MAX_COMMAND_TIMEOUT = 120.0
 WAIT_STATES = ("visible", "gone", "one", "enabled", "disabled", "checked", "unchecked", "focused", "text", "text-contains", "count")
 SETTLE_STABLE_FOR = 0.5
@@ -205,6 +211,8 @@ class Agent:
         self._owns_client = client is None
         self.out_dir = pathlib.Path(out_dir or os.environ.get("TAP_AGENT_DIR") or ".tap/agent")
         self.records = RecordStore(self.out_dir / "records")
+        # The recorded step the running user step finished as, for the deaths noticed after it.
+        self._recorded: tuple[str, int] | None = None
 
     # --- plumbing -------------------------------------------------------------------------------
 
@@ -247,6 +255,103 @@ class Agent:
     def _run(self, step: Callable[[], T]) -> T:
         with self._errors():
             return step()
+
+    # --- app deaths -----------------------------------------------------------------------------
+
+    def reporting_deaths(self, step: Callable[[], str], *, expect: bool = False, expect_timeout: float | None = None) -> str:
+        """Runs one user step, then appends the session's watched app deaths not reported yet
+        (``!`` lines with the top frames and a trace file). With ``expect``, the step must make a
+        watched app die, during it or within ``expect_timeout`` seconds after it (default the
+        wait timeout): that death is printed with ``✓``, a command failing because of it does
+        not fail the step, and no death fails it. The CLI and the MCP server wrap every step
+        that uses a session in this; the check never fails an unexpecting step."""
+        sent = [False]
+        token = INPUT_SENT.set(sent)
+        self._recorded = None
+        failure: AgentError | None = None
+        result = ""
+        try:
+            result = step()
+        except AgentError as error:
+            failure = error
+        finally:
+            INPUT_SENT.reset(token)
+        carried = _carried_death(failure)
+        if expect and failure is not None and carried is None:
+            raise failure
+        if sent[0] and carried is None:
+            # A crash the step's input caused is logged shortly after it.
+            time.sleep(DEATH_SETTLE)
+        try:
+            report = self._death_report(expect, carried, DEFAULT_WAIT if expect_timeout is None else expect_timeout)
+        except AgentError:
+            raise
+        except Exception:
+            report = ""  # the report never hides the step's own outcome
+        if failure is not None and not expect:
+            raise AgentError(f"{failure}\n{report}" if report else str(failure), failure.exit_code) from failure
+        return f"{result}\n{report}" if report and result else report or result
+
+    def _death_report(self, expect: bool, carried: AppDeath | None, timeout: float) -> str:
+        entry = self._held()
+        if entry is None:
+            if expect:
+                raise AgentError(f"no session {self.session!r}; start one with `attach <serial>`")
+            return ""
+        devices = TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold).attached_devices()
+        cursors = deaths_output.Cursors(self.out_dir, self.session)
+        seen = cursors.load()
+        deadline = time.monotonic() + timeout
+        fresh: list[tuple[Device, AppDeath]] = []
+        while True:
+            for device in devices:
+                after = seen.get(device.attached_device_id, 0)
+                listed = device.app_deaths(after=after)
+                if listed:
+                    seen[device.attached_device_id] = max(after, max(d.sequence for d in listed))
+                fresh += [(device, d) for d in listed if d.watched]
+            if not expect or fresh or carried is not None or time.monotonic() >= deadline:
+                break
+            time.sleep(0.2)
+        cursors.save({key: value for key, value in seen.items() if key in {d.attached_device_id for d in devices}})
+        expected = None
+        if expect:
+            expected = carried.sequence if carried is not None else (fresh[0][1].sequence if fresh else None)
+        if expect and expected is None:
+            raise AgentError(f"expected a watched app to crash or stop responding within {format_duration(timeout)}; none did")
+        several = len(devices) > 1
+        blocks = []
+        entries = []
+        for device, death in fresh:
+            trace = deaths_output.trace_file(self.out_dir, device.serial, death)
+            blocks.append(deaths_output.block(death, expected=death.sequence == expected, serial=device.serial if several else None, trace=trace))
+            entries.append(deaths_output.record_entry(death, device.serial, death.sequence == expected))
+        if entries and self._recorded is not None:
+            with contextlib.suppress(RecordError):
+                self.records.deaths(*self._recorded, entries)
+        return "\n".join(blocks)
+
+    def deaths(self, device: str | None = None, *, package: str | None = None, all_apps: bool = False, trace: int | None = None, as_json: bool = False) -> str:
+        """The crashes and ANRs since the device was attached, oldest first: the session's
+        watched apps, or every app with ``all_apps``. ``trace`` prints one death's full stack
+        trace instead. Read from the server's record; changes nothing."""
+
+        def step() -> str:
+            selected = self._device(device)
+            listed = selected.app_deaths(package_name=package)
+            if trace is not None:
+                found = next((d for d in listed if d.sequence == trace), None)
+                if found is None:
+                    raise AgentError(f"no death #{trace} on {selected.serial}; `deaths` lists them")
+                return f"{found.summary}\n\n{found.stack_trace or '(no stack trace: an ANR, or the crash buffer lost it)'}"
+            shown = [d for d in listed if all_apps or d.watched]
+            if as_json:
+                return json.dumps([deaths_output.as_json(d, selected.serial) for d in shown], indent=2, ensure_ascii=False)
+            if not shown:
+                return f"no {'' if all_apps else 'watched '}app died on {selected.serial} since it was attached"
+            return "\n".join(deaths_output.listing(d, None) for d in shown)
+
+        return self._run(step)
 
     def _held(self) -> ConnectionEntry | None:
         return next(
@@ -547,13 +652,21 @@ class Agent:
             raise AgentError("after_seq must be an integer in 0..9223372036854775807", EXIT_USAGE)
 
         def step() -> str:
-            log = self._connection().event_log(after_seq)
+            connection = self._connection()
+            log = connection.event_log(after_seq)
             document = {
                 "format": HISTORY_FORMAT,
                 "session": self.session,
                 "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
                 "dropped": log.dropped,
                 "events": [event.to_dict() for event in log.events],
+                # Not calls, so not events: the watched app deaths on the session's devices.
+                "app_deaths": [
+                    deaths_output.as_json(death, attached.serial)
+                    for attached in connection.attached_devices()
+                    for death in attached.app_deaths()
+                    if death.watched
+                ],
             }
             text = json.dumps(document, indent=2, ensure_ascii=False)
             if out is None:
@@ -1479,6 +1592,17 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
     except ValueError:
         raise AgentError(f"density takes a dpi or reset, not {value!r}", EXIT_USAGE) from None
     return lambda d: d.set_density(dpi)
+
+
+def _carried_death(error: BaseException | None) -> AppDeath | None:
+    """The app death a step's failure carried (a ``CommandError`` with ``app_death``), if any."""
+    for _ in range(8):
+        if error is None:
+            return None
+        if isinstance(error, CommandError):
+            return error.app_death
+        error = error.__cause__
+    return None
 
 
 def _notification_line(n: Notification) -> str:

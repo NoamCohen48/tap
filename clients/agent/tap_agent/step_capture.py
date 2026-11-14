@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
 WAITS = frozenset({"wait", "settle", "toast"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
-EXCLUDED = frozenset({"close", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "screenshot", "capture", "logs", "recording", "pull", "activity", "record", "history", "export"})
+EXCLUDED = frozenset({"close", "reporting_deaths", "deaths", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "screenshot", "capture", "logs", "recording", "pull", "activity", "record", "history", "export"})
 
 
 def _word(value: Any) -> Any:
@@ -112,6 +112,10 @@ class Capture:
 
 CURRENT: contextvars.ContextVar[Capture | None] = contextvars.ContextVar("tap_agent_step_capture", default=None)
 
+# Set by Agent.reporting_deaths around one user step: whether the step sent device input, so the
+# death check after it waits for a crash that input caused (recording or not).
+INPUT_SENT: contextvars.ContextVar[list[bool] | None] = contextvars.ContextVar("tap_agent_input_sent", default=None)
+
 
 # Driver codes the protocol contract marks "may have mutated: no": nothing was sent, or the
 # command was refused before its input. Every other code, including AUT_CRASHED (which replaces
@@ -178,6 +182,9 @@ def sending(*, compound: bool = False) -> Iterator[None]:
     """Wraps each SDK call of an agent method that sends device input (``compound``: one call
     that may send several, such as tap-then-type or a scroll loop). A failure after the call
     returned, in a read or settle that follows, leaves the step ``unknown``, not ``failed``."""
+    sent = INPUT_SENT.get()
+    if sent is not None:
+        sent[0] = True
     capture = CURRENT.get()
     if capture is None:
         yield
@@ -247,6 +254,8 @@ def _wrap(method: Callable[..., str]) -> Callable[..., str]:
         warnings = []
         try:
             agent.records.finish(recording["id"], sequence, status, max(0, round((time.monotonic() - started) * 1000)), type(failure).__name__ if failure is not None else None)
+            # The app deaths noticed after this step are added to it (Agent.reporting_deaths).
+            agent._recorded = (recording["id"], sequence)
         except RecordError:
             warnings.append("recording outcome could not be saved; input may already have executed; do not repeat it; inspect/stop the incomplete recording")
         finally:
