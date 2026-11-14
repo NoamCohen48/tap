@@ -29,6 +29,7 @@ import org.opentest4j.TestAbortedException
 import java.lang.reflect.Method
 import java.nio.file.Files
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Per-test device sessions for JUnit 5, over the coroutine client. Before each test it maps
@@ -67,7 +68,10 @@ class TapExtension :
                     val roles = declaredRoles(context)
                     val criteria = declaredCriteria(context.requiredTestClass, context.requiredTestMethod, roles)
                     val held = if (perClass(context)) reusable(context, roles, criteria) else null
-                    if (held != null) return@runBlocking TestState(rootJob, held, held.mapValues { it.value.serial }, method)
+                    if (held != null) {
+                        markLogs(held, "test ${testName(context)}")
+                        return@runBlocking TestState(rootJob, held, held.mapValues { it.value.serial }, method)
+                    }
                     val available =
                         config.serials.ifEmpty {
                             SharedConnection.connection().availableSerials()
@@ -87,6 +91,7 @@ class TapExtension :
                             else -> openAll(connection, assignSerials(roles, available, config.pinnedRoles, start), config)
                         }
                     if (perClass(context)) context.classStore.put(HELD, HeldDevices(roles, criteria, devices))
+                    markLogs(devices, "test ${testName(context)}")
                     TestState(rootJob, devices, devices.mapValues { it.value.serial }, method)
                 }
             context.store.put(KEY, state)
@@ -168,6 +173,10 @@ class TapExtension :
         // Stop test coroutines promptly; sessions stay usable for artifact capture below.
         state.rootJob.cancel(CancellationException("test finished"))
         try {
+            val outcome = if (failure == null) "passed" else if (failure is TestAbortedException) "skipped" else "failed"
+            runBlocking(TapContext("junit:${state.method}:log-marker")) {
+                markLogs(state.devices, "test $outcome ${testName(context)}")
+            }
             // An aborted test (a failed assumption) was skipped, not failed: nothing to explain.
             if (failure != null && failure !is TestAbortedException && TapConfig.current.capture == CaptureMode.ON_FAILURE) {
                 runBlocking(TapContext("junit:${state.method}:artifacts")) {
@@ -188,6 +197,25 @@ class TapExtension :
                 // primary failure (already recorded) stays the report, with cleanup suppressed.
                 // When the primary came from executionException (not our stored failure), rethrow
                 // is unnecessary: JUnit reports it. When it is stored, it was already thrown.
+            }
+        }
+    }
+
+    private fun testName(context: ExtensionContext): String = "${context.requiredTestClass.simpleName}.${context.requiredTestMethod.name}"
+
+    /**
+     * Writes [name] into each device's log ([io.github.noamcohen48.tap.sdk.DeviceLog.mark]), so
+     * a reader of the log sees where a test begins and ends. Best effort: a test never fails over
+     * a marker (the log capture may be off, the device gone).
+     */
+    internal suspend fun markLogs(
+        devices: Map<String, Device>,
+        name: String,
+    ) {
+        val printable = name.map { if (it.isISOControl()) ' ' else it }.joinToString("").take(200)
+        devices.values.forEach { device ->
+            withContext(NonCancellable) {
+                withTimeoutOrNull(5_000) { runCatching { device.logs.mark(printable, 5.seconds) } }
             }
         }
     }

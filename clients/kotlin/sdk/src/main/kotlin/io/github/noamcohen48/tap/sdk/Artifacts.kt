@@ -225,9 +225,14 @@ class TextLog(
  * `<unavailable: …>` line.
  */
 data class DeviceLogs(
-    /** `logcat -v threadtime` of the main, system and crash buffers since the attachment (ring buffers: what scrolled out is gone). */
+    /**
+     * The device log since the attachment ([Device.logs]): logcat lines of the main, system and
+     * crash buffers, with `──` lines for the markers and for the actions Tap ran, secrets
+     * redacted. When the attachment turned log capture off: `logcat -v threadtime` of what the
+     * device's ring buffers still hold.
+     */
     val logcat: String,
-    /** The logcat was longer than 4 MiB and keeps its newest lines. */
+    /** The log was longer than the server keeps or returns, and has its newest lines. */
     val logcatTruncated: Boolean,
     /** Crashes (`FATAL EXCEPTION`, native) and ANRs since the attachment; empty when none. */
     val crashes: String,
