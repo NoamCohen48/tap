@@ -862,6 +862,7 @@ class TapDaemon internal constructor(
                 journalRoot = config.journalRoot,
                 adb = config.adb,
                 driverLog = log::append,
+                lifecycleLog = config.log,
                 leaseTimeoutMs = options.leaseTimeoutMs,
                 inspectQuarantined = options.inspectQuarantined,
             )

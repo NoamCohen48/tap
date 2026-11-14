@@ -371,6 +371,42 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `lifecycle diagnostics cover open and cleanup without changing ownership when logging fails`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-timings", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val logs = mutableListOf<String>()
+                val config = sessionConfig(adb, fake, processes).copy(lifecycleLog = {
+                    logs += it
+                    error("broken log sink")
+                })
+                val opening = async(Dispatchers.IO) { DeviceSession.open(config) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Responses.done(1))
+                val session = withTimeout(5_000) { opening.await() }
+                session.close()
+                val stages = logs.map { it.substringAfter("stage=").substringBefore(' ') }.toSet()
+                assertTrue(stages.containsAll(setOf(
+                    "attach_lock", "attach_boot", "attach_recovery", "attach_screen",
+                    "attach_instrumentation", "attach_forward", "attach_pid", "attach_process_identity",
+                    "attach_authentication", "attach_health", "attach_total", "detach_drain",
+                    "detach_listener", "detach_client", "detach_restore", "detach_forward",
+                    "detach_instrumentation", "detach_rotation",
+                )), logs.toString())
+                assertTrue(logs.all { "outcome=ok" in it }, logs.toString())
+                assertFalse(logs.any { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(fake.secret) in it })
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                journalStore().acquireLease(0).close()
+                assertTrue(adb.calls.any { "forward --remove tcp:${fake.port}" in it })
+            } finally {
+                fake.close()
+            }
+        }
+
+    @Test
     fun `open cancelled after forward creation removes the forward and finalizes the journal`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
