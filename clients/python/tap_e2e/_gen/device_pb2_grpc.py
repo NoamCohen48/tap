@@ -80,6 +80,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.DeviceLogsRequest.SerializeToString,
                 response_deserializer=device__pb2.DeviceLogsResponse.FromString,
                 _registered_method=True)
+        self.ListAppDeaths = channel.unary_unary(
+                '/tap.v1.DeviceService/ListAppDeaths',
+                request_serializer=device__pb2.ListAppDeathsRequest.SerializeToString,
+                response_deserializer=device__pb2.ListAppDeathsResponse.FromString,
+                _registered_method=True)
         self.StartRecording = channel.unary_unary(
                 '/tap.v1.DeviceService/StartRecording',
                 request_serializer=device__pb2.StartRecordingRequest.SerializeToString,
@@ -229,6 +234,14 @@ class DeviceServiceServicer:
     def DeviceLogs(self, request, context):
         """The device's own record since the attachment opened, for failure evidence: logcat, the
         crashes and ANRs, and the activity and window state now. Diagnostic only, not logged.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListAppDeaths(self, request, context):
+        """The crashes and ANRs Android logged since the attachment opened, oldest first (at most the
+        newest 256). Read from the server's record, not the device; not logged.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -427,6 +440,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.DeviceLogs,
                     request_deserializer=device__pb2.DeviceLogsRequest.FromString,
                     response_serializer=device__pb2.DeviceLogsResponse.SerializeToString,
+            ),
+            'ListAppDeaths': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListAppDeaths,
+                    request_deserializer=device__pb2.ListAppDeathsRequest.FromString,
+                    response_serializer=device__pb2.ListAppDeathsResponse.SerializeToString,
             ),
             'StartRecording': grpc.unary_unary_rpc_method_handler(
                     servicer.StartRecording,
@@ -757,6 +775,33 @@ class DeviceService:
             '/tap.v1.DeviceService/DeviceLogs',
             device__pb2.DeviceLogsRequest.SerializeToString,
             device__pb2.DeviceLogsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListAppDeaths(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/ListAppDeaths',
+            device__pb2.ListAppDeathsRequest.SerializeToString,
+            device__pb2.ListAppDeathsResponse.FromString,
             options,
             channel_credentials,
             insecure,

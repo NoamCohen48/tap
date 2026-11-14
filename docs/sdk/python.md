@@ -90,6 +90,7 @@ Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_op
 | `tap_report` | `TAP_REPORT` | `on` = structured run records; `off` = legacy failure-artifact layout only | `on` |
 | `tap_device_scope` | `TAP_DEVICE_SCOPE` | `function` = attach before each test, detach after it; `class` / `module` / `session` = keep the devices for the next test of the same class / module / run ([Reusing devices](#reusing-devices)) | `function` |
 | `tap_capture` | `TAP_CAPTURE` | `onFailure` = `device.capture()` every device of a failed test into that directory; `off` = capture nothing | `onFailure` |
+| `tap_app_deaths` | `TAP_APP_DEATHS` | `fail` = a test whose watched app crashed or stopped responding, and nothing handed the death to the test, fails with `AppDied`; `off` = no end-of-test check ([Crashes and ANRs](../guide/app-deaths.md#the-end-of-test-check); `@pytest.mark.tap_allow_app_death` per test) | `fail` |
 | `tap_server` | `TAP_SERVER` | `host:port` of a running server | the one in `daemon.json` |
 | — | `TAP_TOKEN` | bearer token for an explicit `TAP_SERVER` | the one in `daemon.json` |
 | `tap_manage_daemon` | `TAP_MANAGE_DAEMON` | `true` = `tap start` before the first test, `tap stop` after the last one if that start created the server | `false` |

@@ -676,6 +676,7 @@ class TapDaemon internal constructor(
         timeoutMs: Long,
         label: String,
     ) {
+        device.appDeaths.close()
         cleanupScope.launch {
             // Detached cleanup already runs in its own job; pass the full core close bound.
             val outcome = runCatching {
@@ -691,6 +692,7 @@ class TapDaemon internal constructor(
     /** Stop scrcpy before releasing this session's serial lock. An audio failure does not skip
      * driver cleanup; both diagnostics are preserved in the detach detail. */
     private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long, shutdown: Boolean): String? {
+        device.appDeaths.close()
         if (!shutdown) {
             // Outside shutdown nothing imposes a deadline, so the recorder does not borrow the
             // driver's: reaping scrcpy always ends (SIGTERM, then SIGKILL), and a slow scrcpy must
@@ -907,6 +909,7 @@ class TapDaemon internal constructor(
             }
             throw UnknownClientConnectionException(ownerConnectionId)
         }
+        registered.appDeaths.start()
         config.log(
             "attached device ${registered.id} attached on $serial (generation ${device.generation}) for client connection $ownerConnectionId",
         )

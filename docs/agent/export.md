@@ -116,6 +116,11 @@ A failed action has one of three statuses, and only two of them are safe to act 
   step sends several inputs (a tap before typing, a scroll loop, waking before unlocking), or a
   read after the input failed. Never replay it blindly.
 
+A step's `app_deaths` lists the watched app crashes and ANRs the step reported: serial,
+sequence, `kind` (`crash` or `anr`), package and process names, exception class and `expected`
+(the step ran with `--expect-death`). Like other app output, the exception message and stack
+trace are not stored.
+
 An intent is committed before input and selectors before their mutation. A killed process leaves
 `running`/`unknown` or `interrupted` evidence, with `complete: false`.
 Further recorded steps are refused for an unfinished/interrupted intent until the user inspects/stops the archive. Stop cannot

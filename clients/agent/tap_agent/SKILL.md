@@ -190,6 +190,29 @@ capture is discarded. Failed start/stop is never replayed. Stop retains a privat
 under `.tap/agent/` before an optional custom copy: if that copy fails, use the artifact named
 in the error, do not repeat stop. No automatic app stop, launch or restore.
 
+## Crashes and ANRs
+
+Every step ends with any crash or ANR of a watched app (one you launched or targeted) that no
+earlier step reported, also when the step itself succeeded:
+
+```
+tapped text=Pay
+! com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock
+    at com.example.shop.Cart.pay(Cart.kt:41)
+    …
+  … 12 more frames; full trace: .tap/agent/deaths/emulator-5554-0001-com.example.shop.txt
+  its screen is gone; `app launch com.example.shop` to continue
+```
+
+Read the trace file only when the top frames are not enough. A wait running when the app dies
+ends at once with `AUT_CRASHED` / `AUT_ANR` (detail `CANCELLED`). After an ANR the app may
+still be stuck: stop it before launching again.
+
+`--expect-death` (MCP `expect_death: true`) on an action means the step must crash the app, for
+crash reproductions: the death prints as `✓ … (expected)`, the command failing because of it is
+no failure, and no death within the wait timeout is one. `deaths` lists every death since
+attach (`--all` adds unwatched apps, `--trace SEQ` prints one full trace, `--json`).
+
 ## Named steps, export and history
 
 `record start NAME` begins a named action-and-explicit-wait recording; `record stop [NAME]`

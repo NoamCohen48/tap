@@ -526,6 +526,62 @@ class ConnectionEntry:
     attached_devices: tuple[AttachedDeviceEntry, ...]
 
 
+class AppDeathKind(enum.Enum):
+    """How an app died (``AppDeath.kind``)."""
+
+    CRASH = "crash"
+    """A Java exception or a native crash ended the process."""
+    ANR = "anr"
+    """The app stopped answering input, or a broadcast or service, in time."""
+
+
+@dataclass(frozen=True)
+class AppDeath:
+    """A crash or ANR of an app on the device, as Android logged it and the server recorded it
+    (``Device.app_deaths()``, ``CommandError.app_death``, ``AppDied``).
+
+    Only *watched* deaths (``watched``) explain command failures, end waits and fail tests: those
+    of an app started through this attachment (``launch``, ``cold_launch``, ``foreground``,
+    ``open_link``) or named by a command's selector (anything inside ``device.app(pkg)``), from
+    then on.
+
+    Attributes:
+        sequence: Per attachment, from 1, in the order Android logged the deaths.
+        kind: Crash or ANR.
+        package_name: The app.
+        process_name: ``package_name`` or ``package_name:suffix``.
+        pid: The process id.
+        at: The device clock when Android logged it, in Unix seconds.
+        exception_class: A crash's exception class (``java.lang.IllegalStateException``, or
+            ``Native crash``); empty for an ANR.
+        message: A crash's exception message, or an ANR's reason.
+        stack_trace: A crash's stack trace from the crash buffer (at most 32 KiB); empty when it
+            scrolled out, and for an ANR.
+        watched: Whether the app was watched when it died.
+        reported: Whether a command's error on this attachment already carried it.
+    """
+
+    sequence: int
+    kind: AppDeathKind
+    package_name: str
+    process_name: str
+    pid: int
+    at: float
+    exception_class: str
+    message: str
+    stack_trace: str
+    watched: bool
+    reported: bool
+
+    @property
+    def summary(self) -> str:
+        """``com.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock``."""
+        if self.kind is AppDeathKind.ANR:
+            return f"{self.package_name} stopped responding (pid {self.pid}): {self.message}"
+        what = ": ".join(part for part in (self.exception_class, self.message) if part)
+        return f"{self.package_name} crashed (pid {self.pid}): {what}"
+
+
 @dataclass(frozen=True)
 class LoggedEvent:
     """One device call from a connection's event log (``TapConnection.event_log()``).

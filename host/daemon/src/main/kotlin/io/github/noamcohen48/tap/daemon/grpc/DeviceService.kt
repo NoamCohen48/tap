@@ -26,7 +26,12 @@ import io.github.noamcohen48.tap.api.v1.DriverLogResponse
 import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
+import io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest
+import io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
+import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.TextProperty
+import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
 import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
 import io.github.noamcohen48.tap.api.v1.UnquarantineResponse
@@ -80,9 +85,14 @@ import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.OperationRequirements
 import io.github.noamcohen48.tap.protocol.Requests
+import io.github.noamcohen48.tap.protocol.conjunction
+import io.github.noamcohen48.tap.protocol.selectors
 import io.grpc.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
@@ -96,6 +106,51 @@ import java.security.MessageDigest
 private const val PULL_CHUNK_BYTES = 256 * 1024
 
 private val UNLOGGED_OPS = setOf(Command.OpCase.DEVICE_INFO, Command.OpCase.DUMP_HIERARCHY)
+
+/**
+ * Waits: a death of a watched app while one runs ends it at once (`CANCEL`), as `AUT_CRASHED` /
+ * `AUT_ANR` with detail `CANCELLED`. Never a mutation: its outcome rules stay as they are.
+ */
+private val WAIT_OPS =
+    setOf(
+        Command.OpCase.WAIT_VISIBLE,
+        Command.OpCase.WAIT_GONE,
+        Command.OpCase.WAIT_APP_VISIBLE,
+        Command.OpCase.WAIT_SCREEN_STABLE,
+        Command.OpCase.WAIT_STATE,
+        Command.OpCase.WAIT_PERMISSION_PROMPT,
+        Command.OpCase.AWAIT_TOAST,
+        Command.OpCase.AWAIT_NOTIFICATION,
+    )
+
+/** How often a wait ended for a death sends `CANCEL` again until the driver answers. */
+private const val CANCEL_RETRY_MS = 50L
+
+/**
+ * The packages [this] names: `wait_app_visible` / `wait_screen_stable`'s package, and every
+ * selector's exact `PROPERTY_PACKAGE_NAME` match at its top level or in its (nested) `all_of`
+ * (what an `app(pkg)` scope adds). Not inside `any_of` or a relation: there it does not say the
+ * command is about that app.
+ */
+internal fun Command.packagesNamed(): Set<String> =
+    buildSet {
+        when (opCase) {
+            Command.OpCase.WAIT_APP_VISIBLE -> add(waitAppVisible.packageName)
+            Command.OpCase.WAIT_SCREEN_STABLE -> add(waitScreenStable.packageName)
+            else -> Unit
+        }
+        selectors.forEach { selector ->
+            selector.node.conjunction.forEach { part ->
+                val match = part.match.takeIf { part.kindCase == Node.KindCase.MATCH }
+                if (match != null && match.property == TextProperty.PROPERTY_PACKAGE_NAME &&
+                    match.mode in setOf(MatchMode.MATCH_EXACT, MatchMode.MATCH_UNSPECIFIED)
+                ) {
+                    add(match.value)
+                }
+            }
+        }
+        remove("")
+    }
 
 /** Commands that read the driver's notification listener: the server gives it access first. */
 private val NOTIFICATION_OPS =
@@ -207,11 +262,46 @@ class DeviceService(
                 } else {
                     attachedDevice.recorded({ setCommand(command.forLog()) }, { it.takeIf { it.hasError() }?.error }) {
                         if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
-                        attachedDevice.appDeaths.explain(resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)))
+                        attachedDevice.appDeaths.watchNamed(command.packagesNamed())
+                        watchingDeaths(attachedDevice, command, timeoutMs)
                     }
                 }
             ExecuteResponse.newBuilder().setResult(result).build()
         }
+
+    /**
+     * Runs [command] and explains its failure by a watched app's death ([AppDeaths]). A wait is
+     * also ended early when such a death arrives while it runs: the daemon sends `CANCEL` (again
+     * every [CANCEL_RETRY_MS] until the driver answers) and the `CANCELLED` becomes the death.
+     */
+    private suspend fun watchingDeaths(
+        attachedDevice: AttachedDevice,
+        command: Command,
+        timeoutMs: Long,
+    ): CommandResult {
+        val deaths = attachedDevice.appDeaths
+        val pending = attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)
+        if (command.opCase !in WAIT_OPS || !deaths.watching) return deaths.explain(resultOf(pending))
+        val from = deaths.lastSequence
+        val endedFor = java.util.concurrent.atomic.AtomicReference<Long?>(null)
+        val result =
+            coroutineScope {
+                val watcher =
+                    launch {
+                        endedFor.set(deaths.awaitDeathAfter(from))
+                        while (!pending.isDone) {
+                            pending.cancel()
+                            delay(CANCEL_RETRY_MS)
+                        }
+                    }
+                try {
+                    resultOf(pending)
+                } finally {
+                    watcher.cancel()
+                }
+            }
+        return deaths.explain(result, endedFor.get())
+    }
 
     /**
      * Awaits a submitted command and returns the driver's result as it arrived. Transport loss
@@ -304,6 +394,17 @@ class DeviceService(
                 .newBuilder()
                 .addAllLines(daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId).driverLog.snapshot())
                 .build()
+        }
+
+    /** The attachment's record of crashes and ANRs ([AppDeaths]); readable without a usable driver. */
+    override suspend fun listAppDeaths(request: ListAppDeathsRequest): ListAppDeathsResponse =
+        reply {
+            val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false)
+            argument(request.afterSequence >= 0) { "after_sequence must not be negative" }
+            val deaths = attachedDevice.appDeaths
+            // A sequence-only call still catches up first, so its sequence counts what is logged.
+            val listed = deaths.list(if (request.sequenceOnly) Long.MAX_VALUE else request.afterSequence, request.packageName.takeIf { request.hasPackageName() })
+            ListAppDeathsResponse.newBuilder().addAllDeaths(listed).setLastSequence(deaths.lastSequence).build()
         }
 
     override suspend fun deviceLogs(request: DeviceLogsRequest): DeviceLogsResponse =

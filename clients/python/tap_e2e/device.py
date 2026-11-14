@@ -14,11 +14,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar, overload
 
 from . import _gen as pb
-from . import _proto
+from . import _deaths, _proto
 from .app import App
 from .capabilities import DeviceCapabilities, _from_proto as _capabilities_from_proto
 from .errors import CommandError, TapError, WaitTimeoutError
 from .models import (
+    AppDeath,
     AttachedDeviceEntry,
     Capture,
     DeviceInfo,
@@ -115,6 +116,8 @@ class Device:
         self.timeouts: Timeouts = timeouts
         """Default timeouts for actions, waits and app lifecycle calls on this device."""
         self._detached = False
+        self._claimed_deaths: set[int] = set()
+        # Death sequences a guard / watch_deaths / expect_death block handed to the caller.
 
     @classmethod
     def _attach_device(
@@ -886,6 +889,62 @@ class Device:
             activities=response.activities,
             windows=response.windows,
         )
+
+    def app_deaths(self, after: int = 0, package_name: str | None = None) -> list[AppDeath]:
+        """The crashes and ANRs Android logged on this device since the attachment opened,
+        oldest first (the newest 256): those with a ``sequence`` above ``after``, of
+        ``package_name`` when given. Every app is listed; ``AppDeath.watched`` says which ones
+        count for this attachment. Reads the server's record, so it is cheap to call."""
+        return _deaths.list_deaths(self, after, package_name)[0]
+
+    def death_sequence(self) -> int:
+        """The latest ``AppDeath.sequence`` the server recorded on this attachment (0 = none):
+        pass it to ``app_deaths`` or ``take_unhandled_deaths`` as ``after`` to see only later
+        deaths."""
+        return _deaths.mark(self)
+
+    def take_unhandled_deaths(self, after: int) -> list[AppDeath]:
+        """The watched deaths after ``after`` that nothing handed to the test yet: no command's
+        error carried them (``AppDeath.reported``) and no ``guard`` / ``watch_deaths`` /
+        ``expect_death`` block claimed them. Claims them, so a second call does not return them.
+        This is the end-of-test check the pytest plugin runs (after waiting ``SETTLE``, 0.3 s);
+        another runner can run it the same way."""
+        deaths = _deaths.unhandled(self, after)
+        self._claimed_deaths.update(d.sequence for d in deaths)
+        return deaths
+
+    def guard(self) -> _deaths.Guard:
+        """A context manager that raises ``AppDied`` if any watched app crashed or stopped
+        responding inside it: from the command that failed because of it (that ``CommandError``
+        is the ``AppDied``'s ``failure`` and cause), when the block ends without failing, or in
+        place of the block's own failure (chained the same way). Without a death, the block's
+        outcome comes through unchanged::
+
+            try:
+                with device.guard():
+                    app.element(text("Pay")).tap()
+                    app.wait(text("Paid")).visible()
+            except AppDied as died:
+                print(died.death.stack_trace)
+
+        A death a block handed over is not reported again (by an outer block or the pytest
+        plugin's end-of-test check). The client learns of a death at the next Tap call or when
+        the block ends, 0.3 s after its last call; it cannot stop the block's own code at the
+        moment of the crash."""
+        return _deaths.Guard(self, None)
+
+    def watch_deaths(self) -> _deaths.WatchedDeaths:
+        """A context manager whose ``deaths`` are the watched deaths during its block (set when
+        it ends); never raises for a death."""
+        return _deaths.WatchedDeaths(self, None)
+
+    def expect_death(self, timeout: float | None = None) -> _deaths.ExpectedDeath:
+        """A context manager whose block should make a watched app crash or stop responding;
+        its ``death`` is that death: the one a failing command in the block carried, or the
+        first logged during the block or within ``timeout`` seconds after it (default the wait
+        timeout). Raises ``AssertionError`` when none came. A command failing because of the
+        death does not fail the block; any other failure does."""
+        return _deaths.ExpectedDeath(self, None, self.timeouts.wait if timeout is None else timeout)
 
     def capture(self, timeout: float = 30.0) -> Capture:
         """Takes a screenshot, the hierarchy, the device info, the driver log and the device

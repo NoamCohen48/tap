@@ -26,6 +26,7 @@ from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .screen import Screen
 from .errors import (
+    AppDied,
     AppLifecycleError,
     AppDataError,
     CommandError,
@@ -36,6 +37,8 @@ from .errors import (
     WaitTimeoutError,
 )
 from .models import (
+    AppDeath,
+    AppDeathKind,
     AppProcess,
     Artifact,
     AttachedDeviceEntry,
@@ -150,6 +153,9 @@ __all__ = [
     "AppDataAccess",
     "DatabaseBundle",
     "PrivateFileEntry",
+    "AppDeath",
+    "AppDeathKind",
+    "AppDied",
     "AppLifecycleError",
     "AppProcess",
     "Artifact",

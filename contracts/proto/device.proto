@@ -36,6 +36,9 @@ service DeviceService {
   // The device's own record since the attachment opened, for failure evidence: logcat, the
   // crashes and ANRs, and the activity and window state now. Diagnostic only, not logged.
   rpc DeviceLogs(DeviceLogsRequest) returns (DeviceLogsResponse);
+  // The crashes and ANRs Android logged since the attachment opened, oldest first (at most the
+  // newest 256). Read from the server's record, not the device; not logged.
+  rpc ListAppDeaths(ListAppDeathsRequest) returns (ListAppDeathsResponse);
   // One optional host-managed scrcpy capture per attachment (video, audio or both); the driver
   // never encodes media. Requires scrcpy on the daemon host.
   rpc StartRecording(StartRecordingRequest) returns (StartRecordingResponse);
@@ -254,6 +257,23 @@ message DriverLogRequest {
 
 message DriverLogResponse {
   repeated string lines = 1;
+}
+
+message ListAppDeathsRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // Only deaths with a larger `AppDeath.sequence` (0 = all).
+  int64 after_sequence = 3;
+  // Only this package's deaths (any of its processes).
+  optional string package_name = 4;
+  // Return no deaths, only `last_sequence`: where a later call's `after_sequence` starts.
+  bool sequence_only = 5;
+}
+
+message ListAppDeathsResponse {
+  repeated AppDeath deaths = 1;
+  // The largest sequence recorded so far, whatever the filters (0 = none yet).
+  int64 last_sequence = 2;
 }
 
 message DeviceLogsRequest {

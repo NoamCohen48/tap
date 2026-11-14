@@ -12,6 +12,8 @@ from google.protobuf import json_format
 
 from . import _gen as pb
 from .models import (
+    AppDeath,
+    AppDeathKind,
     AppProcess,
     AttachedDeviceEntry,
     Bounds,
@@ -440,6 +442,22 @@ def connection_entry(entry: pb.ConnectionEntry) -> ConnectionEntry:
             AttachedDeviceEntry(d.attached_device_id, d.serial, d.generation)
             for d in entry.attached_devices
         ),
+    )
+
+
+def app_death(death: pb.AppDeath) -> AppDeath:
+    return AppDeath(
+        sequence=death.sequence,
+        kind=AppDeathKind.ANR if death.kind == pb.AppDeath.KIND_ANR else AppDeathKind.CRASH,
+        package_name=death.package_name,
+        process_name=death.process_name,
+        pid=death.pid,
+        at=death.at_epoch_ms / 1000,
+        exception_class=death.exception_class,
+        message=death.message,
+        stack_trace=death.stack_trace,
+        watched=death.watched,
+        reported=death.reported,
     )
 
 

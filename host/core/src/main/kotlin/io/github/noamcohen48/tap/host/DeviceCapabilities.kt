@@ -83,6 +83,7 @@ object DeviceCapabilities {
             "Screenshot" to setOf(CAPABILITY_SCREENSHOT),
             "DriverLog" to setOf(CAPABILITY_DRIVER_LOG),
             "DeviceLogs" to setOf(CAPABILITY_DEVICE_LOGS),
+            "ListAppDeaths" to emptySet(),
             "StartRecording" to
                 setOf(
                     CAPABILITY_RECORD_VIDEO,

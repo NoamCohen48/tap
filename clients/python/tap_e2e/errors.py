@@ -7,7 +7,7 @@ from collections.abc import Sequence
 from typing import TYPE_CHECKING
 
 from . import _proto
-from .models import ConditionPart, ElementSnapshot, ErrorCode, FailureReason, SelectorNarrowing, WaitReason
+from .models import AppDeath, ConditionPart, ElementSnapshot, ErrorCode, FailureReason, SelectorNarrowing, WaitReason
 
 if TYPE_CHECKING:
     from . import _gen as pb
@@ -50,6 +50,7 @@ class CommandError(TapError):
         generation: int,
         duration_ms: int,
         narrowing: SelectorNarrowing | None = None,
+        app_death: AppDeath | None = None,
     ):
         self.code = code
         self.detail = detail
@@ -62,6 +63,9 @@ class CommandError(TapError):
         self.duration_ms = duration_ms
         self.narrowing = narrowing
         """Why the selector found no node, read on the device after a ``NOT_FOUND``; None
+        otherwise."""
+        self.app_death = app_death
+        """For ``AUT_CRASHED`` / ``AUT_ANR``: the app's death that replaced the code; None
         otherwise."""
         where = f" {selector}" if selector else ""
         detail = f"/{self.detail}" if self.detail else ""
@@ -96,7 +100,32 @@ class CommandError(TapError):
             result.session_generation,
             result.duration_ms,
             _proto.selector_narrowing(error, selectors),
+            _proto.app_death(error.app_death) if error.HasField("app_death") else None,
         )
+
+
+class AppDied(TapError):
+    """A watched app crashed or stopped responding during a ``guard()`` block, or during a test
+    (the pytest plugin's end-of-test check). ``deaths`` are the deaths, oldest first; ``death``
+    the first. ``failure`` is what the block raised, if anything: the ``CommandError`` that
+    carried the death, or the block's own failure. It is also the exception's ``__cause__``.
+    """
+
+    def __init__(self, deaths: Sequence[AppDeath], failure: BaseException | None = None):
+        self.deaths: tuple[AppDeath, ...] = tuple(deaths)
+        """The deaths, oldest first."""
+        self.failure = failure
+        """What the block (or test) raised, if anything."""
+        first = self.deaths[0]
+        lines = [f"{len(self.deaths)} app deaths; first: {first.summary}" if len(self.deaths) > 1 else first.summary]
+        lines += [line for line in first.stack_trace.splitlines()[:12] if line.strip()]
+        lines += [f"then {death.summary}" for death in self.deaths[1:]]
+        super().__init__("\n".join(lines))
+
+    @property
+    def death(self) -> AppDeath:
+        """The first death."""
+        return self.deaths[0]
 
 
 class WaitTimeoutError(TapError):

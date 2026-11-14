@@ -7,7 +7,7 @@
     },
     "tap.v1.DeviceService": {
       "ListDevices": ["devices"], "Unquarantine": ["unquarantine"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
-      "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["logs", "capture"], "DeviceLogs": ["logs"],
+      "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["logs", "capture"], "DeviceLogs": ["logs"], "ListAppDeaths": ["deaths", "tap"],
       "StartRecording": ["media_record"], "StopRecording": ["media_record"],
       "ScreenSnapshot": ["snapshot", "settle"], "ResolveRef": ["tap"],
       "SetAnimations": ["condition"], "SetDarkMode": ["condition"], "SetFontScale": ["condition"], "SetDensity": ["condition"], "SetNetwork": ["condition"], "SetSystemLocales": ["condition"], "SetLocation": ["set_location"], "SetStayAwake": ["condition"], "SetAccessibilityDisplay": ["condition"],
@@ -47,6 +47,8 @@
       {"methods": ["ensure_usable", "available_serials", "broken", "usable"], "tools": [], "reason": "Client usability/filtering helpers; devices exposes inventory, no raw connection escape hatch."}
     ],
     "App": [
+      {"methods": ["deaths", "guard", "watch_deaths"], "tools": ["deaths"], "reason": "A session is always guarded: every step reports the watched deaths since the previous one; deaths looks back."},
+      {"methods": ["expect_death"], "tools": ["tap", "app"], "reason": "--expect-death / expect_death on any step that can send input."},
       {"methods": ["element", "wait", "is_installed", "install", "uninstall", "force_stop", "clear_data", "grant_permission", "is_permission_granted", "set_locales", "locales", "revoke_permission", "launch", "await_visible", "foreground", "background", "open_link", "cold_launch", "process", "is_running"], "tools": ["app", "tap", "wait_for"]},
       {"methods": ["await_toast", "await_notification"], "tools": ["await_toast", "notification"], "reason": "Package filter supplies app scope."},
       {"methods": ["await_screen_stable", "await_settled", "await_animation_end"], "tools": ["settle"], "reason": "tree/pixels/all and explicit package preserve SDK shorthands."},
@@ -56,6 +58,8 @@
       {"methods": ["capabilities", "list", "read", "write", "delete", "export_database", "import_database"], "tools": ["app_data"]}
     ],
     "Device": [
+      {"methods": ["app_deaths", "death_sequence", "take_unhandled_deaths", "guard", "watch_deaths"], "tools": ["deaths"], "reason": "A session is always guarded: every step reports the watched deaths since the previous one (the agent keeps the sequence); deaths looks back."},
+      {"methods": ["expect_death"], "tools": ["tap", "app"], "reason": "--expect-death / expect_death on any step that can send input."},
       {"methods": ["capabilities"], "tools": ["capabilities"]},
       {"methods": ["app", "info", "press_back", "press_home", "press_key", "open_notifications", "open_quick_settings", "set_orientation", "set_display_rotation", "unfreeze_rotation", "wake", "sleep", "dismiss_keyguard"], "tools": ["app", "device_info", "press_key", "open_panel", "rotate", "screen"]},
       {"methods": ["await_permission_prompt", "choose_permission", "keyboard_shown", "hide_keyboard", "set_clipboard", "clipboard"], "tools": ["permission", "keyboard", "clipboard"]},

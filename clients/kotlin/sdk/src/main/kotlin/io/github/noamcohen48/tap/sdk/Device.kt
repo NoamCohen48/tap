@@ -205,6 +205,9 @@ class Device internal constructor(
     private val connectionInvalid = AtomicBoolean(false)
     private val connectionInvalidCause = AtomicReference<Throwable?>(null)
 
+    /** Death sequences a [guard] / [watchDeaths] / [expectDeath] block handed to the caller. */
+    internal val claimedDeaths: MutableSet<Long> = java.util.concurrent.ConcurrentHashMap.newKeySet()
+
     // Explicitly owned fail-closed scope: SupervisorJob + IO, one per Device, never GlobalScope.
     // It hosts at most one fail-closed job (drain-timeout path only) and is cancelled after
     // every terminal close path, so no background work outlives the handle.
@@ -1045,6 +1048,68 @@ class Device internal constructor(
             }
         }
     }
+
+    /**
+     * The crashes and ANRs Android logged on this device since the attachment opened, oldest first
+     * (the newest 256): those with a [AppDeath.sequence] above [after], of [packageName] when given.
+     * Every app is listed; [AppDeath.watched] says which ones count for this attachment. Reads the
+     * server's record (it follows the device's crash log), so it is cheap to call.
+     */
+    suspend fun appDeaths(
+        after: Long = 0,
+        packageName: String? = null,
+    ): List<AppDeath> = listAppDeaths(this, "Device.appDeaths", after, packageName).first
+
+    /**
+     * The latest [AppDeath.sequence] the server recorded on this attachment (0 = none): pass it to
+     * [appDeaths] or [takeUnhandledDeaths] as `after` to see only later deaths.
+     */
+    suspend fun deathSequence(): Long = deathMark(this, "Device.deathSequence")
+
+    /**
+     * The watched deaths after [after] that nothing handed to the test yet: no command's error
+     * carried them ([AppDeath.reported]) and no [guard] / [watchDeaths] / [expectDeath] block
+     * claimed them. Claims them, so a second call does not return them. This is the end-of-test
+     * check the JUnit extension runs (after waiting [AppDeath.SETTLE]); another test framework can
+     * run it the same way.
+     */
+    suspend fun takeUnhandledDeaths(after: Long): List<AppDeath> =
+        unhandledDeaths(this, after, "Device.takeUnhandledDeaths").onEach { claimedDeaths += it.sequence }
+
+    /**
+     * Runs [block] and throws [AppDiedException] if any watched app crashed or stopped responding
+     * while it ran: from the command that failed because of it (its [CommandException] is the
+     * cause), when the block ends without failing, or in place of the block's own failure (which
+     * is then suppressed). Without a death, the block's value or failure comes through unchanged.
+     *
+     * ```kotlin
+     * try {
+     *     device.guard { app.element(text("Pay")).tap(); app.await(text("Paid")).visible() }
+     * } catch (died: AppDiedException) {
+     *     println(died.death.stackTrace)
+     * }
+     * ```
+     *
+     * A death a block handed over is not reported again (by an outer block or the JUnit
+     * extension's end-of-test check). The client learns of a death at the next Tap call or at the
+     * end of the block, [AppDeath.SETTLE] after its last call; it cannot stop the block's own code at
+     * the moment of the crash.
+     */
+    suspend fun <T> guard(block: suspend () -> T): T = guarded(this, null, "Device.guard", block)
+
+    /** Runs [block] and returns its value with the watched deaths during it; never throws for a death. */
+    suspend fun <T> watchDeaths(block: suspend () -> T): WatchedDeaths<T> = watching(this, null, "Device.watchDeaths", block)
+
+    /**
+     * Runs [block], which should make a watched app crash or stop responding, and returns that
+     * death: the one a failing command in the block carried, or the first logged during the block
+     * or within [timeout] after it. Fails with [AssertionError] when none came. A command failing
+     * because of the death does not fail the block; any other failure does.
+     */
+    suspend fun expectDeath(
+        timeout: Duration = timeouts.wait,
+        block: suspend () -> Unit,
+    ): AppDeath = expectedDeath(this, null, timeout, "Device.expectDeath", block)
 
     /** [App.awaitVisible]. */
     internal suspend fun awaitAppVisible(

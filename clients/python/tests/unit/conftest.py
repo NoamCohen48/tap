@@ -173,6 +173,9 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         # Serials Unquarantine was called with, and quarantined serials with their reason.
         self.unquarantined: list[str] = []
         self.quarantined: dict[str, str] = {}
+        # The server's death record; ListAppDeaths filters it like the daemon.
+        self.deaths: list[pb.AppDeath] = []
+        self.death_requests: list[pb.ListAppDeathsRequest] = []
         self.conditions: list = []
         self.foreground: tuple[str, str] | None = None
         # Device files by path; the headers and chunk sizes the uploads carried.
@@ -290,6 +293,15 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def DeviceLogs(self, request, context):
         self._own("device_logs", request, context)
         return self.device_logs
+
+    def ListAppDeaths(self, request, context):
+        self._own("list_app_deaths", request, context)
+        self.death_requests.append(request)
+        listed = [] if request.sequence_only else [
+            d for d in self.deaths
+            if d.sequence > request.after_sequence and (not request.HasField("package_name") or d.package_name == request.package_name)
+        ]
+        return pb.ListAppDeathsResponse(deaths=listed, last_sequence=max((d.sequence for d in self.deaths), default=0))
 
     def SetAnimations(self, request, context):
         self._own("set_animations", request, context)

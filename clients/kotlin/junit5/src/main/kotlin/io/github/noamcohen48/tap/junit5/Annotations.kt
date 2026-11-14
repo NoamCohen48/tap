@@ -17,6 +17,7 @@ import org.junit.jupiter.api.extension.ExtendWith
  * | `tap.artifactsDir` | run records and failure artifacts root (default `build/tap-artifacts`) |
  * | `tap.report` | `on` (default) writes run metadata, lifecycle JSONL and an artifact manifest; `off` keeps legacy failure-artifact paths |
  * | `tap.capture` | `onFailure` (default) = `Device.capture()` every device of a failed test into the artifacts root; `off` = capture nothing |
+ * | `tap.appDeaths` | `fail` (default) = a test whose watched app crashed or stopped responding, and nothing handed the death to the test, fails with `AppDiedException`; `off` = no end-of-test check (see [AllowAppDeath]) |
  * | `tap.acquireTimeoutSeconds` | how long to wait for a device another session holds (default 300) |
  * | `tap.server` | `host:port` of a running server (default: the one `tap start` recorded in the state dir) |
  * | `tap.token` | bearer token for an explicit `tap.server` (default: the one in the state dir's `daemon.json`) |
@@ -50,6 +51,16 @@ enum class DeviceLifetime {
      */
     PER_CLASS,
 }
+
+/**
+ * Turns off the end-of-test app death check (`tap.appDeaths`) for a test method or every test of
+ * a class: a watched app that crashes or stops responding fails the test only through a command
+ * that fails because of it. For tests that kill the app on purpose without
+ * `expectDeath { }` (monkey or stress tests, say).
+ */
+@Target(AnnotationTarget.FUNCTION, AnnotationTarget.CLASS)
+@Retention(AnnotationRetention.RUNTIME)
+annotation class AllowAppDeath
 
 /** Injects the [Device] bound to [role]; the default role is `"device"`. */
 @Target(AnnotationTarget.VALUE_PARAMETER)

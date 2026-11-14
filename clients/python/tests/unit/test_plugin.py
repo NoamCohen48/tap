@@ -23,6 +23,7 @@ from tap_e2e.pytest_plugin import (
     _capture_mode,
     _device_scope,
     _Held,
+    _app_deaths_mode,
     _reusable,
     _rotate,
     _scope_key,
@@ -216,3 +217,70 @@ def test_declared_roles_take_positional_names_then_keyword_criteria():
         ["device"],
         {"device": DeviceCriteria(min_api=30)},
     )
+
+
+pytest_plugins = ["pytester"]
+
+
+def test_app_deaths_mode_parses_fail_and_off_only():
+    assert _app_deaths_mode("fail") is True
+    assert _app_deaths_mode(" OFF ") is False
+    with pytest.raises(pytest.UsageError, match="tap_app_deaths"):
+        _app_deaths_mode("warn")
+
+
+_DEATH_CONFTEST = '''
+import pytest
+from tap_e2e.models import AppDeath, AppDeathKind
+from tap_e2e.pytest_plugin import _STATE, TestDevices
+
+class StandIn:
+    """Answers the end-of-test check: deaths the test adds with ``die()`` are unhandled."""
+    serial = "serial-aaa"
+    def __init__(self):
+        self.pending = []
+    def death_sequence(self):
+        return 0
+    def take_unhandled_deaths(self, after):
+        taken, self.pending = self.pending, []
+        return taken
+    def die(self):
+        self.pending.append(AppDeath(1, AppDeathKind.CRASH, "com.shop", "com.shop", 7, 1.0,
+                                     "java.lang.IllegalStateException", "Out of stock", "", True, False))
+
+@pytest.fixture
+def tap_devices(request):
+    device = StandIn()
+    request.node.stash[_STATE] = TestDevices({"device": device}, [device.serial])
+    return {"device": device}
+'''
+
+_DEATH_TESTS = '''
+import pytest
+def test_passes(tap_devices): pass
+def test_dies(tap_devices): tap_devices["device"].die()
+def test_dies_and_fails(tap_devices):
+    tap_devices["device"].die()
+    assert False, "own failure"
+@pytest.mark.tap_allow_app_death
+def test_allowed(tap_devices): tap_devices["device"].die()
+def test_dies_and_skips(tap_devices):
+    tap_devices["device"].die()
+    pytest.skip("no fixture app")
+'''
+
+
+def test_the_end_of_test_check_fails_a_test_whose_app_died_unhandled(pytester, monkeypatch):
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.delenv("TAP_APP_DEATHS", raising=False)
+    pytester.makeconftest(_DEATH_CONFTEST)
+    pytester.makepyfile(_DEATH_TESTS)
+    result = pytester.runpytest_subprocess("-p", "tap_e2e.pytest_plugin", "-q", "-o", "tap_report=off")
+    result.assert_outcomes(passed=2, failed=2, skipped=1)
+    output = result.stdout.str()
+    assert "AppDied: com.shop crashed (pid 7): java.lang.IllegalStateException: Out of stock" in output
+    # The failing test's own failure is chained under the death.
+    assert "own failure" in output and "The above exception was the direct cause" in output
+
+    off = pytester.runpytest_subprocess("-p", "tap_e2e.pytest_plugin", "-q", "-o", "tap_report=off", "-o", "tap_app_deaths=off")
+    off.assert_outcomes(passed=3, failed=1, skipped=1)

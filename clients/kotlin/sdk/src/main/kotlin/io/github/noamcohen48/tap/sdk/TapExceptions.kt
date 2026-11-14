@@ -39,6 +39,8 @@ class CommandException(
     val durationMs: Long,
     /** Why the selector found no node, read on the device after a `NOT_FOUND`; null otherwise. */
     val narrowing: SelectorNarrowing? = null,
+    /** For `AUT_CRASHED` / `AUT_ANR`: the app's death that replaced the code; null otherwise. */
+    val appDeath: AppDeath? = null,
 ) : TapException(
         buildString {
             append(code.name)
@@ -68,6 +70,7 @@ class CommandException(
         generation = result.sessionGeneration,
         durationMs = result.durationMs,
         narrowing = result.error.narrowingOrNull(selectors),
+        appDeath = if (result.error.hasAppDeath()) result.error.appDeath.toModel() else null,
     )
 }
 
