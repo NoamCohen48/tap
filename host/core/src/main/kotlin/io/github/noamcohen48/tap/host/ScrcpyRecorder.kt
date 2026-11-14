@@ -39,6 +39,11 @@ class ScrcpyRecorder(
         val maxBytes: Long,
     )
 
+    /** Inspect the configured host executable without starting capture or a child process. */
+    suspend fun executableAvailable(): Boolean? = withContext(Dispatchers.IO) {
+        executableAvailable(executable)
+    }
+
     private val mutex = Mutex()
     private var active: Active? = null
     private var closed = false

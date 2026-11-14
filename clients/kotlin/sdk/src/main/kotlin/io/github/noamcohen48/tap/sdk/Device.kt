@@ -20,6 +20,7 @@ import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.GetClipboard
+import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.NotificationMatch
@@ -264,6 +265,23 @@ class Device internal constructor(
 
     /** API level, model, display size and the package owning the focused window. */
     suspend fun info(): DeviceInfo = executeOrThrow { deviceInfo = DeviceInfoQuery.getDefaultInstance() }.deviceInfo.toModel()
+
+    /**
+     * Read operation eligibility and remaining prerequisites without changing device state.
+     * This is not a guarantee of execution success; matching and runtime checks still apply.
+     */
+    suspend fun capabilities(): DeviceCapabilities {
+        ensureTapBound("Device.capabilities")
+        return admitted("Device.capabilities") {
+            mapped(serial) {
+                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).getDeviceCapabilities(
+                    GetDeviceCapabilitiesRequest.newBuilder()
+                        .setClientConnectionId(ownerConnection.id)
+                        .setAttachedDeviceId(attachedDeviceId).build(),
+                ).toModel()
+            }
+        }
+    }
 
     /** Send `KEYCODE_BACK`. */
     suspend fun pressBack() = pressKey(KEYCODE_BACK)

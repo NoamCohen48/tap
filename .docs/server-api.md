@@ -27,6 +27,35 @@ for deliberate breaking server-API changes, not additive fields or ordinary rele
 server-driver `protocol_version` is separate. Older clients predating the epoch check must be
 upgraded alongside a breaking daemon.
 
+## Device capability discovery
+
+`DeviceService.GetDeviceCapabilities` takes the owning `client_connection_id` and
+`attached_device_id`. `capabilities.proto` defines 89 operation IDs, typed status/reason /
+requirement enums and entries sorted by ID, including unsupported operations. A known ID
+missing from a response maps to UNKNOWN in the SDKs; future numeric IDs remain in entries
+with their raw IDs preserved. This additive RPC does not change the compatibility epoch or
+device wire protocol.
+
+The host-core catalog covers Command operations, DeviceService device actions and AppService
+lifecycle operations, plus meaningful API-dependent variants. Control-plane calls,
+synchronization, app-private-data discovery, event logs and watchers are explicitly outside
+this catalog. Coverage tests compare the classifications with command/RPC definitions.
+
+Statuses are SUPPORTED (known prerequisites met), CONDITIONAL (a named prerequisite remains),
+UNSUPPORTED (known blocker) and UNKNOWN (required facts unavailable). They are eligibility,
+not a guarantee of matching, reachability, Android acceptance or transport success. Reasons
+and requirements are typed; detail is explanatory only. Execution guards remain authoritative;
+no automatic preflight, fallback, retry or test skipping is introduced.
+
+Discovery reads the authenticated driver's handshake API level and negotiated capabilities,
+plus the recorder's configured host executable presence. No driver command, ADB call, hierarchy
+dump, permission grant, setting mutation or child process is sent. Host executable presence is
+refreshed per call, with PATH search capped at 128 entries. Missing scrcpy blocks recording;
+inspection failure is UNKNOWN. Presence alone leaves recording CONDITIONAL: compatible
+scrcpy, device encoders and capture access are not probed. Element action requirements and
+permission choices are not inferred from Android version alone. See `device-capabilities.md`
+and the public [guide](../docs/guide/capabilities.md).
+
 ## Counted touch commands
 
 `Command.multi_tap` (field 47, `MultiTap`) and `Command.hold` (field 48, `TimedPress`) are

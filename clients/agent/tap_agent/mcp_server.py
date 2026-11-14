@@ -165,6 +165,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Complete current device state as SDK JSON."""
         return await call(session, lambda a: a.device_info(device or None))
 
+    @mcp.tool(name="capabilities", annotations=READ_ONLY)
+    async def capabilities(session: Session = "", device: Device = "") -> CallToolResult:
+        """Read SDK operation support, blockers and prerequisites as JSON. Never starts an
+        operation, grants permission or changes settings. Support does not guarantee success."""
+        return await call(session, lambda a: a.capabilities(device or None, as_json=True))
+
     @mcp.tool(name="logs", annotations=WRITES_FILES)
     async def logs(kind: Literal["device", "driver", "hierarchy"] = "device", path: str = "", session: Session = "", device: Device = "") -> CallToolResult:
         """Save SDK device/driver logs or diagnostic hierarchy privately, never inline or overwrite."""

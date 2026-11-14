@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.ErrorDetail
+import io.github.noamcohen48.tap.protocol.OperationRequirements
 
 /**
  * Accessibility actions on one node, as a screen reader performs them (`perform_accessibility_action`,
@@ -89,7 +90,7 @@ internal class AccessibilityActionCommands(
 
     private fun standardAction(action: StandardAction): AccessibilityAction =
         STANDARD[action] ?: run {
-            val api = MIN_API[action]
+            val api = OperationRequirements.actionApi(action)
             if (api != null && Build.VERSION.SDK_INT < api) {
                 val detail = if (api == 29) ErrorDetail.REQUIRES_API_29 else ErrorDetail.REQUIRES_API_30
                 throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, detail, "${action.label} needs API $api (this device is API ${Build.VERSION.SDK_INT})")
@@ -110,7 +111,7 @@ internal class AccessibilityActionCommands(
                 put(StandardAction.A11Y_SCROLL_DOWN, AccessibilityAction.ACTION_SCROLL_DOWN)
                 put(StandardAction.A11Y_SCROLL_LEFT, AccessibilityAction.ACTION_SCROLL_LEFT)
                 put(StandardAction.A11Y_SCROLL_RIGHT, AccessibilityAction.ACTION_SCROLL_RIGHT)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= OperationRequirements.PAGE_ACTION_API) {
                     put(StandardAction.A11Y_PAGE_UP, AccessibilityAction.ACTION_PAGE_UP)
                     put(StandardAction.A11Y_PAGE_DOWN, AccessibilityAction.ACTION_PAGE_DOWN)
                     put(StandardAction.A11Y_PAGE_LEFT, AccessibilityAction.ACTION_PAGE_LEFT)
@@ -118,7 +119,7 @@ internal class AccessibilityActionCommands(
                 }
                 put(StandardAction.A11Y_SHOW_ON_SCREEN, AccessibilityAction.ACTION_SHOW_ON_SCREEN)
                 put(StandardAction.A11Y_CONTEXT_CLICK, AccessibilityAction.ACTION_CONTEXT_CLICK)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) put(StandardAction.A11Y_PRESS_AND_HOLD, AccessibilityAction.ACTION_PRESS_AND_HOLD)
+                if (Build.VERSION.SDK_INT >= OperationRequirements.PRESS_AND_HOLD_API) put(StandardAction.A11Y_PRESS_AND_HOLD, AccessibilityAction.ACTION_PRESS_AND_HOLD)
                 put(StandardAction.A11Y_SELECT, AccessibilityAction.ACTION_SELECT)
                 put(StandardAction.A11Y_CLEAR_SELECTION, AccessibilityAction.ACTION_CLEAR_SELECTION)
                 put(StandardAction.A11Y_FOCUS, AccessibilityAction.ACTION_FOCUS)
@@ -127,15 +128,6 @@ internal class AccessibilityActionCommands(
                 put(StandardAction.A11Y_CUT, AccessibilityAction.ACTION_CUT)
                 put(StandardAction.A11Y_PASTE, AccessibilityAction.ACTION_PASTE)
             }
-
-        private val MIN_API =
-            mapOf(
-                StandardAction.A11Y_PAGE_UP to 29,
-                StandardAction.A11Y_PAGE_DOWN to 29,
-                StandardAction.A11Y_PAGE_LEFT to 29,
-                StandardAction.A11Y_PAGE_RIGHT to 29,
-                StandardAction.A11Y_PRESS_AND_HOLD to 30,
-            )
 
         private val BY_ID: Map<Int, StandardAction> = STANDARD.entries.associate { (name, action) -> action.id to name }
 

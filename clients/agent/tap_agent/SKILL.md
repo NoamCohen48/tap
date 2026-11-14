@@ -22,6 +22,15 @@ tap-agent wait text=Welcome
 tap-agent release                                   # when done: frees the device
 ```
 
+## Discovering support
+
+`tap-agent capabilities` explains SDK operation support on the attached device; `--json` gives
+status, typed reasons, API requirements and remaining prerequisites. The read-only MCP
+`capabilities` tool returns the same JSON. It changes no settings, grants no permissions and
+starts no operations. Unsupported is a known blocker; conditional and unknown are not a promise
+of success. Check a selected element's actions separately. Recording needs scrcpy on the daemon
+host, and a present executable alone does not prove capture will work.
+
 ## Reading the screen
 
 `snapshot` prints one line per node, grouped by window:

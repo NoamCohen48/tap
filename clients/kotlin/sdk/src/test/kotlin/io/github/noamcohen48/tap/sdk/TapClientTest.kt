@@ -118,6 +118,26 @@ class TapClientTest {
 
     private fun client() = TapClient("inprocess:$serverName", channel)
 
+    @Test
+    fun `capabilities names the owner and attachment without Execute and rejects after detach`() = runBlocking {
+        val connection = client().connect("capabilities")
+        try {
+            tapScope {
+                val device = connection.attachDevice("emulator-5554")
+                val entries = device.capabilities()
+                assertEquals(CapabilityStatus.UNKNOWN, entries[Capability.APP_SET_LOCALES].status)
+                assertEquals(connection.id, fakeDevices.capabilityRequests.single().clientConnectionId)
+                assertEquals(device.attachedDeviceId, fakeDevices.capabilityRequests.single().attachedDeviceId)
+                assertEquals(0, fakeDevices.executeCalls.get())
+                device.detach()
+                assertFailsWith<TapUsageException> { device.capabilities() }
+                assertEquals(1, fakeDevices.capabilityRequests.size)
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
     private suspend fun withPrivateApp(block: suspend (App) -> Unit) {
         val connection = client().connect("private-data")
         try {
@@ -2704,6 +2724,13 @@ class TapClientTest {
         @Volatile var listed: List<io.github.noamcohen48.tap.api.v1.DeviceEntry> = emptyList()
 
         override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse = ListDevicesResponse.newBuilder().addAllDevices(listed).build()
+
+        val capabilityRequests = CopyOnWriteArrayList<io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest>()
+
+        override suspend fun getDeviceCapabilities(request: io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest): io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse {
+            capabilityRequests.add(request)
+            return io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse.getDefaultInstance()
+        }
 
         val unquarantined = CopyOnWriteArrayList<String>()
 

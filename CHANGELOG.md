@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Read per-device operation support with `device.capabilities()` in Kotlin/Python,
+  `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
+  explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining
+  prerequisites without changing device state or starting operations.
 - A device quarantined only because a setting it changed did not read back when it was put
   back (another writer changing it again, ADB failing mid-restore) is no longer out of service
   until someone clears it. ListDevices marks it `retry_on_attach`; the next attach, or

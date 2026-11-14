@@ -1,5 +1,6 @@
 # ruff: noqa
 from . import command_pb2 as _command_pb2
+from . import capabilities_pb2 as _capabilities_pb2
 from . import selector_pb2 as _selector_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper

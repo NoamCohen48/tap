@@ -103,6 +103,8 @@ def parser() -> argparse.ArgumentParser:
     verb("detach", "detach one device without ending its session", on_device)
     verb("server-info", "daemon version, compatibility and configuration as JSON", common)
     verb("device-info", "complete current device information as JSON", on_device)
+    p = verb("capabilities", "read SDK operation support and prerequisites; no device changes", on_device)
+    p.add_argument("--json", dest="as_json", action="store_true", help="structured capability entries")
 
     p = verb("logs", "save device/driver logs or diagnostic hierarchy privately", on_device)
     p.add_argument("kind", choices=("device", "driver", "hierarchy"), nargs="?", default="device")
@@ -345,6 +347,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.server_info()
     if v == "device-info":
         return agent.device_info(device)
+    if v == "capabilities":
+        return agent.capabilities(device, as_json=args.as_json)
     if v == "logs":
         return agent.logs(args.kind, device, args.out)
     if v == "record":

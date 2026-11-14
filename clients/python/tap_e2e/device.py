@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING, TypeVar, overload
 from . import _gen as pb
 from . import _proto
 from .app import App
+from .capabilities import DeviceCapabilities, _from_proto as _capabilities_from_proto
 from .errors import CommandError, TapError, WaitTimeoutError
 from .models import (
     AttachedDeviceEntry,
@@ -206,6 +207,22 @@ class Device:
     def info(self) -> DeviceInfo:
         """API level, model, display size and the package owning the focused window."""
         return _proto.device_info(self._execute_or_raise(device_info=pb.DeviceInfoQuery()).device_info)
+
+    def capabilities(self) -> DeviceCapabilities:
+        """Read operation eligibility and prerequisites without changing device state.
+
+        Returns supported, conditional, unsupported and unknown entries. This is not a promise
+        that a particular action will succeed; matching and runtime checks still apply.
+        """
+        self._ensure_usable("capabilities")
+        with mapped_errors(self.serial):
+            response = self.client.device_stub.GetDeviceCapabilities(
+                pb.GetDeviceCapabilitiesRequest(
+                    client_connection_id=self.owner_connection.id,
+                    attached_device_id=self.attached_device_id,
+                ), timeout=30,
+            )
+        return _capabilities_from_proto(response)
 
     def press_back(self) -> None:
         """Send ``KEYCODE_BACK``."""

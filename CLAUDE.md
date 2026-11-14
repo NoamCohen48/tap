@@ -63,6 +63,8 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
   host-owned scrcpy child (`StartRecording`), its measured timing limits, the pre-merge review,
   and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).
+- `.docs/device-capabilities.md` — approved design and implementation plan for read-only
+  per-attachment operation support, shared by the server, SDKs and tap-agent (G37).
 - `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
   foreground/background/deep links, permission dialogs, gestures), the group in progress with its
   per-action design and upstream comparison, and the prioritised backlog.

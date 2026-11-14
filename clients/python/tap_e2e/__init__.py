@@ -14,6 +14,14 @@ from importlib.metadata import version as _dist_version
 
 from .app import App
 from .app_data import AppData, AppDataAccess, DatabaseBundle, PrivateFileEntry
+from .capabilities import (
+    Capability,
+    CapabilityReason,
+    CapabilityRequirement,
+    CapabilityStatus,
+    DeviceCapabilities,
+    DeviceCapability,
+)
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .screen import Screen
@@ -119,6 +127,12 @@ from .client import (
 )
 
 __all__ = [
+    "Capability",
+    "CapabilityReason",
+    "CapabilityRequirement",
+    "CapabilityStatus",
+    "DeviceCapabilities",
+    "DeviceCapability",
     "CONTAINS",
     "DOWN",
     "ENDS_WITH",

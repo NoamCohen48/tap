@@ -31,7 +31,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "CLI and the MCP server, and ends on `release` or after 15 idle minutes. `--session NAME` "
         "(or `TAP_AGENT_SESSION`) keeps several apart. A device is held by one session at a time, "
         "exactly as a test holds it.",
-        ["devices", "attach", "sessions", "detach", "release", "unquarantine", "server-info", "device-info"],
+        ["devices", "attach", "sessions", "detach", "release", "unquarantine", "server-info", "device-info", "capabilities"],
     ),
     (
         "Reading the screen",

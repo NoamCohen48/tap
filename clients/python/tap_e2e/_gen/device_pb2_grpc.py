@@ -3,6 +3,7 @@
 import grpc
 import warnings
 
+from . import capabilities_pb2 as capabilities__pb2
 from . import device_pb2 as device__pb2
 
 GRPC_GENERATED_VERSION = '1.84.0'
@@ -53,6 +54,11 @@ class DeviceServiceStub:
                 '/tap.v1.DeviceService/Detach',
                 request_serializer=device__pb2.DetachRequest.SerializeToString,
                 response_deserializer=device__pb2.DetachResponse.FromString,
+                _registered_method=True)
+        self.GetDeviceCapabilities = channel.unary_unary(
+                '/tap.v1.DeviceService/GetDeviceCapabilities',
+                request_serializer=capabilities__pb2.GetDeviceCapabilitiesRequest.SerializeToString,
+                response_deserializer=capabilities__pb2.GetDeviceCapabilitiesResponse.FromString,
                 _registered_method=True)
         self.Execute = channel.unary_unary(
                 '/tap.v1.DeviceService/Execute',
@@ -190,6 +196,14 @@ class DeviceServiceServicer:
 
     def Detach(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetDeviceCapabilities(self, request, context):
+        """Read-only support discovery; never starts operations or changes device state. Requires
+        the owning attachment, like Execute. Not a guarantee that a specific invocation succeeds.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -388,6 +402,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.Detach,
                     request_deserializer=device__pb2.DetachRequest.FromString,
                     response_serializer=device__pb2.DetachResponse.SerializeToString,
+            ),
+            'GetDeviceCapabilities': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetDeviceCapabilities,
+                    request_deserializer=capabilities__pb2.GetDeviceCapabilitiesRequest.FromString,
+                    response_serializer=capabilities__pb2.GetDeviceCapabilitiesResponse.SerializeToString,
             ),
             'Execute': grpc.unary_unary_rpc_method_handler(
                     servicer.Execute,
@@ -603,6 +622,33 @@ class DeviceService:
             '/tap.v1.DeviceService/Detach',
             device__pb2.DetachRequest.SerializeToString,
             device__pb2.DetachResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetDeviceCapabilities(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/GetDeviceCapabilities',
+            capabilities__pb2.GetDeviceCapabilitiesRequest.SerializeToString,
+            capabilities__pb2.GetDeviceCapabilitiesResponse.FromString,
             options,
             channel_credentials,
             insecure,
