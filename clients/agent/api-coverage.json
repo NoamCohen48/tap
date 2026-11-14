@@ -22,6 +22,7 @@
   },
   "excluded_rpcs": {
     "tap.v1.ClientConnectionService.Observe": "Observed test-client liveness is infrastructure; agents use held connections.",
+    "tap.v1.DeviceService.ListAppDeaths": "Not surfaced by tap-agent yet: a failed step already names the death (AUT_CRASHED / AUT_ANR).",
     "tap.v1.AppService.AwaitIdle": "Synchronization is work in progress and intentionally deferred; state/tree/pixel waits are independent.",
     "tap.v1.WatchService.Watch": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
     "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording."

@@ -8,6 +8,13 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- App crashes and ANRs are recorded as they happen. The server follows the device's crash log
+  for the whole attachment and keeps a record of each death (exception, message, process, pid,
+  time, stack trace), listed by the new `ListAppDeaths` RPC and carried by the failure it
+  explains (`Error.app_death`). A wait that is running when a watched app dies ends at once
+  (`AUT_CRASHED` / `AUT_ANR`, detail `CANCELLED`) instead of running to its timeout. An app is
+  watched from a call that starts it, as before, and now also from the first command whose
+  selector names it, so an app opened from the launcher or a notification counts too.
 - Read per-device operation support with `device.capabilities()` in Kotlin/Python,
   `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
   explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining

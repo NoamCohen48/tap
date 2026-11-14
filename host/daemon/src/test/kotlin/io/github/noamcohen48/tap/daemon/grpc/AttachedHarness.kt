@@ -31,12 +31,13 @@ import java.security.SecureRandom
 
 /** One attached device on a fake driver, behind in-process Device and App services. */
 internal class AttachedHarness private constructor(
-    private val driver: FakeDriverServer,
+    val driver: FakeDriverServer,
     private val client: DriverClient,
     val connectionId: String,
     val attached: AttachedDevice,
     private val server: Server,
     private val channel: ManagedChannel,
+    private val daemon: TapDaemon,
 ) {
     val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
     val apps = AppServiceGrpcKt.AppServiceCoroutineStub(channel)
@@ -59,11 +60,26 @@ internal class AttachedHarness private constructor(
                     )
                 }
             val frame = withTimeout(2_000) { withContext(Dispatchers.IO) { driver.nextFrame() } }
-            driver.respond(frame.requestId, Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = frame.requestId, generation = GENERATION))
+            respond(frame.requestId, result)
             withTimeout(5_000) { call.await() }.result
         }
 
+    /** Answers the driver request [requestId] with [result], as the driver would. */
+    fun respond(
+        requestId: Long,
+        result: CommandResult.Builder,
+    ) = driver.respond(requestId, Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = requestId, generation = GENERATION))
+
+    /** The request id of the next `CANCEL` the driver receives. */
+    fun FakeDriverServer.nextCancel(): Long {
+        val frame = nextFrame()
+        check(frame.type == io.github.noamcohen48.tap.protocol.FrameType.CANCEL) { "Expected CANCEL, got ${frame.type}" }
+        return frame.requestId
+    }
+
     private suspend fun close() {
+        // Detaches (stopping the attachment's log follower) before the driver goes away.
+        runCatching { daemon.close(5_000) }
         channel.shutdownNow()
         server.shutdownNow()
         runCatching { client.close() }
@@ -118,7 +134,7 @@ internal class AttachedHarness private constructor(
                         .build()
                         .start()
                 val channel = InProcessChannelBuilder.forName(name).directExecutor().build()
-                val harness = AttachedHarness(driver, client, connection.id, attached, server, channel)
+                val harness = AttachedHarness(driver, client, connection.id, attached, server, channel, daemon)
                 try {
                     harness.block()
                 } finally {

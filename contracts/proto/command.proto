@@ -534,6 +534,41 @@ message Error {
   // NOT_FOUND of a targeted command, and WAIT_TIMEOUT / NO_MATCH of wait_visible / wait_state:
   // which part of the selector ruled the nodes out, read once after the failure.
   optional SelectorNarrowing narrowing = 7;
+  // AUT_CRASHED / AUT_ANR: the death that replaced the code. Set by the host server only; the
+  // driver never sends it.
+  optional AppDeath app_death = 8;
+}
+
+// A crash or ANR of an app on the attached device, as Android logged it (`am_crash` / `am_anr`
+// in the events buffer, the stack trace from the crash buffer). Recorded by the host server.
+message AppDeath {
+  enum Kind {
+    KIND_UNSPECIFIED = 0;
+    KIND_CRASH = 1; // a Java exception or a native crash ended the process
+    KIND_ANR = 2; // the app stopped answering input or a broadcast/service in time
+  }
+  // Per attachment, from 1, in the order the deaths were logged.
+  int64 sequence = 1;
+  Kind kind = 2;
+  string package_name = 3;
+  // The process, `package_name` or `package_name:suffix`.
+  string process_name = 4;
+  int32 pid = 5;
+  // The device clock when Android logged it.
+  int64 at_epoch_ms = 6;
+  // Crash: the exception class (`java.lang.IllegalStateException`, or `Native crash`). ANR: empty.
+  string exception_class = 7;
+  // Crash: the exception message. ANR: Android's reason (`Input dispatching timed out …`).
+  string message = 8;
+  // Crash: the crash buffer's lines for the process (`FATAL EXCEPTION` and its stack, or the
+  // native tombstone summary), at most 32 KiB; empty when they scrolled out or never came. ANR:
+  // empty.
+  string stack_trace = 9;
+  // Whether the package was watched (started through the attachment, or named by a command's
+  // selector) before it died. Only watched deaths explain failures and end waits.
+  bool watched = 10;
+  // Whether a command's error on this attachment already carried it (`Error.app_death`).
+  bool reported = 11;
 }
 
 // Why a selector resolved no node. Diagnostic only: read once after the command failed, from the

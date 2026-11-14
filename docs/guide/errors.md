@@ -100,18 +100,24 @@ repeat a mutation after them blindly.
 
 ## A crashed app
 
-A wait on an app that has died used to end in a timeout on a node that was never coming. Now
-the failure says what happened:
+When the app crashes or stops responding (ANR), the failure says so instead of timing out on a
+node that is never coming:
 
 ```
-AUT_CRASHED/WAIT_TIMEOUT during execute res("pay") on emulator-5554 (request 7, generation 2, 5012 ms): com.shop crashed: [23554,0,com.shop,547,java.lang.IllegalStateException,Out of stock,Cart.kt,41,0]; the command reported WAIT_TIMEOUT: NO_MATCH
+AUT_CRASHED/CANCELLED during execute res("pay") on emulator-5554 (request 7, generation 2, 412 ms): com.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock; the wait was ended (CANCELLED)
 ```
 
-Only apps started through this attachment (`launch`, `cold_launch`, `foreground`, `open_link`)
-count, so another app crashing in the background changes nothing. The check runs only after a
-command fails, so the failure arrives when the running wait ends, not at the moment of the crash.
-Android reports an ANR only when input goes unanswered for about 5 s, so a hang with no input
-waiting stays a plain timeout. The logs of the crash are in the
+The server follows Android's crash log for the whole attachment and keeps a record of every
+crash and ANR (exception, message, process, pid, time and stack trace); the error carries that
+record (`app_death`). A wait that is running when the app dies ends at once (detail
+`CANCELLED`); another command that fails because the app is gone (`NOT_FOUND`, `WAIT_TIMEOUT`,
+…) has the code it replaced as its detail. A tap or another mutation is never cut short.
+
+Only *watched* apps count: one started through this attachment (`launch`, `cold_launch`,
+`foreground`, `open_link`), or one a command's selector names (anything inside `app(pkg)`), from
+that command on. Another app crashing in the background changes nothing, and each crash is
+reported once. Android reports an ANR only when input goes unanswered for about 5 s, so a hang
+with no input waiting stays a plain timeout. The logs of the crash are also in the
 [failure artifacts](artifacts.md#failure-artifacts).
 
 ## Wait timeouts

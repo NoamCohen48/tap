@@ -534,6 +534,45 @@ open class Adb internal constructor(
         return exec(serial, *arguments.toTypedArray(), timeoutMs = 30_000)
     }
 
+    /**
+     * `logcat -d -v epoch` of [buffers] limited to [tags], from [sinceEpochMs] on the device clock
+     * (the whole buffers when null). Lines start with the device time in seconds and milliseconds.
+     */
+    open suspend fun logcatEpoch(
+        serial: String,
+        buffers: List<String>,
+        sinceEpochMs: Long?,
+        tags: List<String>,
+    ): String = exec(serial, *epochLogcatArguments(buffers, sinceEpochMs, tags, dump = true).toTypedArray(), timeoutMs = 30_000)
+
+    /**
+     * A long-lived `logcat -v epoch` child following [buffers] limited to [tags] from [sinceEpochMs]
+     * (the whole buffers when null), stderr merged. Outside ADB admission, like the video server:
+     * it runs for an attachment's lifetime. The caller reads its output and destroys it.
+     */
+    open fun startLogcatEpoch(
+        serial: String,
+        buffers: List<String>,
+        sinceEpochMs: Long?,
+        tags: List<String>,
+    ): Process = processStarter.start(listOf(executable, "-s", serial) + epochLogcatArguments(buffers, sinceEpochMs, tags, dump = false))
+
+    private fun epochLogcatArguments(
+        buffers: List<String>,
+        sinceEpochMs: Long?,
+        tags: List<String>,
+        dump: Boolean,
+    ): List<String> =
+        buildList {
+            add("logcat")
+            if (dump) add("-d")
+            addAll(listOf("-v", "epoch"))
+            buffers.forEach { addAll(listOf("-b", it)) }
+            sinceEpochMs?.let { addAll(listOf("-T", "%d.%03d".format(it / 1000, it % 1000))) }
+            add("-s")
+            addAll(tags)
+        }
+
     /** `dumpsys` [arguments] (e.g. `activity activities`, `window windows`). */
     open suspend fun dumpsys(
         serial: String,

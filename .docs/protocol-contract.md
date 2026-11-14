@@ -300,7 +300,8 @@ Response {
 Each operation produces exactly one `outcome` case on success (the table above) and `error`
 (`code`, optional `detail`, optional `message`, optional `match_count` for the element waits,
 optional `last_state` and `condition_holds` for `wait_state`, optional `narrowing` for a selector that resolved no node)
-on failure. The daemon hands `result` to the
+on failure. `Error.app_death` is set by the host server only (`AUT_CRASHED` / `AUT_ANR`); the
+driver never sends it, so the wire bytes of a driver response do not change. The daemon hands `result` to the
 client as it is.
 
 ### Selectors
@@ -495,7 +496,7 @@ policy; Tap itself never retries.
 | `CANCELLED` | no | yes | Stopped before mutation. `CANCELLED_IN_QUEUE`, `TRANSPORT_CLOSED`. |
 | `DEADLINE_EXCEEDED` | no | yes | Deadline passed outside a normal wait result. `EXPIRED_IN_QUEUE`. |
 | `AUT_NOT_INSTALLED` | no | no | Reserved; not yet emitted. |
-| `AUT_CRASHED` | yes | no | Never sent by the driver. The server replaces `NOT_FOUND`, `WAIT_TIMEOUT`, `NOT_INTERACTABLE`, `STALE_BEFORE_INPUT`, `STALE_DURING_COMMAND` or `ACTION_REJECTED` with it when an app the attachment started has a new `am_crash` event. The detail is the replaced code; the message names the app and keeps the original. Each event is reported once. It says "may have mutated" even when the replaced code does not, since the app's state is gone either way. |
+| `AUT_CRASHED` | yes | no | Never sent by the driver. The server replaces `NOT_FOUND`, `WAIT_TIMEOUT`, `NOT_INTERACTABLE`, `STALE_BEFORE_INPUT`, `STALE_DURING_COMMAND` or `ACTION_REJECTED` with it when a package the attachment watches (started through it, or named by a command's selector) has a new `am_crash` event, and ends a running wait with it (after a `CANCEL`, detail `CANCELLED`) when one arrives during the wait. The detail is the replaced code; the message names the app and keeps the original; `Error.app_death` is the server's record of the death. Each death is reported once. It says "may have mutated" even when the replaced code does not, since the app's state is gone either way. |
 | `AUT_ANR` | yes | no | The same for a new `am_anr` event. |
 | `SYNC_PROVIDER_UNAVAILABLE` | no | yes | Synchronization provider unusable. `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `MALFORMED_STATE`, `PROVIDER_ERROR`, `PROVIDER_TIMEOUT`, `PROVIDER_POISONED`. |
 | `DRIVER_UNHEALTHY` | no | no | Session poisoned by the watchdog (`WATCHDOG`, `HEARTBEAT_EXPIRED`); rebuild the session. |

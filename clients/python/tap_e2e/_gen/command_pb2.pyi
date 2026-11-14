@@ -801,7 +801,7 @@ class Done(_message.Message):
     def __init__(self) -> None: ...
 
 class Error(_message.Message):
-    __slots__ = ("code", "detail", "message", "match_count", "last_state", "condition_holds", "narrowing")
+    __slots__ = ("code", "detail", "message", "match_count", "last_state", "condition_holds", "narrowing", "app_death")
     CODE_FIELD_NUMBER: _ClassVar[int]
     DETAIL_FIELD_NUMBER: _ClassVar[int]
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
@@ -809,6 +809,7 @@ class Error(_message.Message):
     LAST_STATE_FIELD_NUMBER: _ClassVar[int]
     CONDITION_HOLDS_FIELD_NUMBER: _ClassVar[int]
     NARROWING_FIELD_NUMBER: _ClassVar[int]
+    APP_DEATH_FIELD_NUMBER: _ClassVar[int]
     code: ErrorCode
     detail: str
     message: str
@@ -816,7 +817,42 @@ class Error(_message.Message):
     last_state: ElementSnapshot
     condition_holds: _containers.RepeatedScalarFieldContainer[bool]
     narrowing: SelectorNarrowing
-    def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., match_count: _Optional[int] = ..., last_state: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., condition_holds: _Optional[_Iterable[bool]] = ..., narrowing: _Optional[_Union[SelectorNarrowing, _Mapping]] = ...) -> None: ...
+    app_death: AppDeath
+    def __init__(self, code: _Optional[_Union[ErrorCode, str]] = ..., detail: _Optional[str] = ..., message: _Optional[str] = ..., match_count: _Optional[int] = ..., last_state: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., condition_holds: _Optional[_Iterable[bool]] = ..., narrowing: _Optional[_Union[SelectorNarrowing, _Mapping]] = ..., app_death: _Optional[_Union[AppDeath, _Mapping]] = ...) -> None: ...
+
+class AppDeath(_message.Message):
+    __slots__ = ("sequence", "kind", "package_name", "process_name", "pid", "at_epoch_ms", "exception_class", "message", "stack_trace", "watched", "reported")
+    class Kind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+        __slots__ = ()
+        KIND_UNSPECIFIED: _ClassVar[AppDeath.Kind]
+        KIND_CRASH: _ClassVar[AppDeath.Kind]
+        KIND_ANR: _ClassVar[AppDeath.Kind]
+    KIND_UNSPECIFIED: AppDeath.Kind
+    KIND_CRASH: AppDeath.Kind
+    KIND_ANR: AppDeath.Kind
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    KIND_FIELD_NUMBER: _ClassVar[int]
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    PROCESS_NAME_FIELD_NUMBER: _ClassVar[int]
+    PID_FIELD_NUMBER: _ClassVar[int]
+    AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
+    EXCEPTION_CLASS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    STACK_TRACE_FIELD_NUMBER: _ClassVar[int]
+    WATCHED_FIELD_NUMBER: _ClassVar[int]
+    REPORTED_FIELD_NUMBER: _ClassVar[int]
+    sequence: int
+    kind: AppDeath.Kind
+    package_name: str
+    process_name: str
+    pid: int
+    at_epoch_ms: int
+    exception_class: str
+    message: str
+    stack_trace: str
+    watched: bool
+    reported: bool
+    def __init__(self, sequence: _Optional[int] = ..., kind: _Optional[_Union[AppDeath.Kind, str]] = ..., package_name: _Optional[str] = ..., process_name: _Optional[str] = ..., pid: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., exception_class: _Optional[str] = ..., message: _Optional[str] = ..., stack_trace: _Optional[str] = ..., watched: _Optional[bool] = ..., reported: _Optional[bool] = ...) -> None: ...
 
 class SelectorNarrowing(_message.Message):
     __slots__ = ("selector_index", "matches", "parts")
