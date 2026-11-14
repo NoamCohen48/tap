@@ -55,6 +55,26 @@ its `driver/` directory (including any older version-only subdirectories). The n
 extracts its bundled APKs again. Leave `sessions/` intact: it holds device locks and recovery
 journals, not cached files.
 
+## Attachment timing
+
+Each attachment starts fresh driver instrumentation; detaching stops it and restores the
+session's tracked changes. Driver APKs stay installed. Before starting, Tap checks the device's
+power state and sends the wake key only when it cannot confirm that the device is already
+awake and stable. It still attempts to dismiss an insecure keyguard; a secure lock is not bypassed.
+
+The server log (`<state-dir>/daemon.log` with `tap start`) includes lifecycle stage durations:
+
+```text
+[tap] lifecycle serial=85e49002 stage=attach_instrumentation outcome=ok elapsed_ms=2056
+```
+
+Stages distinguish lock waiting, boot/recovery, screen preparation, APK checking/installation,
+instrumentation startup, forwarding, process identity, authentication, health and detach cleanup.
+Durations use a monotonic clock; failed and cancelled stages are reported without request payloads
+or error messages. `attach_total` is the host-core open, including its stages, not the entire
+client RPC or a value to add to the other durations. An APK installation is a deployment cost,
+not the steady-state cost of every attachment.
+
 ## Cleaning up after a crash
 
 When the server or a test process dies hard (a `kill -9`, a power cut), the device can keep

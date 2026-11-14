@@ -56,6 +56,8 @@ data class DeviceSessionConfig(
      * could otherwise install a different build between the check and this session's driver start.
      */
     val installDriver: suspend () -> Boolean = { true },
+    /** Receives duration-only lifecycle diagnostics; never authentication or command payloads. */
+    val lifecycleLog: (String) -> Unit = {},
 )
 
 /**
@@ -84,6 +86,7 @@ class DeviceSession private constructor(
     /** The raw runner. Internal: cross-module users go through typed [AppLifecycle] operations. */
     internal val adb: Adb get() = config.adb
 
+    private val timings = SessionLifecycleTimings(config.serial, config.lifecycleLog)
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
     /** Serialize explicit app lifecycle changes with stopped-app private-data operations. */
@@ -319,7 +322,7 @@ class DeviceSession private constructor(
                     // CLOSED vs QUARANTINED choice below observes every in-flight uncertainty and no
                     // lease handoff or final CLOSED can race a late poison. The drain shares this
                     // bound and quarantines on expiry.
-                    val drainFailure = awaitAdmittedOperations(timeoutMs)
+                    val drainFailure = timings.measure("detach_drain") { awaitAdmittedOperations(timeoutMs) }
                     if (drainFailure != null) failed(drainFailure)
                     // Read before client.close(): a deliberate close never poisons, so this is
                     // exactly "the transport failed while the session was in use".
@@ -328,20 +331,20 @@ class DeviceSession private constructor(
                     // as cancellation (finished == null below), never as a recorded failure.
                     // Before the driver ends: Android force-stops the package when the instrumentation
                     // finishes, and a listener bound then comes back (Adb.releaseDriverNotificationListener).
-                    cleanupStep(failed) { adb.releaseDriverNotificationListener(serial) }
-                    cleanupStep(failed) { client.close() }
-                    cleanupStep(restoreFailed) { restoreSavedState() }
-                    cleanupStep(failed) { adb.removeForward(serial, hostPort) }
+                    cleanupStep(failed) { timings.measure("detach_listener") { adb.releaseDriverNotificationListener(serial) } }
+                    cleanupStep(failed) { timings.measure("detach_client") { client.close() } }
+                    cleanupStep(restoreFailed) { timings.measure("detach_restore") { restoreSavedState() } }
+                    cleanupStep(failed) { timings.measure("detach_forward") { adb.removeForward(serial, hostPort) } }
                     var instrumentationGone = false
                     cleanupStep(failed) {
-                        cleanupInstrumentation(adb, serial, running)
+                        timings.measure("detach_instrumentation") { cleanupInstrumentation(adb, serial, running) }
                         instrumentationGone = true
                     }
                     // UiAutomation.disconnect restores Android's own rotation snapshot. A closed
                     // protocol socket does not prove that disconnect has finished. Put our saved
                     // rotation back only after instrumentation is gone; if cleanup fails, leave
                     // these entries journaled instead of claiming restore.
-                    if (instrumentationGone) cleanupStep(restoreFailed) { restoreSavedState(rotation = true) }
+                    if (instrumentationGone) cleanupStep(restoreFailed) { timings.measure("detach_rotation") { restoreSavedState(rotation = true) } }
                     true
                 }
             if (finished == null) {
@@ -404,7 +407,10 @@ class DeviceSession private constructor(
     }
 
     companion object {
-        suspend fun open(config: DeviceSessionConfig): DeviceSession = open(config, SessionHooks.None)
+        suspend fun open(config: DeviceSessionConfig): DeviceSession =
+            SessionLifecycleTimings(config.serial, config.lifecycleLog).measure("attach_total") {
+                open(config, SessionHooks.None)
+            }
 
         /** [open] with session [hooks]; host/core tests park or observe the race points. */
         internal suspend fun open(
@@ -414,33 +420,38 @@ class DeviceSession private constructor(
             val adb = config.adb
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)
-            val lease = store.acquireLease(config.leaseTimeoutMs)
+            val timings = SessionLifecycleTimings(serial, config.lifecycleLog)
+            val lease = timings.measure("attach_lock") { store.acquireLease(config.leaseTimeoutMs) }
             var leaseOwnedBySession = false
             var observedBootId: String? = null
             var observedPrior: SessionJournal? = null
             try {
-                val bootId = adb.bootId(serial)
+                val bootId = timings.measure("attach_boot") { adb.bootId(serial) }
                 observedBootId = bootId
                 val prior =
-                    recoverJournal(adb, serial, bootId, store, inspect = config.inspectQuarantined)?.let {
-                        when {
-                            it.state != JournalState.QUARANTINED -> restorePriorState(adb, serial, store, it)
-                            it.restoreRetryable ->
-                                try {
-                                    retryRestore(adb, serial, store, it)
-                                } catch (still: DeviceQuarantinedException) {
-                                    // Still not reading back: inspecting goes ahead with it.
-                                    if (!config.inspectQuarantined) throw still
-                                    checkNotNull(store.read())
-                                }
-                            else -> it // inspectQuarantined: recoverJournal refuses it otherwise
+                    timings.measure("attach_recovery") {
+                        recoverJournal(adb, serial, bootId, store, inspect = config.inspectQuarantined)?.let {
+                            when {
+                                it.state != JournalState.QUARANTINED -> restorePriorState(adb, serial, store, it)
+                                it.restoreRetryable ->
+                                    try {
+                                        retryRestore(adb, serial, store, it)
+                                    } catch (still: DeviceQuarantinedException) {
+                                        // Still not reading back: inspecting goes ahead with it.
+                                        if (!config.inspectQuarantined) throw still
+                                        checkNotNull(store.read())
+                                    }
+                                else -> it // inspectQuarantined: recoverJournal refuses it otherwise
+                            }
                         }
                     }
                 observedPrior = prior
-                adb.wakeAndDismissKeyguard(serial)
-                if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
-                    config.driverApk?.let { installDriverPackage(adb, serial, DRIVER_PACKAGE, it) }
-                    config.driverTestApk?.let { installDriverPackage(adb, serial, DRIVER_TEST_PACKAGE, it) }
+                timings.measure("attach_screen") { adb.wakeAndDismissKeyguard(serial) }
+                if ((config.driverApk != null || config.driverTestApk != null) && timings.measure("attach_apk_check") { config.installDriver() }) {
+                    timings.measure("attach_apk_install") {
+                        config.driverApk?.let { installDriverPackage(adb, serial, DRIVER_PACKAGE, it) }
+                        config.driverTestApk?.let { installDriverPackage(adb, serial, DRIVER_TEST_PACKAGE, it) }
+                    }
                 }
 
                 val generation = Math.addExact(prior?.generation ?: 0L, 1L)
@@ -472,7 +483,7 @@ class DeviceSession private constructor(
                 var session: DeviceSession? = null
                 var transferAttempted = false
                 try {
-                    running =
+                    val started = timings.measure("attach_instrumentation") {
                         startDriverWithRetry(
                             adb = adb,
                             serial = serial,
@@ -486,22 +497,25 @@ class DeviceSession private constructor(
                             journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
                             store.write(journal)
                         }
-                    hostPort = adb.forward(serial, running.devicePort)
-                    val driverPid =
+                    }
+                    running = started
+                    hostPort = timings.measure("attach_forward") { adb.forward(serial, started.devicePort) }
+                    val driverPid = timings.measure("attach_pid") {
                         adb.processIds(serial, DRIVER_PACKAGE).singleOrNull()
                             ?: throw DriverStartException("Driver on $serial reported ready but is not exactly one process")
+                    }
                     journal =
                         journal.copy(
                             state = JournalState.ACTIVE,
                             hostPort = hostPort,
                             driverPid = driverPid,
-                            driverStartToken = processStartToken(adb, serial, driverPid),
-                            driverInstanceId = running.driverInstanceId,
+                            driverStartToken = timings.measure("attach_process_identity") { processStartToken(adb, serial, driverPid) },
+                            driverInstanceId = started.driverInstanceId,
                             updatedAtEpochMs = System.currentTimeMillis(),
                         )
                     store.write(journal)
 
-                    client =
+                    val connected = timings.measure("attach_authentication") {
                         connectWithRetry(
                             hostPort,
                             sessionId,
@@ -510,10 +524,12 @@ class DeviceSession private constructor(
                             serial = serial,
                             heartbeatIntervalMs = config.heartbeatIntervalMs,
                         )
-                    client.execute(Requests.health())
+                    }
+                    client = connected
+                    timings.measure("attach_health") { connected.execute(Requests.health()) }
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
-                    session = DeviceSession(config, lease, store, journal, running, hostPort, client, hooks)
+                    session = DeviceSession(config, lease, store, journal, started, hostPort, connected, hooks)
                     // Bind the session-owned usability gate once: every later command admission on
                     // this client — including through previously captured references — consults the
                     // same sticky poison/closing state under the transport mutex, before any ID or

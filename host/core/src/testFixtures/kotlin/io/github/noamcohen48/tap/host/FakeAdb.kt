@@ -31,6 +31,8 @@ class FakeAdb(
         responder?.invoke(serial, command)?.let { return it }
         // Every driver force-stop first looks for a bound notification listener: none, by default.
         if (command == "shell dumpsys notification" && command !in replies) return ok("")
+        // Unknown power state keeps the traditional wake path unless a test supplies evidence.
+        if (command == "shell dumpsys -t 1 power" && command !in replies) return ok("")
         return replies[command] ?: error("unexpected adb -s $serial $command")
     }
 }
