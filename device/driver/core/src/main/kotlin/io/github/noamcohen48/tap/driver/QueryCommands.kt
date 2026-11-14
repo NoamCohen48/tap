@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.driver
 
 import android.os.Build
+import android.os.Process
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.Bounds
@@ -111,6 +112,7 @@ internal class QueryCommands(
                 conditions.highContrastText?.let(::setHighContrastText)
                 conditions.colorInversion?.let(::setColorInversion)
             }.setBoldText(conditions.boldText)
+            .setDriverUid(Process.myUid())
             .build()
 
     /**

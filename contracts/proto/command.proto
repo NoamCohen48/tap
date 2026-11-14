@@ -479,6 +479,9 @@ message DeviceInfo {
   optional bool high_contrast_text = 23;
   optional bool color_inversion = 24;
   bool bold_text = 25; // Configuration.fontWeightAdjustment > 0 (API 31+; false below)
+  // The Linux uid the driver runs as: how the daemon tells the driver's own log lines (the
+  // actions it ran, `device_log.proto`) from an app's that use the same tag.
+  int32 driver_uid = 26;
 }
 
 // An active notification: the package that posted it, its title and text (Notification extras
