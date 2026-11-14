@@ -41,6 +41,8 @@ class CommandPipelineTest {
     private val failWrites = AtomicBoolean(false)
     private val cancelOnFirstChunk = AtomicBoolean(false)
     private val pingOnFirstChunk = AtomicBoolean(false)
+    /** Each `onExecuted` call: the request, its error code, and whether nothing had been written yet. */
+    private val executed = LinkedBlockingQueue<Triple<Long, ErrorCode?, Boolean>>()
     private val listener = object : PipelineListener {
         override fun onPoisoned(reason: String) { poisonReasons.put(reason) }
         override fun onWriteFailed(error: Throwable) { writeFailures.put(error) }
@@ -59,6 +61,7 @@ class CommandPipelineTest {
         queueCapacity = 2,
         uninterruptibleGraceMs = 500,
         watchdogPollMs = 0,
+        onExecuted = { requestId, response -> executed.put(Triple(requestId, response.errorCode, written.isEmpty())) },
     ).start()
 
     @AfterTest
@@ -128,6 +131,35 @@ class CommandPipelineTest {
         assertEquals(1L, nextResponse().requestId)
         assertFalse(ran.get())
         assertTrue(written.isEmpty())
+    }
+
+    @Test
+    fun aCommandThatRanIsObservedWithItsFinalResponseBeforeItIsWritten() {
+        pipeline.submit(1, 5_000) { ok() }
+        assertEquals(1L, nextResponse().requestId)
+        pipeline.submit(2, 5_000) { ctx ->
+            ctx.markMutationStarted()
+            Responses.failure(ErrorCode.ERR_NOT_FOUND)
+        }
+        assertEquals(ErrorCode.ERR_INDETERMINATE, nextResponse().response.errorCode)
+
+        assertEquals(Triple(1L, null, true), executed.poll(1, TimeUnit.SECONDS))
+        assertEquals(Triple(2L, ErrorCode.ERR_INDETERMINATE, true), executed.poll(1, TimeUnit.SECONDS), "the response after the gate rewrite")
+    }
+
+    @Test
+    fun aCommandThatNeverRanIsNotObserved() {
+        val release = CountDownLatch(1)
+        pipeline.submit(1, 5_000) { release.await(); ok() }
+        awaitRunning(1)
+        pipeline.submit(2, 5_000) { ok() }
+        pipeline.cancel(2)
+        assertEquals(2L, nextResponse().requestId)
+        release.countDown()
+        assertEquals(1L, nextResponse().requestId)
+
+        assertEquals(1L, executed.poll(1, TimeUnit.SECONDS)?.first)
+        assertTrue(executed.isEmpty())
     }
 
     @Test
