@@ -28,6 +28,7 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
     Direction,
     ErrorCode,
     FailureReason,
+    LogPriority,
     Element,
     LocationAccuracy,
     Long,
@@ -153,6 +154,11 @@ def _integer(value: int, name: str, low: int, high: int) -> int:
 
 
 NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
+
+LOG_ACTIONS = ("read", "mark", "redact")
+
+LOG_LIMIT = 200
+"""Most log entries one ``log`` call prints by default."""
 
 APP_DATA_ACTIONS = ("capabilities", "list", "read", "write", "delete", "export-db", "import-db")
 
@@ -630,6 +636,71 @@ class Agent:
             else:
                 content = (d.driver_log() if kind == "driver" else d.dump_hierarchy()).bytes
             return str(save_private(path, content))
+        return self._run(step)
+
+    def log(
+        self,
+        action: str = "read",
+        value: str | None = None,
+        device: str | None = None,
+        *,
+        since: str | None = None,
+        after: int | None = None,
+        tail: int | None = None,
+        last_action: bool = False,
+        packages: Sequence[str] = (),
+        priority: str | None = None,
+        tags: Sequence[str] = (),
+        grep: str | None = None,
+        actions: bool = True,
+        limit: int = LOG_LIMIT,
+    ) -> str:
+        """The device log since the attach: logcat lines with Tap's actions and the markers
+        between them. ``read`` prints entries (default: the newest ``limit``), ``mark`` writes
+        the marker ``value``, ``redact`` hides matches of the regular expression ``value``.
+
+        A read starts at one of: ``since`` a marker's name, ``after`` a cursor (the last line of
+        an earlier read), ``tail`` the newest N, ``last_action`` the start of the newest action.
+        ``packages``, ``priority`` (a minimum), ``tags`` and ``grep`` keep matching logcat lines;
+        markers and actions always show (``actions=False`` hides the actions). At most ``limit``
+        entries are printed, the newest ones. Secrets are redacted by the server.
+        """
+        if action not in LOG_ACTIONS:
+            raise AgentError(f"log action must be one of {', '.join(LOG_ACTIONS)}", EXIT_USAGE)
+        reading = action == "read"
+        filtered = since is not None or after is not None or tail is not None or last_action or packages or priority or tags or grep or not actions
+        if reading and value is not None:
+            raise AgentError("log read takes no value; start it with --since, --after, --tail or --last-action", EXIT_USAGE)
+        if not reading and (not value or filtered):
+            raise AgentError(f"log {action} takes {'a marker name' if action == 'mark' else 'a regular expression'} and no read options", EXIT_USAGE)
+        if sum((since is not None, after is not None, tail is not None, bool(last_action))) > 1:
+            raise AgentError("pass only one of since, after, tail and last_action", EXIT_USAGE)
+        _integer(limit, "limit", 1, 5000)
+        if tail is not None:
+            _integer(tail, "tail", 1, 100_000)
+        if after is not None:
+            _integer(after, "after", 0, 2**63 - 1)
+        if priority is not None:
+            try:
+                priority = LogPriority.of(priority).name.lower()
+            except ValueError as error:
+                raise AgentError(str(error), EXIT_USAGE) from None
+
+        def step() -> str:
+            logs = self._device(device).logs
+            if action == "mark":
+                return f"marked {value!r} at cursor {logs.mark(value)}"
+            if action == "redact":
+                logs.redact(value)
+                return "redacting matches in everything read from now on"
+            start: dict = {"since": since if since is not None else after, "tail": tail, "since_last_action": last_action}
+            if all(not part for part in (since, tail, last_action)) and after is None:
+                start = {"tail": limit}
+            entries = logs.read(
+                **start, packages=list(packages), min_priority=priority, tags=list(tags), grep=grep, actions=actions
+            )
+            return render.log(entries, limit)
+
         return self._run(step)
 
     def recording(self, action: str, device: str | None = None, *, video: bool = True, audio_source: str | None = None, max_seconds: int | None = None, out: str | None = None) -> str:

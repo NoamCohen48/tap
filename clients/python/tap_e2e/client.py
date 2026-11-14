@@ -32,6 +32,7 @@ from . import _proto
 from ._gen import (
     app_pb2_grpc,
     app_data_pb2_grpc,
+    device_log_pb2_grpc,
     client_connection_pb2_grpc,
     device_pb2_grpc,
 )
@@ -45,6 +46,7 @@ from .errors import (
     TapError,
     WaitTimeoutError,
 )
+from .steps import current_step
 from .models import (
     ConnectionEntry,
     DeviceEntry,
@@ -96,19 +98,21 @@ class _CallDetails(grpc.ClientCallDetails):
     compression: grpc.Compression | None
 
 
-class _BearerToken(
+class _CallHeaders(
     grpc.UnaryUnaryClientInterceptor,
     grpc.UnaryStreamClientInterceptor,
     grpc.StreamUnaryClientInterceptor,
 ):
-    """Adds ``authorization: Bearer <token>`` to every unary, server-streaming (Observe) and
-    client-streaming (Install) call."""
+    """Adds ``authorization: Bearer <token>`` (when there is a token) and, inside ``step()``,
+    ``tap-step: <id>`` to every unary, server-streaming (Observe) and client-streaming (Install)
+    call."""
 
-    def __init__(self, token: str):
-        self._header = ("authorization", f"Bearer {token}")
+    def __init__(self, token: str | None):
+        self._headers = (("authorization", f"Bearer {token}"),) if token else ()
 
     def _details(self, details: grpc.ClientCallDetails) -> _CallDetails:
-        metadata = (*(details.metadata or ()), self._header)
+        current = current_step()
+        metadata = (*(details.metadata or ()), *self._headers, *((("tap-step", current),) if current else ()))
         return _CallDetails(
             details.method,
             details.timeout,
@@ -130,9 +134,7 @@ class _BearerToken(
 
 def _channel(endpoint: Endpoint, options: list | None = None) -> grpc.Channel:
     channel = grpc.insecure_channel(endpoint.address, options=options or [])
-    if endpoint.token:
-        channel = grpc.intercept_channel(channel, _BearerToken(endpoint.token))
-    return channel
+    return grpc.intercept_channel(channel, _CallHeaders(endpoint.token))
 
 
 def _alive(endpoint: Endpoint, timeout: float = 2.0) -> bool:
@@ -368,6 +370,7 @@ class TapClient:
         self.device_stub = device_pb2_grpc.DeviceServiceStub(self.channel)
         self.apps = app_pb2_grpc.AppServiceStub(self.channel)
         self.app_data = app_data_pb2_grpc.AppDataServiceStub(self.channel)
+        self.device_log = device_log_pb2_grpc.DeviceLogServiceStub(self.channel)
         self._version_checked = False
 
     @classmethod
@@ -627,10 +630,14 @@ class TapConnection:
         skip_driver_install: bool = False,
         wait_for_device: float = 0,
         inspect_quarantined: bool = False,
+        capture_logs: bool = True,
     ) -> Device:
         """Attach ``serial``: install and start the driver (unless ``skip_driver_install``) and
         take the device's session. ``timeouts`` are this device's defaults;
         ``wait_for_device`` > 0 waits that many seconds for another session to release it.
+        ``capture_logs=False`` turns the device log off (``Device.logs``): the server then runs
+        no ``logcat`` for this attachment, and failure artifacts hold what the device's own ring
+        buffer still has.
         Raises ``TapError`` without an RPC once the connection is closed or broken.
 
         ``inspect_quarantined`` attaches a quarantined device to inspect and fix it before
@@ -648,6 +655,7 @@ class TapConnection:
             skip_driver_install=skip_driver_install,
             wait_for_device=wait_for_device,
             inspect_quarantined=inspect_quarantined,
+            capture_logs=capture_logs,
         )
 
     def attached_devices(self, timeouts: Timeouts | None = None) -> list[Device]:

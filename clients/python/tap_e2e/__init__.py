@@ -24,6 +24,8 @@ from .capabilities import (
 )
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
+from .steps import current_step, step
+from .logs import DeviceLog, LogAction, LogEntries, LogEntry, LogFollower, LogLine, LogPriority
 from .screen import Screen
 from .errors import (
     AppLifecycleError,
@@ -169,7 +171,14 @@ __all__ = [
     "Direction",
     "DisplayRotation",
     "Capture",
+    "DeviceLog",
     "DeviceLogs",
+    "LogAction",
+    "LogEntries",
+    "LogEntry",
+    "LogFollower",
+    "LogLine",
+    "LogPriority",
     "DriverLog",
     "Element",
     "ConditionPart",
@@ -223,6 +232,7 @@ __all__ = [
     "checkable",
     "checked",
     "clickable",
+    "current_step",
     "enabled",
     "focusable",
     "focused",
@@ -236,6 +246,7 @@ __all__ = [
     "running_server",
     "scrollable",
     "start_daemon",
+    "step",
     "stop_daemon",
     "text",
     "text_contains",

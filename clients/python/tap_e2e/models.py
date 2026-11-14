@@ -213,6 +213,7 @@ class FailureReason(enum.Enum):
     SESSION_UNUSABLE = "SESSION_UNUSABLE"
     DAEMON_PRECONDITION = "DAEMON_PRECONDITION"
     UNKNOWN_REF = "UNKNOWN_REF"
+    UNKNOWN_LOG_MARKER = "UNKNOWN_LOG_MARKER"
     REF_NOT_ADDRESSABLE = "REF_NOT_ADDRESSABLE"
     UNSUPPORTED_API = "UNSUPPORTED_API"
     """The device's API level is too low for the call (detail ``REQUIRES_API_<n>``)."""
@@ -545,6 +546,8 @@ class LoggedEvent:
     app: dict | None
     error: dict | None
     failure: dict | None
+    step: str | None = None
+    """The step the call was made in (``tap_e2e.step``), or None."""
 
     @property
     def ok(self) -> bool:
@@ -563,7 +566,7 @@ class LoggedEvent:
             "serial": self.serial,
             "ok": self.ok,
         }
-        for key in ("command", "app", "error", "failure"):
+        for key in ("command", "app", "error", "failure", "step"):
             value = getattr(self, key)
             if value is not None:
                 out[key] = value
@@ -953,10 +956,12 @@ class DeviceLogs:
     ``<unavailable: …>`` line."""
 
     logcat: str
-    """``logcat -v threadtime`` of the main, system and crash buffers since the attachment
-    (ring buffers: what scrolled out is gone)."""
+    """The device log since the attachment (``Device.logs``): logcat lines of the main, system
+    and crash buffers, with ``──`` lines for the markers and for the actions Tap ran, secrets
+    redacted. When the attachment turned log capture off: ``logcat -v threadtime`` of what the
+    device's ring buffers still hold."""
     logcat_truncated: bool
-    """The logcat was longer than 4 MiB and keeps its newest lines."""
+    """The log was longer than the server keeps or returns, and has its newest lines."""
     crashes: str
     """Crashes (``FATAL EXCEPTION``, native) and ANRs since the attachment; empty when none."""
     activities: str

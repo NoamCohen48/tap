@@ -218,6 +218,23 @@ assertion about app state. These are ordinary SDK waits, **not** synchronization
 rendered lines; use the default view. `logs device`, `logs driver` and `logs hierarchy` save SDK
 diagnostics to new mode-0600 files, not inline text. `-o PATH` chooses a new file, never overwrites.
 Hierarchy remains diagnostic only. Accessibility data and logs can contain secrets; keep them local.
+
+`log` prints the device log since the attach, inline: the app's logcat lines with Tap's own
+actions and markers between them, secrets redacted, the newest 200 entries by default.
+
+```console
+$ tap-agent tap 'text=Pay'
+$ tap-agent log --last-action --package com.shop --priority warn
+── tap  text="Pay"
+12:01:47.879 W Payments: retrying (timeout)
+── tap  → ok  243 ms
+cursor 1841
+$ tap-agent log --after 1841 --package com.shop     # what came since
+```
+
+`log mark NAME` writes a marker and `log --since NAME` reads from it; `--tag` and `--grep`
+narrow further; `log redact REGEX` hides matches in everything read afterwards. See
+[Device logs](../guide/logs.md).
 MCP screenshot/capture now also accept `path`, matching CLI `-o`.
 
 ## Record an owned device

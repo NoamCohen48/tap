@@ -63,3 +63,14 @@ include them without approval.
 - [Private app data](app-data.md)
 - [Device actions](device-actions.md)
 - [Framework gaps](framework-gaps.md)
+- [ ] **Log parser pipeline.** The device log (`app-logs.md`) is lines of text; a test that
+  wants "the HTTP calls the app made during this step" has to grep them. Add a pipeline of
+  parsers over log entries that turn a library's own log format into typed records, starting
+  with HTTP exchanges (method, URL, status, duration, optionally headers and body) from
+  OkHttp's `HttpLoggingInterceptor` lines, read back as e.g. `device.logs.http(since=…)`.
+  Deliberately left out of the first cut (2026-11-14): it works only for apps that log through
+  a library Tap has a parser for and at a verbose enough level, so it must be opt-in per
+  parser, say what it could not parse, and never look like a network capture (it sees what
+  the app chose to log, after redaction). Open questions: where parsers run (daemon, so every
+  client gets them, or client-side plug-ins), how an app's own format is registered, and how
+  multi-line records interleaved across threads are grouped (tid + tag).

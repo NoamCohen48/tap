@@ -176,6 +176,10 @@ message AttachRequest {
   // puts the device back in QUARANTINED for the same reason; only Unquarantine lifts it. A
   // quarantine waiting for a reboot reset is still refused. A free device attaches as usual.
   optional bool inspect_quarantined = 9;
+  // Read the device's logcat for the whole attachment (`device_log.proto`); absent = true.
+  // False: no logcat child runs, DeviceLogService is FAILED_PRECONDITION and `DeviceLogs` reads
+  // the device's ring buffers at the time of the call.
+  optional bool capture_logs = 10;
 }
 
 message AttachResponse {
@@ -262,9 +266,12 @@ message DeviceLogsRequest {
 }
 
 message DeviceLogsResponse {
-  // `logcat -v threadtime` of the main, system and crash buffers since the attachment opened
-  // (device clock, one second early; the whole buffers when the clock was unreadable). The
-  // buffers are rings, so what scrolled out is gone; longer than 4 MiB keeps the newest lines.
+  // The main, system and crash buffers since the attachment opened, redacted, as text lines.
+  // With log capture on (the default) it is the captured log (`device_log.proto`): nothing has
+  // scrolled out of the device's buffers, and the markers and Tap's actions are lines of their
+  // own (`──`). Otherwise `logcat -v threadtime` at the time of the call (device clock, one
+  // second early; the whole buffers when the clock was unreadable), where what scrolled out of
+  // the ring buffers is gone. Longer than 4 MiB keeps the newest lines.
   string logcat = 1;
   bool logcat_truncated = 2;
   // Since the attachment: the crash buffer (Java `FATAL EXCEPTION`, native crashes) and the

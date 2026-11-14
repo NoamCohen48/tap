@@ -315,6 +315,9 @@ enum class FailureReason {
     /** The ref is not in the attached device's latest screen snapshot. */
     UNKNOWN_REF,
 
+    /** The device log has no marker with the name a read starts from. */
+    UNKNOWN_LOG_MARKER,
+
     /** The ref's node had no selector that matched it alone. */
     REF_NOT_ADDRESSABLE,
 

@@ -23,7 +23,7 @@ from mcp_types import (  # pyright: ignore[reportMissingImports]
 from pydantic import Field, StrictInt
 
 from . import render
-from .core import EXIT_NO_DAEMON, EXIT_USAGE, Agent, AgentError
+from .core import EXIT_NO_DAEMON, EXIT_USAGE, LOG_LIMIT, Agent, AgentError
 from .targets import SELECTOR_KEYS
 
 INSTRUCTIONS = """\
@@ -175,6 +175,37 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def logs(kind: Literal["device", "driver", "hierarchy"] = "device", path: str = "", session: Session = "", device: Device = "") -> CallToolResult:
         """Save SDK device/driver logs or diagnostic hierarchy privately, never inline or overwrite."""
         return await call(session, lambda a: a.logs(kind, device or None, path or None))
+
+    @mcp.tool(name="log")
+    async def log(
+        action: Literal["read", "mark", "redact"] = "read",
+        value: Annotated[str, Field(description="mark: the marker's name; redact: a regular expression whose matches are hidden from now on.")] = "",
+        since: Annotated[str, Field(description="Read from the newest marker with this name.")] = "",
+        after: Annotated[int | None, Field(ge=0, description="Read what came after this cursor (the last line of an earlier read).")] = None,
+        tail: Annotated[int | None, Field(ge=1, le=100_000, description="Read the newest N entries that pass the filters.")] = None,
+        last_action: Annotated[bool, Field(description="Read from the start of the newest Tap action.")] = False,
+        packages: Annotated[list[str], Field(description="Only these apps' lines.")] = [],
+        priority: Annotated[Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None, Field(description="Lines at least this severe.")] = None,
+        tags: Annotated[list[str], Field(description="Only lines with one of these tags.")] = [],
+        grep: Annotated[str, Field(description="Only lines whose message matches this regular expression.")] = "",
+        actions: Annotated[bool, Field(description="False leaves Tap's own actions out.")] = True,
+        limit: Annotated[int, Field(ge=1, le=5000, description="Print at most this many entries, the newest.")] = LOG_LIMIT,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """The device log since the attach: the app's logcat lines in order with Tap's own
+        actions (`── tap  text="Pay"`, `── tap  → ok  243 ms`) and markers, secrets redacted.
+        Read it after an action to see what the app logged (`last_action`, or `mark` a name before
+        a step and read `since` it); narrow with `packages`, `priority`, `tags`, `grep`. The last
+        line gives the cursor to pass as `after` for what comes next."""
+        return await call(
+            session,
+            lambda a: a.log(
+                action, value or None, device or None, since=since or None, after=after, tail=tail,
+                last_action=last_action, packages=packages, priority=priority, tags=tags, grep=grep or None,
+                actions=actions, limit=limit,
+            ),
+        )
 
     @mcp.tool(name="record")
     async def record(

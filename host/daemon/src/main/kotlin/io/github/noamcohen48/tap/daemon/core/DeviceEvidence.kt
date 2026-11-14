@@ -9,7 +9,8 @@ import kotlin.math.min
 
 /**
  * What a device itself recorded since an attachment opened (`DeviceService.DeviceLogs`): the
- * failure evidence the driver cannot see. Every part is read independently, at once, with its
+ * failure evidence the driver cannot see. The log is the attachment's captured one ([DeviceLog])
+ * when it has one, the device's ring buffers otherwise; either way secrets are redacted. Every part is read independently, at once, with its
  * own deadline; a part that fails or runs out of time holds one `<unavailable: …>` line instead
  * of failing the others.
  */
@@ -40,23 +41,37 @@ internal data class DeviceEvidence(
             serial: String,
             sinceEpochSeconds: Long?,
             partTimeoutMs: Long = PART_TIMEOUT_MS,
+            captured: DeviceLog? = null,
         ): DeviceEvidence =
             coroutineScope {
                 suspend fun part(read: suspend () -> String) = part(partTimeoutMs, read)
-                val logcat = async { part { adb.logcat(serial, listOf("main", "system", "crash"), sinceEpochSeconds) } }
-                val crashBuffer = async { part { adb.logcat(serial, listOf("crash"), sinceEpochSeconds) } }
-                val events = async { part { adb.logcat(serial, listOf("events"), sinceEpochSeconds, tags = listOf("am_crash", "am_anr")) } }
+                val redactor = captured?.redactor ?: LogRedactor()
+
+                suspend fun logPart(read: suspend () -> String) = part { read().lineSequence().joinToString("\n", transform = redactor::redact) }
+                val logcat =
+                    async {
+                        if (captured != null) captured(captured) else logPart { adb.logcat(serial, listOf("main", "system", "crash"), sinceEpochSeconds) } to false
+                    }
+                val crashBuffer = async { logPart { adb.logcat(serial, listOf("crash"), sinceEpochSeconds) } }
+                val events = async { logPart { adb.logcat(serial, listOf("events"), sinceEpochSeconds, tags = listOf("am_crash", "am_anr")) } }
                 val activities = async { part { adb.dumpsys(serial, "activity", "activities") } }
                 val windows = async { part { adb.dumpsys(serial, "window", "windows") } }
-                val (text, truncated) = newest(logcat.await(), MAX_LOGCAT_CHARS)
+                val (full, forgotten) = logcat.await()
+                val (text, truncated) = newest(full, MAX_LOGCAT_CHARS)
                 DeviceEvidence(
                     logcat = text,
-                    logcatTruncated = truncated,
+                    logcatTruncated = truncated || forgotten,
                     crashes = crashes(crashBuffer.await(), events.await()),
                     activities = activities.await(),
                     windows = windows.await(),
                 )
             }
+
+        /** The captured log as text, one entry a line, and whether the buffer had forgotten its start. */
+        private fun captured(log: DeviceLog): Pair<String, Boolean> {
+            val read = log.read()
+            return read.backlog.joinToString("") { DeviceLog.text(it) + "\n" } to (read.dropped > 0)
+        }
 
         private suspend fun part(
             timeoutMs: Long,

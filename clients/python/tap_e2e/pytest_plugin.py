@@ -33,8 +33,10 @@ roles than available devices, or a role no available device can play, is skipped
 single-role test moves on to the next device when one is held by another session (waiting only
 when all are). Before each test one device per role is attached in sorted
 serial order so concurrent multi-device tests cannot deadlock; after it, a failed test's
-devices are captured (``Device.capture()``: screenshot, hierarchy, device info, driver log)
-while they remain attached, then they are detached. Attachments never outlive a test, unless ``tap_device_scope`` says
+devices are captured (``Device.capture()``: screenshot, hierarchy, device info, driver log,
+device logs) while they remain attached, then they are detached. Each device's log
+(``Device.logs``) gets a marker ``test <nodeid>`` when the test gets the device and
+``test passed <nodeid>`` / ``test failed <nodeid>`` when it is done. Attachments never outlive a test, unless ``tap_device_scope`` says
 otherwise: then consecutive tests of one class / module / the session that declare the same roles
 reuse the devices, saving the driver start of each attach (about 1 s on an emulator, several on a
 slow phone). Nothing is reset between them — the app keeps the previous test's state, so each test
@@ -607,8 +609,10 @@ def tap_devices(
     if run_key is not None:
         for role, device in devices.items():
             _record(request.config, lambda role=role, device=device: request.config.stash[_RUN].device(run_key, role, device.serial, device.generation))
+    _mark_logs(devices, f"test {request.node.nodeid}")
     yield devices
     failed = any(report.failed for report in state.reports.values())
+    _mark_logs(devices, f"test {'failed' if failed else 'passed'} {request.node.nodeid}")
     try:
         if failed and tap_config.capture_on_failure:
             _capture_artifacts(request.node, tap_config, state)
@@ -645,6 +649,16 @@ def _attach_matching(
     wanted = "; ".join(f"{role}: {criteria[role]}" for role in roles if role in criteria)
     listed = ", ".join(_describe(s, entries.get(s)) for s in available)
     raise pytest.skip.Exception(f"{request.node.name} needs {wanted}; no fit among {listed}")
+
+
+def _mark_logs(devices: dict[str, Device], name: str) -> None:
+    """Writes ``name`` into each device's log (``Device.logs.mark``), so a reader of the log
+    sees where a test begins and ends. Best effort: a test never fails over a marker (the log
+    capture may be off, the device gone)."""
+    name = "".join(" " if not ch.isprintable() else ch for ch in name)[:200]
+    for device in devices.values():
+        with contextlib.suppress(Exception):
+            device.logs.mark(name, timeout=5.0)
 
 
 @pytest.fixture

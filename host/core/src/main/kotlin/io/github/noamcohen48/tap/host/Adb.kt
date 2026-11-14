@@ -534,6 +534,29 @@ open class Adb internal constructor(
         return exec(serial, *arguments.toTypedArray(), timeoutMs = 30_000)
     }
 
+    /**
+     * A long-lived `logcat` of the main, system and crash buffers that prints new lines as the
+     * device logs them, each with its epoch time and uid (see [parseLogcatLine]). It starts at
+     * [since] on the device clock (`seconds.millis`), or at the next line when null. The caller
+     * reads its output and destroys it; it takes no slot of the serial's command lane.
+     */
+    open fun startLogcat(
+        serial: String,
+        since: String?,
+    ): Process =
+        processStarter.start(
+            listOf(executable, "-s", serial, "logcat") +
+                LOGCAT_STREAM_FORMAT +
+                listOf("-b", "main", "-b", "system", "-b", "crash", "-T", since ?: "1"),
+        )
+
+    /** The Linux uid of every installed package (`pm list packages -U`). */
+    open suspend fun packageUids(serial: String): Map<String, Int> =
+        exec(serial, "shell", "pm", "list", "packages", "-U", timeoutMs = 20_000)
+            .lineSequence()
+            .mapNotNull { PACKAGE_UID.matchEntire(it.trim()) }
+            .associate { it.groupValues[1] to it.groupValues[2].toInt() }
+
     /** `dumpsys` [arguments] (e.g. `activity activities`, `window windows`). */
     open suspend fun dumpsys(
         serial: String,
@@ -1674,6 +1697,12 @@ internal fun closeProcessStreams(
         recordFailure(error)
     }
 }
+
+/** The line format [Adb.startLogcat] asks for and [parseLogcatLine] reads. */
+internal val LOGCAT_STREAM_FORMAT = listOf("-v", "threadtime", "-v", "epoch", "-v", "uid")
+
+/** `package:com.shop uid:10123`; a shared uid lists its packages on one uid. */
+private val PACKAGE_UID = Regex("""package:(\S+)\s+uid:(\d+).*""")
 
 /** Starts an OS process; a `fun interface` so tests can substitute a [FakeProcess]. */
 fun interface ProcessStarter {
