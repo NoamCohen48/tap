@@ -680,6 +680,7 @@ tap_watcher/
   daemon.py      read-only channel to the daemon (lazy, re-resolved after a restart)
   activity.py    ActivityHub: one upstream Watch, renumbered seq, restart detection, page readers
   video.py       VideoHub/Feed: one WatchVideo per serial, GOP History, readers and sinks
+  logs.py        LogHub: one WatchLog per attached device, 50 000 entries kept per serial
   recorder.py    Recorder (a Sink) and Recorders: start/stop, limits, SaveClip
   media.py       Mp4Writer (PyAV, no re-encode) and the steps.json document
   recordings.py  Library: staging, commit, list, delete, ZIP on download

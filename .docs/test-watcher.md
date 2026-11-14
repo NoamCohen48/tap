@@ -34,7 +34,8 @@ every finding and how it was fixed. As built:
   logged call, with a snapshot of live connections first. `WatchVideo(serial)` is the shared
   scrcpy video; its server JAR is `tap start --scrcpy-server` (`TAP_SCRCPY_SERVER`).
   `ClientConnectionService.WatchEvents` and `VideoService` are gone. Neither RPC names or
-  renews a connection.
+  renews a connection. `WatchLog(attached_device_id)` (added with device logs,
+  [app-logs.md](app-logs.md)) follows one attachment's redacted device log the same way.
 - **Watcher back end** (`clients/watcher/tap_watcher`): one upstream `Watch` (its own seq, so a
   page's cursor survives daemon restarts; a restart closes the old connections), one
   `WatchVideo` per serial with a 120 s / 32 MiB GOP history, and recordings and clips written
@@ -44,7 +45,9 @@ every finding and how it was fixed. As built:
   (`TAP_WATCHER_RECORDINGS`), `video-N.mp4` parts + `steps.json` (`tap-watch-steps/2`), ZIP
   built on download, 2 GiB cap that refuses new saves. Entries are deleted only from the
   Library view (one or many) or, opt-in, after `--keep-days N`; leftover `.saving-*` / `.zip-*`
-  from an interrupted save are swept at start. The writer holds `flock` on its `.saving-*`
+  from an interrupted save are swept at start. The back end also follows the device log of every
+  attachment (`logs.py`, newest 50 000 entries per serial); the page shows it beside the actions
+  with click-to-seek, and each save adds `log.json` (`tap-watch-log/1`). The writer holds `flock` on its `.saving-*`
   directory until commit, so the sweep never removes a save in progress (another watcher on
   the same library, or an hourly `--keep-days` sweep during a recording); without flock
   (Windows) it removes only staging untouched for a day. Recording limits: 30 min (wall time) / 1 GiB.

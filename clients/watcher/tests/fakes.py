@@ -13,6 +13,7 @@ from tap_e2e.client import Endpoint
 from tap_e2e.proto import client_connection_pb2 as connection
 from tap_e2e.proto import client_connection_pb2_grpc, device_pb2_grpc, watch_pb2_grpc
 from tap_e2e.proto import command_pb2 as command
+from tap_e2e.proto import device_log_pb2 as device_log
 from tap_e2e.proto import device_pb2 as device
 from tap_e2e.proto import event_log_pb2 as event_log
 from tap_e2e.proto import watch_pb2 as watch
@@ -94,6 +95,29 @@ def event(
     return watch.Activity(client_connection_id="c1", event=logged)
 
 
+def line(cursor: int, monotonic_ns: int, message: str = "") -> device_log.LogEntry:
+    """A logcat line the daemon got at [monotonic_ns] on the fake clock."""
+    return device_log.LogEntry(
+        cursor=cursor,
+        host_time_ms=1_700_000_000_000 + monotonic_ns // 1_000_000,
+        host_monotonic_ns=monotonic_ns,
+        line=device_log.LogLine(
+            priority=device_log.LOG_PRIORITY_INFO,
+            tag="App",
+            message=message or f"line {cursor}",
+        ),
+    )
+
+
+def attached(attached_device_id: str, serial: str) -> watch.Activity:
+    return watch.Activity(
+        client_connection_id="c1",
+        device_attached=watch.DeviceAttached(
+            attached_device_id=attached_device_id, serial=serial, generation=1
+        ),
+    )
+
+
 class FakeDaemon(
     client_connection_pb2_grpc.ClientConnectionServiceServicer,
     device_pb2_grpc.DeviceServiceServicer,
@@ -115,6 +139,12 @@ class FakeDaemon(
         self.video_live: asyncio.Queue[watch.WatchVideoResponse] = asyncio.Queue()
         self.video_calls = 0
         self.hold_video = True
+        # `WatchLog`: an attachment's entries, then what its queue gets (None = detached). An
+        # attachment in neither is NOT_FOUND; one in [log_off] has its capture off.
+        self.logs: dict[str, list[device_log.LogEntry]] = {}
+        self.log_live: dict[str, asyncio.Queue[device_log.LogEntry | None]] = {}
+        self.log_off: set[str] = set()
+        self.log_calls: list[tuple[str, int]] = []
 
     def _call(self, name: str, context: grpc.aio.ServicerContext) -> None:
         self.calls.append((name, tuple(context.invocation_metadata() or ())))
@@ -163,6 +193,34 @@ class FakeDaemon(
         self.video_open.set()
         while self.hold_video:
             yield await self.video_live.get()
+
+
+    def log(self, attached_device_id: str, entry: device_log.LogEntry | None) -> None:
+        if entry is not None:
+            self.logs.setdefault(attached_device_id, []).append(entry)
+        self.log_live.setdefault(attached_device_id, asyncio.Queue()).put_nowait(entry)
+
+    async def WatchLog(self, request, context):
+        self._call("WatchLog", context)
+        identifier = request.attached_device_id
+        self.log_calls.append((identifier, request.after_cursor))
+        if identifier in self.log_off:
+            await context.abort(
+                grpc.StatusCode.FAILED_PRECONDITION, "Log capture is off"
+            )
+            return
+        if identifier not in self.logs:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "Unknown attached device")
+            return
+        live = self.log_live.setdefault(identifier, asyncio.Queue())
+        while not live.empty():
+            live.get_nowait()
+        yield watch.WatchLogResponse(
+            entries=[e for e in self.logs[identifier] if e.cursor > request.after_cursor],
+            clock_id="clock",
+        )
+        while (entry := await live.get()) is not None:
+            yield watch.WatchLogResponse(entries=[entry])
 
 
 async def serve(daemon: FakeDaemon) -> tuple[grpc.aio.Server, Endpoint]:

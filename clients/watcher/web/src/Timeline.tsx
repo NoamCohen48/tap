@@ -15,9 +15,10 @@ type Props = {
   dropped: bigint;
   selected?: Action;
   onSelect: (key: string | undefined) => void;
+  hidden?: boolean;
 };
 
-export function Timeline({ actions, failures, dropped, selected, onSelect }: Props) {
+export function Timeline({ actions, failures, dropped, selected, onSelect, hidden }: Props) {
   const [query, setQuery] = useState("");
   const [onlyFailures, setOnlyFailures] = useState(false);
   const list = useRef<HTMLOListElement>(null);
@@ -37,7 +38,7 @@ export function Timeline({ actions, failures, dropped, selected, onSelect }: Pro
   useLayoutEffect(() => {
     const element = list.current;
     if (element && following.current && !selected) element.scrollTop = element.scrollHeight;
-  }, [visible, selected]);
+  }, [visible, selected, hidden]);
 
   // Closing the details resumes following.
   const hadSelection = useRef(false);
@@ -57,7 +58,7 @@ export function Timeline({ actions, failures, dropped, selected, onSelect }: Pro
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       if (event.target instanceof HTMLElement && event.target.closest("input, textarea, select")) return;
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.metaKey || event.ctrlKey || event.altKey || hidden) return;
       if (event.key === "Escape" && selected) {
         onSelect(undefined);
       } else if ((event.key === "j" || event.key === "k") && visible.length) {
@@ -68,10 +69,10 @@ export function Timeline({ actions, failures, dropped, selected, onSelect }: Pro
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [visible, selected, onSelect]);
+  }, [visible, selected, onSelect, hidden]);
 
   return (
-    <aside className="timeline" aria-label="Actions">
+    <aside className="timeline" aria-label="Actions" hidden={hidden}>
       <div className="timeline-head">
         <label className="search">
           <Icon.Search />

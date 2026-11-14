@@ -1,7 +1,7 @@
 """The local recording library: one directory per recording or clip.
 
-`<id>/video-1.mp4` (and `video-2.mp4`… when the stream changed), `<id>/steps.json` and
-`<id>/recording.json` (the `tap.watcher.v1.Recording` as JSON). An entry is written under a
+`<id>/video-1.mp4` (and `video-2.mp4`… when the stream changed), `<id>/steps.json`,
+`<id>/log.json` (the device log during it) and `<id>/recording.json` (the `tap.watcher.v1.Recording` as JSON). An entry is written under a
 `.saving-*` directory and renamed into place, so a listed entry is always complete. The writer
 holds a lock on that directory until it is committed or discarded, and [sweep] removes only
 the ones nobody holds: what an interrupted save left behind, never a recording in progress in
@@ -31,7 +31,8 @@ except ImportError:  # Windows: no flock; the sweep goes by age instead.
     fcntl = None
 
 MAX_LIBRARY_BYTES = 2 * 1024 * 1024 * 1024
-_FILE = re.compile(r"video-[1-9][0-9]{0,3}\.mp4|steps\.json")
+_FILE = re.compile(r"video-[1-9][0-9]{0,3}\.mp4|steps\.json|log\.json")
+_ORDER = {"steps.json": 1, "log.json": 2}
 _DAY_MS = 24 * 60 * 60 * 1000
 # Without flock, a staging directory this old is abandoned: far beyond the longest recording.
 _STALE_STAGING_S = 24 * 60 * 60
@@ -156,12 +157,13 @@ class Library:
         return path
 
     def files(self, identifier: str) -> list[pathlib.Path]:
-        """The entry's downloadable files: its parts in order, then `steps.json`."""
+        """The entry's downloadable files: its parts in order, then `steps.json` and
+        `log.json`."""
         entry = self.path(identifier)
         found = [f for f in entry.iterdir() if f.is_file() and _FILE.fullmatch(f.name)]
         return sorted(
             found,
-            key=lambda f: (f.name == "steps.json", len(f.name), f.name),
+            key=lambda f: (_ORDER.get(f.name, 0), len(f.name), f.name),
         )
 
     def delete(self, identifiers: list[str]) -> None:
