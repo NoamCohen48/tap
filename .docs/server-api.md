@@ -365,7 +365,9 @@ client wrote. `AttachRequest.capture_logs = false` turns the capture off for tha
 
 - **Storage.** In memory only, newest 16 MiB of entry text per attachment (`LOG_BUFFER_BYTES`),
   forgotten at detach. Entries are numbered 1, 2, 3, … per attachment (`cursor`) in the order the
-  daemon got them and stamped with the host clock (`host_time_ms`); a log line also carries the
+  daemon got them and stamped with the host clock (`host_time_ms`) and the daemon's monotonic
+  clock (`host_monotonic_ns`, the clock of `LoggedEvent.started_monotonic_ns` and
+  `VideoFrame.received_monotonic_ns`, so a watcher can place an entry in a video); a log line also carries the
   device clock, uid, pid, tid, priority, tag and message. A message of several lines is several
   entries. On the way out each app line gets `packages`, the apps installed under its uid (app
   id 10000–19999, any user; several for a shared uid). The daemon reads `pm list packages -U`
@@ -462,6 +464,7 @@ for every RPC).
 |---|---|
 | `Watch(after_seq)` → stream `WatchResponse{connections, activities, dropped}` | The daemon-wide activity log (`ActivityLog`, last 10000): `connection_opened{name, held}`, `connection_closed{reason}`, `device_attached{attached_device_id, serial, generation}`, `device_detached{…, reason}` and every logged call (`event`, the same `LoggedEvent` as `Events`), each with a daemon-lifetime `seq`. The first response carries the live connections (sorted by name) and the backlog after `after_seq`; later ones carry live activity. Backlog and live registration are atomic (no gap, no repeat). `dropped` counts evictions since the daemon started. Each reader has a bounded queue (1024); a slow reader gets `RESOURCE_EXHAUSTED` and resumes after its last seq. Negative cursor: `INVALID_ARGUMENT`. |
 | `WatchVideo(serial)` → stream `{header | frame}` | One device's screen as H.264 (below). |
+| `WatchLog(attached_device_id, after_cursor)` → stream `WatchLogResponse{entries, dropped, clock_id}` | One attachment's device log (`LogEntry`, as `ReadLog` with `follow` and no filter, redacted the same way): what the daemon still has after `after_cursor`, then live. The first response carries `dropped` and the `clock_id` of `LogEntry.host_monotonic_ns`. The stream ends normally when the device is detached. Unknown attachment: `NOT_FOUND`; capture off: `FAILED_PRECONDITION`; a reader that falls too far behind: `RESOURCE_EXHAUSTED` (read again after the last cursor). The attachment id comes from `Watch` (`device_attached`, or the snapshot). |
 
 `WatchVideo` checks the inventory (blank, unknown or offline serial: `INVALID_ARGUMENT`) but never attaches, enables screenshots, wakes the display or sends
 input. One optional scrcpy 4.1 producer serves all readers for that serial; its server JAR is

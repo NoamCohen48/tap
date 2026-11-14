@@ -4,6 +4,7 @@ import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DeviceLogServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.WatchServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
@@ -36,6 +37,7 @@ import java.security.SecureRandom
 internal class AttachedHarness private constructor(
     private val driver: FakeDriverServer,
     private val client: DriverClient,
+    val daemon: TapDaemon,
     val connectionId: String,
     val attached: AttachedDevice,
     private val server: Server,
@@ -44,6 +46,7 @@ internal class AttachedHarness private constructor(
     val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
     val apps = AppServiceGrpcKt.AppServiceCoroutineStub(channel)
     val logs = DeviceLogServiceGrpcKt.DeviceLogServiceCoroutineStub(channel)
+    val watch = WatchServiceGrpcKt.WatchServiceCoroutineStub(channel)
 
     /** Sends [command], with the `tap-step` header when [step] is given, and answers it, as the driver would, with [result]. */
     suspend fun execute(
@@ -128,11 +131,12 @@ internal class AttachedHarness private constructor(
                         .addService(DeviceService(daemon))
                         .addService(AppService(daemon))
                         .addService(DeviceLogService(daemon))
+                        .addService(WatchService(daemon))
                         .intercept(StepInterceptor())
                         .build()
                         .start()
                 val channel = InProcessChannelBuilder.forName(name).directExecutor().build()
-                val harness = AttachedHarness(driver, client, connection.id, attached, server, channel)
+                val harness = AttachedHarness(driver, client, daemon, connection.id, attached, server, channel)
                 try {
                     harness.block()
                 } finally {

@@ -1,5 +1,5 @@
-// tap.v1 — read-only watching: what every connection does on its devices, and a device's
-// screen as video. A watcher owns nothing: it names no client connection, never renews a held
+// tap.v1 — read-only watching: what every connection does on its devices, a device's
+// screen as video and an attached device's log. A watcher owns nothing: it names no client connection, never renews a held
 // connection's idle timeout, and its streams ending changes nothing for the connections it
 // watches. Anyone with the daemon token can watch (screens and typed text included).
 
@@ -11,6 +11,8 @@ import type { GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegen
 import { fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
 import type { ConnectionEntry } from "./client_connection_pb";
 import { file_client_connection } from "./client_connection_pb";
+import type { LogEntry } from "./device_log_pb";
+import { file_device_log } from "./device_log_pb";
 import type { LoggedEvent } from "./event_log_pb";
 import { file_event_log } from "./event_log_pb";
 import type { Message } from "@bufbuild/protobuf";
@@ -19,7 +21,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file watch.proto.
  */
 export const file_watch: GenFile = /*@__PURE__*/
-  fileDesc("Cgt3YXRjaC5wcm90bxIGdGFwLnYxIiEKDFdhdGNoUmVxdWVzdBIRCglhZnRlcl9zZXEYASABKAMidAoNV2F0Y2hSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkSJAoKYWN0aXZpdGllcxgCIAMoCzIQLnRhcC52MS5BY3Rpdml0eRIPCgdkcm9wcGVkGAMgASgDIswCCghBY3Rpdml0eRILCgNzZXEYASABKAMSEwoLYXRfZXBvY2hfbXMYAiABKAMSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYAyABKAkSNQoRY29ubmVjdGlvbl9vcGVuZWQYBCABKAsyGC50YXAudjEuQ29ubmVjdGlvbk9wZW5lZEgAEjUKEWNvbm5lY3Rpb25fY2xvc2VkGAUgASgLMhgudGFwLnYxLkNvbm5lY3Rpb25DbG9zZWRIABIxCg9kZXZpY2VfYXR0YWNoZWQYBiABKAsyFi50YXAudjEuRGV2aWNlQXR0YWNoZWRIABIxCg9kZXZpY2VfZGV0YWNoZWQYByABKAsyFi50YXAudjEuRGV2aWNlRGV0YWNoZWRIABIkCgVldmVudBgIIAEoCzITLnRhcC52MS5Mb2dnZWRFdmVudEgAQgYKBGtpbmQiLgoQQ29ubmVjdGlvbk9wZW5lZBIMCgRuYW1lGAEgASgJEgwKBGhlbGQYAiABKAgiIgoQQ29ubmVjdGlvbkNsb3NlZBIOCgZyZWFzb24YASABKAkiUAoORGV2aWNlQXR0YWNoZWQSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDIkwKDkRldmljZURldGFjaGVkEhoKEmF0dGFjaGVkX2RldmljZV9pZBgBIAEoCRIOCgZzZXJpYWwYAiABKAkSDgoGcmVhc29uGAMgASgJIiMKEVdhdGNoVmlkZW9SZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCSJoCgtWaWRlb0hlYWRlchIRCglzdHJlYW1faWQYASABKAkSEAoIY2xvY2tfaWQYAiABKAkSDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQgASgNEhUKDWNvbmZpZ3VyYXRpb24YBSABKAwihAEKClZpZGVvRnJhbWUSCwoDc2VxGAEgASgEEg4KBnB0c191cxgCIAEoAxIRCglrZXlfZnJhbWUYAyABKAgSDAoEZGF0YRgEIAEoDBIdChVyZWNlaXZlZF9tb25vdG9uaWNfbnMYBSABKAMSGQoRcmVjZWl2ZWRfZXBvY2hfbXMYBiABKAMiagoSV2F0Y2hWaWRlb1Jlc3BvbnNlEiUKBmhlYWRlchgBIAEoCzITLnRhcC52MS5WaWRlb0hlYWRlckgAEiMKBWZyYW1lGAIgASgLMhIudGFwLnYxLlZpZGVvRnJhbWVIAEIICgZ1cGRhdGUyjQEKDFdhdGNoU2VydmljZRI2CgVXYXRjaBIULnRhcC52MS5XYXRjaFJlcXVlc3QaFS50YXAudjEuV2F0Y2hSZXNwb25zZTABEkUKCldhdGNoVmlkZW8SGS50YXAudjEuV2F0Y2hWaWRlb1JlcXVlc3QaGi50YXAudjEuV2F0Y2hWaWRlb1Jlc3BvbnNlMAFCMAogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCCldhdGNoUHJvdG9QAWIGcHJvdG8z", [file_client_connection, file_event_log]);
+  fileDesc("Cgt3YXRjaC5wcm90bxIGdGFwLnYxIiEKDFdhdGNoUmVxdWVzdBIRCglhZnRlcl9zZXEYASABKAMidAoNV2F0Y2hSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkSJAoKYWN0aXZpdGllcxgCIAMoCzIQLnRhcC52MS5BY3Rpdml0eRIPCgdkcm9wcGVkGAMgASgDIswCCghBY3Rpdml0eRILCgNzZXEYASABKAMSEwoLYXRfZXBvY2hfbXMYAiABKAMSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYAyABKAkSNQoRY29ubmVjdGlvbl9vcGVuZWQYBCABKAsyGC50YXAudjEuQ29ubmVjdGlvbk9wZW5lZEgAEjUKEWNvbm5lY3Rpb25fY2xvc2VkGAUgASgLMhgudGFwLnYxLkNvbm5lY3Rpb25DbG9zZWRIABIxCg9kZXZpY2VfYXR0YWNoZWQYBiABKAsyFi50YXAudjEuRGV2aWNlQXR0YWNoZWRIABIxCg9kZXZpY2VfZGV0YWNoZWQYByABKAsyFi50YXAudjEuRGV2aWNlRGV0YWNoZWRIABIkCgVldmVudBgIIAEoCzITLnRhcC52MS5Mb2dnZWRFdmVudEgAQgYKBGtpbmQiLgoQQ29ubmVjdGlvbk9wZW5lZBIMCgRuYW1lGAEgASgJEgwKBGhlbGQYAiABKAgiIgoQQ29ubmVjdGlvbkNsb3NlZBIOCgZyZWFzb24YASABKAkiUAoORGV2aWNlQXR0YWNoZWQSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAMgASgDIkwKDkRldmljZURldGFjaGVkEhoKEmF0dGFjaGVkX2RldmljZV9pZBgBIAEoCRIOCgZzZXJpYWwYAiABKAkSDgoGcmVhc29uGAMgASgJIkMKD1dhdGNoTG9nUmVxdWVzdBIaChJhdHRhY2hlZF9kZXZpY2VfaWQYASABKAkSFAoMYWZ0ZXJfY3Vyc29yGAIgASgEIlgKEFdhdGNoTG9nUmVzcG9uc2USIQoHZW50cmllcxgBIAMoCzIQLnRhcC52MS5Mb2dFbnRyeRIPCgdkcm9wcGVkGAIgASgEEhAKCGNsb2NrX2lkGAMgASgJIiMKEVdhdGNoVmlkZW9SZXF1ZXN0Eg4KBnNlcmlhbBgBIAEoCSJoCgtWaWRlb0hlYWRlchIRCglzdHJlYW1faWQYASABKAkSEAoIY2xvY2tfaWQYAiABKAkSDQoFd2lkdGgYAyABKA0SDgoGaGVpZ2h0GAQgASgNEhUKDWNvbmZpZ3VyYXRpb24YBSABKAwihAEKClZpZGVvRnJhbWUSCwoDc2VxGAEgASgEEg4KBnB0c191cxgCIAEoAxIRCglrZXlfZnJhbWUYAyABKAgSDAoEZGF0YRgEIAEoDBIdChVyZWNlaXZlZF9tb25vdG9uaWNfbnMYBSABKAMSGQoRcmVjZWl2ZWRfZXBvY2hfbXMYBiABKAMiagoSV2F0Y2hWaWRlb1Jlc3BvbnNlEiUKBmhlYWRlchgBIAEoCzITLnRhcC52MS5WaWRlb0hlYWRlckgAEiMKBWZyYW1lGAIgASgLMhIudGFwLnYxLlZpZGVvRnJhbWVIAEIICgZ1cGRhdGUyzgEKDFdhdGNoU2VydmljZRI2CgVXYXRjaBIULnRhcC52MS5XYXRjaFJlcXVlc3QaFS50YXAudjEuV2F0Y2hSZXNwb25zZTABEkUKCldhdGNoVmlkZW8SGS50YXAudjEuV2F0Y2hWaWRlb1JlcXVlc3QaGi50YXAudjEuV2F0Y2hWaWRlb1Jlc3BvbnNlMAESPwoIV2F0Y2hMb2cSFy50YXAudjEuV2F0Y2hMb2dSZXF1ZXN0GhgudGFwLnYxLldhdGNoTG9nUmVzcG9uc2UwAUIwCiBpby5naXRodWIubm9hbWNvaGVuNDgudGFwLmFwaS52MUIKV2F0Y2hQcm90b1ABYgZwcm90bzM", [file_client_connection, file_device_log, file_event_log]);
 
 /**
  * @generated from message tap.v1.WatchRequest
@@ -237,6 +239,63 @@ export const DeviceDetachedSchema: GenMessage<DeviceDetached> = /*@__PURE__*/
   messageDesc(file_watch, 6);
 
 /**
+ * @generated from message tap.v1.WatchLogRequest
+ */
+export type WatchLogRequest = Message<"tap.v1.WatchLogRequest"> & {
+  /**
+   * `DeviceAttached.attached_device_id`.
+   *
+   * @generated from field: string attached_device_id = 1;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * Only entries with a larger cursor; 0 for everything the daemon still has.
+   *
+   * @generated from field: uint64 after_cursor = 2;
+   */
+  afterCursor: bigint;
+};
+
+/**
+ * Describes the message tap.v1.WatchLogRequest.
+ * Use `create(WatchLogRequestSchema)` to create a new message.
+ */
+export const WatchLogRequestSchema: GenMessage<WatchLogRequest> = /*@__PURE__*/
+  messageDesc(file_watch, 7);
+
+/**
+ * @generated from message tap.v1.WatchLogResponse
+ */
+export type WatchLogResponse = Message<"tap.v1.WatchLogResponse"> & {
+  /**
+   * @generated from field: repeated tap.v1.LogEntry entries = 1;
+   */
+  entries: LogEntry[];
+
+  /**
+   * First response only: entries after `after_cursor` the daemon had already forgotten.
+   *
+   * @generated from field: uint64 dropped = 2;
+   */
+  dropped: bigint;
+
+  /**
+   * First response only: the clock of the entries' `host_monotonic_ns`.
+   *
+   * @generated from field: string clock_id = 3;
+   */
+  clockId: string;
+};
+
+/**
+ * Describes the message tap.v1.WatchLogResponse.
+ * Use `create(WatchLogResponseSchema)` to create a new message.
+ */
+export const WatchLogResponseSchema: GenMessage<WatchLogResponse> = /*@__PURE__*/
+  messageDesc(file_watch, 8);
+
+/**
  * @generated from message tap.v1.WatchVideoRequest
  */
 export type WatchVideoRequest = Message<"tap.v1.WatchVideoRequest"> & {
@@ -251,7 +310,7 @@ export type WatchVideoRequest = Message<"tap.v1.WatchVideoRequest"> & {
  * Use `create(WatchVideoRequestSchema)` to create a new message.
  */
 export const WatchVideoRequestSchema: GenMessage<WatchVideoRequest> = /*@__PURE__*/
-  messageDesc(file_watch, 7);
+  messageDesc(file_watch, 9);
 
 /**
  * @generated from message tap.v1.VideoHeader
@@ -290,7 +349,7 @@ export type VideoHeader = Message<"tap.v1.VideoHeader"> & {
  * Use `create(VideoHeaderSchema)` to create a new message.
  */
 export const VideoHeaderSchema: GenMessage<VideoHeader> = /*@__PURE__*/
-  messageDesc(file_watch, 8);
+  messageDesc(file_watch, 10);
 
 /**
  * @generated from message tap.v1.VideoFrame
@@ -337,7 +396,7 @@ export type VideoFrame = Message<"tap.v1.VideoFrame"> & {
  * Use `create(VideoFrameSchema)` to create a new message.
  */
 export const VideoFrameSchema: GenMessage<VideoFrame> = /*@__PURE__*/
-  messageDesc(file_watch, 9);
+  messageDesc(file_watch, 11);
 
 /**
  * @generated from message tap.v1.WatchVideoResponse
@@ -371,7 +430,7 @@ export type WatchVideoResponse = Message<"tap.v1.WatchVideoResponse"> & {
  * Use `create(WatchVideoResponseSchema)` to create a new message.
  */
 export const WatchVideoResponseSchema: GenMessage<WatchVideoResponse> = /*@__PURE__*/
-  messageDesc(file_watch, 10);
+  messageDesc(file_watch, 12);
 
 /**
  * @generated from service tap.v1.WatchService
@@ -400,6 +459,21 @@ export const WatchService: GenService<{
     methodKind: "server_streaming";
     input: typeof WatchVideoRequestSchema;
     output: typeof WatchVideoResponseSchema;
+  },
+  /**
+   * The log of an attached device (`device_log.proto`) after `after_cursor`: what the daemon
+   * still has, then new entries as they arrive, until the device is detached (the stream then
+   * ends normally) or the client cancels. Redacted like `ReadLog`, unfiltered. A reader that
+   * falls too far behind is ended with RESOURCE_EXHAUSTED and reads again after its last
+   * cursor. NOT_FOUND for an attachment that is gone, FAILED_PRECONDITION when it captures no
+   * log.
+   *
+   * @generated from rpc tap.v1.WatchService.WatchLog
+   */
+  watchLog: {
+    methodKind: "server_streaming";
+    input: typeof WatchLogRequestSchema;
+    output: typeof WatchLogResponseSchema;
   },
 }> = /*@__PURE__*/
   serviceDesc(file_watch, 0);

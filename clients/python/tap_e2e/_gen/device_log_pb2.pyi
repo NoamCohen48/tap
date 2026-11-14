@@ -64,20 +64,22 @@ class ReadLogResponse(_message.Message):
     def __init__(self, entries: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ..., dropped: _Optional[int] = ...) -> None: ...
 
 class LogEntry(_message.Message):
-    __slots__ = ("cursor", "host_time_ms", "line", "marker", "action", "gap")
+    __slots__ = ("cursor", "host_time_ms", "line", "marker", "action", "gap", "host_monotonic_ns")
     CURSOR_FIELD_NUMBER: _ClassVar[int]
     HOST_TIME_MS_FIELD_NUMBER: _ClassVar[int]
     LINE_FIELD_NUMBER: _ClassVar[int]
     MARKER_FIELD_NUMBER: _ClassVar[int]
     ACTION_FIELD_NUMBER: _ClassVar[int]
     GAP_FIELD_NUMBER: _ClassVar[int]
+    HOST_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
     cursor: int
     host_time_ms: int
     line: LogLine
     marker: str
     action: LogAction
     gap: str
-    def __init__(self, cursor: _Optional[int] = ..., host_time_ms: _Optional[int] = ..., line: _Optional[_Union[LogLine, _Mapping]] = ..., marker: _Optional[str] = ..., action: _Optional[_Union[LogAction, _Mapping]] = ..., gap: _Optional[str] = ...) -> None: ...
+    host_monotonic_ns: int
+    def __init__(self, cursor: _Optional[int] = ..., host_time_ms: _Optional[int] = ..., line: _Optional[_Union[LogLine, _Mapping]] = ..., marker: _Optional[str] = ..., action: _Optional[_Union[LogAction, _Mapping]] = ..., gap: _Optional[str] = ..., host_monotonic_ns: _Optional[int] = ...) -> None: ...
 
 class LogLine(_message.Message):
     __slots__ = ("device_time_ms", "uid", "pid", "tid", "priority", "tag", "message", "packages")

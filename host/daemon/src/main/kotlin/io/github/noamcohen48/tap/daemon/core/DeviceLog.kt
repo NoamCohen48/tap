@@ -6,6 +6,7 @@ import io.github.noamcohen48.tap.api.v1.LogLine
 import io.github.noamcohen48.tap.api.v1.LogPriority
 import io.github.noamcohen48.tap.host.LogcatCapture
 import io.github.noamcohen48.tap.host.LogcatLine
+import io.github.noamcohen48.tap.host.MediaClock
 import io.github.noamcohen48.tap.protocol.ActionLog
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.channels.Channel
@@ -218,7 +219,7 @@ internal class DeviceLog(
                 if (entry.action.finished) steps.remove(requestId)
             }
         }
-        val recorded = entry.setCursor(++lastCursor).setHostTimeMs(System.currentTimeMillis()).build()
+        val recorded = entry.setCursor(++lastCursor).setHostTimeMs(System.currentTimeMillis()).setHostMonotonicNs(MediaClock.nowNs()).build()
         entries.addLast(recorded)
         bytes += size(recorded)
         while (bytes > maxBytes && entries.size > 1) {
