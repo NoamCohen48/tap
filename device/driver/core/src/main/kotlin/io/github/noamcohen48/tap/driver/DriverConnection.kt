@@ -1,11 +1,14 @@
 package io.github.noamcohen48.tap.driver
 
 import android.os.SystemClock
+import android.util.Log
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.driver.engine.CommandPipeline
 import io.github.noamcohen48.tap.driver.engine.Outbound
 import io.github.noamcohen48.tap.driver.engine.PipelineListener
 import io.github.noamcohen48.tap.driver.engine.RequestScreening
+import io.github.noamcohen48.tap.protocol.ActionLog
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameCodec
 import io.github.noamcohen48.tap.protocol.FrameType
@@ -52,7 +55,11 @@ internal class DriverConnection(
         listener = this,
         uninterruptibleGraceMs = uninterruptibleGraceMs,
         heartbeatTimeoutMs = heartbeatTimeoutMs,
+        onExecuted = ::logFinished,
     )
+
+    /** The command the executor is running, when it is one [ActionLog] logs. Executor thread only. */
+    private var logged: Pair<Long, Command>? = null
 
     val isPoisoned: Boolean get() = pipeline.isPoisoned
 
@@ -136,6 +143,7 @@ internal class DriverConnection(
         }
         val timeoutMs = request.timeoutMs.coerceIn(0, MAX_REQUEST_TIMEOUT_MS)
         pipeline.submit(frame.requestId, timeoutMs) { context ->
+            logStarted(frame.requestId, request)
             try {
                 engine.execute(context, request, generation)
             } catch (loss: InjectedTransportLoss) {
@@ -145,6 +153,29 @@ internal class DriverConnection(
             }
         }
         return true
+    }
+
+    /**
+     * Writes the command's start to the device log, right before it runs: the app's own lines
+     * that follow it are what the command caused ([ActionLog]).
+     */
+    private fun logStarted(
+        requestId: Long,
+        request: Request,
+    ) {
+        logged = null
+        if (!ActionLog.logs(request)) return
+        logged = requestId to request.command
+        Log.i(ActionLog.TAG, ActionLog.started(requestId, request.command))
+    }
+
+    private fun logFinished(
+        requestId: Long,
+        response: Response,
+    ) {
+        val (startedId, command) = logged ?: return
+        logged = null
+        if (startedId == requestId) Log.i(ActionLog.TAG, ActionLog.finished(requestId, command, response))
     }
 
     private fun writeOutbound(message: Outbound) {

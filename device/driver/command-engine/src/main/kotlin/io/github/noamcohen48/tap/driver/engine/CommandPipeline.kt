@@ -40,6 +40,12 @@ class CommandPipeline(
     private val watchdogPollMs: Long = DEFAULT_WATCHDOG_POLL_MS,
     private val heartbeatTimeoutMs: Long = 0,
     threadNamePrefix: String = "tap-driver",
+    /**
+     * Called on the executor with the response a command that ran will get, just before it is
+     * handed to the writer. Not called for a command that never ran (cancelled or expired in the
+     * queue) or one the watchdog gave up on.
+     */
+    private val onExecuted: (requestId: Long, response: Response) -> Unit = { _, _ -> },
 ) {
     enum class Admission { QUEUED, OVERLOADED, UNHEALTHY, CLOSED }
 
@@ -309,18 +315,25 @@ class CommandPipeline(
     }
 
     private fun execute(command: PendingCommand) {
-        val response = when {
+        val unstarted = when {
             command.cancelRequested -> error(ErrorCode.ERR_CANCELLED, ErrorDetail.CANCELLED_IN_QUEUE)
             clock.nowMs() >= command.deadlineMs -> error(ErrorCode.ERR_DEADLINE_EXCEEDED, ErrorDetail.EXPIRED_IN_QUEUE)
-            else -> try {
+            else -> null
+        }
+        if (unstarted != null) return terminate(command, unstarted)
+        val response = afterGate(
+            command,
+            try {
                 command.work(CommandContext(command, clock, ::mutationGate, ::transfer))
             } catch (interrupted: CommandInterrupted) {
                 error(interrupted.errorCode, interrupted.detail, null, command)
             } catch (error: Throwable) {
                 error(ErrorCode.ERR_INTERNAL, null, error.toString(), command)
-            }
-        }
-        terminate(command, afterGate(command, response))
+            },
+        )
+        // An observer that throws must not cost the command its response.
+        runCatching { onExecuted(command.requestId, response) }
+        terminate(command, response)
     }
 
     /**

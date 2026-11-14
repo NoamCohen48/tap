@@ -703,7 +703,7 @@ class Range(_message.Message):
     def __init__(self, type: _Optional[_Union[RangeType, str]] = ..., min: _Optional[float] = ..., max: _Optional[float] = ..., current: _Optional[float] = ...) -> None: ...
 
 class DeviceInfo(_message.Message):
-    __slots__ = ("api_level", "manufacturer", "model", "product", "display_width", "display_height", "display_rotation", "current_package", "screen_on", "keyguard_locked", "keyguard_secure", "keyboard_shown", "auto_rotate", "animations_enabled", "dark_mode", "font_scale", "density_dpi", "airplane_mode", "wifi_enabled", "mobile_data_enabled", "system_locales", "stay_awake", "high_contrast_text", "color_inversion", "bold_text")
+    __slots__ = ("api_level", "manufacturer", "model", "product", "display_width", "display_height", "display_rotation", "current_package", "screen_on", "keyguard_locked", "keyguard_secure", "keyboard_shown", "auto_rotate", "animations_enabled", "dark_mode", "font_scale", "density_dpi", "airplane_mode", "wifi_enabled", "mobile_data_enabled", "system_locales", "stay_awake", "high_contrast_text", "color_inversion", "bold_text", "driver_uid")
     API_LEVEL_FIELD_NUMBER: _ClassVar[int]
     MANUFACTURER_FIELD_NUMBER: _ClassVar[int]
     MODEL_FIELD_NUMBER: _ClassVar[int]
@@ -729,6 +729,7 @@ class DeviceInfo(_message.Message):
     HIGH_CONTRAST_TEXT_FIELD_NUMBER: _ClassVar[int]
     COLOR_INVERSION_FIELD_NUMBER: _ClassVar[int]
     BOLD_TEXT_FIELD_NUMBER: _ClassVar[int]
+    DRIVER_UID_FIELD_NUMBER: _ClassVar[int]
     api_level: int
     manufacturer: str
     model: str
@@ -754,7 +755,8 @@ class DeviceInfo(_message.Message):
     high_contrast_text: bool
     color_inversion: bool
     bold_text: bool
-    def __init__(self, api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., product: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., display_rotation: _Optional[int] = ..., current_package: _Optional[str] = ..., screen_on: _Optional[bool] = ..., keyguard_locked: _Optional[bool] = ..., keyguard_secure: _Optional[bool] = ..., keyboard_shown: _Optional[bool] = ..., auto_rotate: _Optional[bool] = ..., animations_enabled: _Optional[bool] = ..., dark_mode: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi_enabled: _Optional[bool] = ..., mobile_data_enabled: _Optional[bool] = ..., system_locales: _Optional[_Iterable[str]] = ..., stay_awake: _Optional[bool] = ..., high_contrast_text: _Optional[bool] = ..., color_inversion: _Optional[bool] = ..., bold_text: _Optional[bool] = ...) -> None: ...
+    driver_uid: int
+    def __init__(self, api_level: _Optional[int] = ..., manufacturer: _Optional[str] = ..., model: _Optional[str] = ..., product: _Optional[str] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., display_rotation: _Optional[int] = ..., current_package: _Optional[str] = ..., screen_on: _Optional[bool] = ..., keyguard_locked: _Optional[bool] = ..., keyguard_secure: _Optional[bool] = ..., keyboard_shown: _Optional[bool] = ..., auto_rotate: _Optional[bool] = ..., animations_enabled: _Optional[bool] = ..., dark_mode: _Optional[bool] = ..., font_scale: _Optional[float] = ..., density_dpi: _Optional[int] = ..., airplane_mode: _Optional[bool] = ..., wifi_enabled: _Optional[bool] = ..., mobile_data_enabled: _Optional[bool] = ..., system_locales: _Optional[_Iterable[str]] = ..., stay_awake: _Optional[bool] = ..., high_contrast_text: _Optional[bool] = ..., color_inversion: _Optional[bool] = ..., bold_text: _Optional[bool] = ..., driver_uid: _Optional[int] = ...) -> None: ...
 
 class DeviceNotification(_message.Message):
     __slots__ = ("package_name", "title", "text", "actions", "clearable", "posted_at_ms")
