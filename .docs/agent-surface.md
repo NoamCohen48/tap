@@ -10,7 +10,9 @@ The owner-approved practical SDK coverage follow-up (queries/selectors, workflow
 recording and explicit exclusions) is recorded in [agent-api-coverage.md](agent-api-coverage.md).
 The subsequent owner-approved [named step recordings](agent-step-recordings.md) add durable
 client-owned intent: `record`/`export` for steps, `history` for the original event export, and
-`media-record` for video/audio. The original decision/history below retains its original names.
+`media-record` for video/audio. Since the device log (`.docs/app-logs.md`), steps are recorded
+always, `record` is gone, `history` lists the saved step histories and the event export is
+`export --calls`. The original decision/history below retains its original names.
 
 ## Research summary
 

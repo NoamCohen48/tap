@@ -15,15 +15,19 @@ tap-agent release
 
 - Sessions are the daemon's *held connections*: they survive between calls and end after an
   idle timeout (15 min by default) or `release`. The CLI and the MCP server share them.
-- `record start NAME`, `record stop`, `record list`, `record clean NAME` manage private named
-  recordings of high-level actions and explicit waits. `export [NAME] [-o FILE]` writes
-  `tap-agent-recording/1` to stdout or a new 0600 file, even after release. It retains resolved
-  selectors, device identity and outcomes, never replays input, and redacts sensitive text.
+- Every session records its actions and explicit waits by itself, from the first one until
+  `release`. `export [NAME] [-o FILE]` writes that step history as `tap-agent-recording/2` to
+  stdout or a new 0600 file, even after release. It retains resolved selectors, device identity
+  and outcomes, never replays input, and redacts sensitive text. `log mark NAME` writes a marker
+  to the device log and the history; `export --since NAME --until OTHER` cuts the export between
+  markers, `--logs` adds the device log and `--calls` the server's record of each device call
+  (both only while the session lives), matched to the steps by step id.
   Storage is under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share that directory
-  between CLI/MCP processes. `clean --all` explicitly clears stopped archives.
-- `history [-o FILE] [--after-seq N]` is the old export: the bounded raw SDK event log,
-  `tap-events/1`, which ends with its session. `media-record start|stop` is video/audio capture.
-  Converting either JSON document into a test remains the user's job.
+  between CLI/MCP processes. `history` lists the saved histories, `history clean` removes
+  stopped ones.
+- `log` prints the device log with the session's steps, `log --step N` one step's part.
+  `media-record start|stop` is video/audio capture.
+  Converting an export into a test remains the user's job.
 - `tap-agent skill` prints `SKILL.md`, the instructions to give an agent that uses the CLI.
 - `tap-agent mcp` serves the same steps as MCP tools over stdio, e.g. for Claude Code:
   `claude mcp add tap -- tap-agent mcp`.
