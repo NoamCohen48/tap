@@ -1,16 +1,21 @@
-// The page: a top bar (views, daemon status), then Live (devices, screen, actions) or Library.
+// The page: a top bar (views, daemon status), then Live (devices, screen, actions and log) or
+// Library.
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api";
+import { clockMs } from "./format";
 import { DeviceRail } from "./DeviceRail";
 import { RecordingKind, type Recording } from "./gen/watcher_pb";
-import { useActivity, useDevices, useNow, usePoll, useStatus, useStore, store } from "./hooks";
+import { useActivity, useDevices, useLog, useNow, usePoll, useStatus, useStore, store } from "./hooks";
 import * as Icon from "./icons";
 import { Library } from "./Library";
-import { Stage } from "./Stage";
+import { rowAt, type LogRow } from "./log";
+import { LogPanel } from "./LogPanel";
+import { Stage, type Moment, type SeekRequest } from "./Stage";
 import { Timeline } from "./Timeline";
 
 type View = "live" | "library";
+type Side = "actions" | "log";
 type Toast = { id: number; message: string; failed: boolean; recording?: Recording };
 
 function fromHash(): { view: View; serial: string } {
@@ -24,12 +29,18 @@ export function App() {
   const [selectedKey, setSelectedKey] = useState<string>();
   const [libraryId, setLibraryId] = useState("");
   const [toast, setToast] = useState<Toast>();
+  const [side, setSide] = useState<Side>("actions");
+  // The picked log entry, the place in the video it asked for, and where the video is.
+  const [logSeq, setLogSeq] = useState<bigint>();
+  const [seekRequest, setSeekRequest] = useState<SeekRequest>();
+  const [playhead, setPlayhead] = useState<Moment>();
   const now = useNow(5000);
 
   useStore();
   const activity = useActivity();
   const status = useStatus();
   const devices = useDevices();
+  const log = useLog(serial);
   const library = usePoll((signal) => api.listRecordings({}, { signal }), view === "library" ? 5000 : 30000);
 
   // Deep link: #/live/<serial>, #/library; the URL follows the view and back/forward moves it.
@@ -75,6 +86,21 @@ export function App() {
   const deviceActivity = store.device(serial);
   const selected = useMemo(() => deviceActivity.actions.find((action) => action.key === selectedKey), [deviceActivity, selectedKey]);
   const onSelect = useCallback((key: string | undefined) => setSelectedKey(key), []);
+  // Picking a log entry shows the screen when the daemon got it.
+  const onPickLog = useCallback((row: LogRow | undefined) => {
+    setLogSeq(row?.seq);
+    if (row) setSeekRequest((last) => ({ id: (last?.id ?? 0) + 1, clockId: row.clockId, ns: row.ns }));
+  }, []);
+  // A log tick on the scrubber: the screen is already there, so only open the entry.
+  const onLogTick = useCallback((row: LogRow) => {
+    setLogSeq(row.seq);
+    setSide("log");
+  }, []);
+  const logRows = log.store.rows;
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const logAt = useMemo(() => (playhead ? (rowAt(logRows, playhead.clockId, playhead.ns)?.seq ?? 0n) : undefined), [playhead, logRows, log.version]);
+  const logTime = useCallback((row: LogRow) => clockMs(row.epochMs), []);
+  const failedLog = useMemo(() => logRows.reduce((count, row) => count + (row.bad ? 1 : 0), 0), [logRows, log.version]);
   const recordingSerials = useMemo(() => new Set(status.value?.recordings.map((entry) => entry.serial)), [status.value]);
   const history = status.value?.history;
   const limits = useMemo(() => (history ? { maxSeconds: history.maxSeconds, maxBytes: Number(history.maxBytes) } : undefined), [history]);
@@ -138,6 +164,8 @@ export function App() {
             onSelect={(next) => {
               setSerial(next);
               setSelectedKey(undefined);
+              setLogSeq(undefined);
+              setSeekRequest(undefined);
             }}
           />
           <Stage
@@ -150,8 +178,42 @@ export function App() {
             onRecordingChanged={status.refresh}
             onSaved={onSaved}
             notify={notify}
+            log={logRows}
+            logVersion={log.version}
+            seekRequest={seekRequest}
+            onPlayhead={setPlayhead}
+            onLogTick={onLogTick}
           />
-          <Timeline actions={deviceActivity.actions} failures={deviceActivity.failures} dropped={store.dropped} selected={selected} onSelect={onSelect} />
+          <div className="side">
+            <div className="side-tabs" role="tablist" aria-label="Beside the screen">
+              <button role="tab" aria-selected={side === "actions"} onClick={() => setSide("actions")}>
+                Actions <span className="count">{deviceActivity.actions.length}</span>
+              </button>
+              <button role="tab" aria-selected={side === "log"} onClick={() => setSide("log")}>
+                Log <span className={`count${failedLog ? " bad" : ""}`}>{logRows.length}</span>
+              </button>
+            </div>
+            <Timeline
+              actions={deviceActivity.actions}
+              failures={deviceActivity.failures}
+              dropped={store.dropped}
+              selected={selected}
+              onSelect={onSelect}
+              hidden={side !== "actions"}
+            />
+            <LogPanel
+              rows={logRows}
+              version={log.version}
+              time={logTime}
+              timeLabel="Host time"
+              at={logAt}
+              selected={logSeq}
+              onPick={onPickLog}
+              hidden={side !== "log"}
+              note={log.error || log.store.unavailable || (log.store.dropped > 0n ? `${log.store.dropped} older entries are no longer kept.` : undefined)}
+              empty={serial ? "No log for this device yet. It is read while a test has the device attached." : "Pick a device to read its log."}
+            />
+          </div>
         </main>
       ) : (
         <main className="library-view">

@@ -18,7 +18,7 @@ and so on, each at its own size. The Library plays them back to back.
 ## The Library
 
 Clips and recordings are saved in `~/.tap/recordings/watcher/<id>/` (or
-`TAP_WATCHER_RECORDINGS`): the video parts and `steps.json`. The **Library** view lists them
+`TAP_WATCHER_RECORDINGS`): the video parts, `steps.json` and `log.json`. The **Library** view lists them
 by day, with their device, length, actions, failures and size, and:
 
 - shows how much of the **2 GiB** cap is used (a full library refuses new saves);
@@ -27,7 +27,9 @@ by day, with their device, length, actions, failures and size, and:
   says what goes and how much space it frees;
 - plays one on a single timeline, its parts back to back: action markers (failures in red)
   and a dashed tick where the device rotated; click an action or a marker to jump to it, and
-  download it as a ZIP of all its files.
+  download it as a ZIP of all its files;
+- shows the **device log** saved with it (the **Log** tab beside the actions): click an entry to
+  jump to that moment, and markers, errors and gaps are dots under the scrubber.
 
 Keyboard in the player: `space` play / pause, `←` / `→` one second (`shift` for 5), `j` / `k`
 next / previous action.
@@ -43,3 +45,10 @@ where each starts on the joint timeline, and every frame's timestamps) and each 
 overlaps the video with its original event, its part, its offset in that part and on the
 whole recording, and whether it began or ended outside the video. MP4 files keep the
 variable frame timing without re-encoding.
+
+`log.json` (`tap-watch-log/1`) holds the device log entries the server received between the
+first and last frame of each part, oldest first: each entry as the server returned it (a line,
+an action, a marker or a gap), its part, and its offset in that part and on the whole
+recording. A recording keeps at most 200 000 entries (`omitted` counts the rest); a clip
+includes what the watcher still had of that time (it keeps the newest 50 000 per device).
+Entries saved before this existed have no `log.json`.

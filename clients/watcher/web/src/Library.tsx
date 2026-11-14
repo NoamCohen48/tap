@@ -1,14 +1,16 @@
 // Saved recordings and clips: find, select and delete them, see how full the library is, and
-// play one (its parts back to back) with its actions beside it.
+// play one (its parts back to back) with its actions and the device log beside it.
 
 import { fromJson, type JsonValue } from "@bufbuild/protobuf";
-import { useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { api, errorText } from "./api";
 import { connectionLabel, describe, failed, summary } from "./describe";
 import { bytes, dateTime, duration, plural } from "./format";
 import { LoggedEventSchema } from "./gen/event_log_pb";
 import { RecordingKind, type ListRecordingsResponse, type Recording } from "./gen/watcher_pb";
 import * as Icon from "./icons";
+import { savedRows, tickLabel, ticks, type LogRow } from "./log";
+import { LogPanel } from "./LogPanel";
 import { Overview, useZoom, ZoomControls } from "./zoom";
 
 type Kind = "all" | "recordings" | "clips";
@@ -239,6 +241,10 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
   const list = useRef<HTMLOListElement>(null);
   const [loaded, setLoaded] = useState<{ parts: Part[]; steps: Step[] }>();
   const [stepsError, setStepsError] = useState("");
+  // The saved device log; `missing` for an entry saved before the watcher kept logs.
+  const [log, setLog] = useState<{ rows: LogRow[]; error: string; missing: boolean }>();
+  const [side, setSide] = useState<"actions" | "log">("actions");
+  const [logSeq, setLogSeq] = useState<bigint>();
   const [part, setPart] = useState(0);
   const [time, setTime] = useState(0);
   const [playing, setPlaying] = useState(false);
@@ -273,6 +279,22 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
     return () => abort.abort();
   }, [base]);
 
+  useEffect(() => {
+    const abort = new AbortController();
+    setLog(undefined);
+    setLogSeq(undefined);
+    fetch(`${base}/log.json`, { signal: abort.signal })
+      .then((response) => {
+        if (response.status === 404) return setLog({ rows: [], error: "", missing: true });
+        if (!response.ok) throw new Error(`log.json: HTTP ${response.status}`);
+        return response.json().then((json) => setLog({ rows: savedRows(json), error: "", missing: false }));
+      })
+      .catch((failure) => {
+        if (!abort.signal.aborted) setLog({ rows: [], error: errorText(failure), missing: false });
+      });
+    return () => abort.abort();
+  }, [base]);
+
   // The playhead moves every frame while playing (timeupdate alone is ~4 Hz).
   useEffect(() => {
     if (!playing) return;
@@ -299,7 +321,20 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
 
   useEffect(() => {
     list.current?.querySelector('[aria-current="true"]')?.scrollIntoView({ block: "nearest" });
-  }, [current]);
+  }, [current, side]);
+
+  const logRows = log?.rows ?? NO_ROWS;
+  // The last entry the daemon got at or before the frame on screen.
+  const logAt = useMemo(() => {
+    let seq = 0n;
+    for (const row of logRows) {
+      if (row.video!.offset > position + 0.05) break;
+      seq = row.seq;
+    }
+    return seq;
+  }, [logRows, position]);
+  const notable = useMemo(() => logRows.filter((row) => row.notable), [logRows]);
+  const logTime = useCallback((row: LogRow) => offsetTime(row.video!.offset), []);
 
   /** Shows `seconds` into part `index`, loading that part's file first when needed. */
   const go = (index: number, seconds: number, play: boolean) => {
@@ -335,6 +370,10 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
     const target = steps?.[index];
     if (target) go(target.part, target.partOffset, false);
   };
+  const pickLog = (row: LogRow | undefined) => {
+    setLogSeq(row?.seq);
+    if (row?.video) go(row.video.part, row.video.partOffset, false);
+  };
 
   // Keyboard, as in the Live view: space, ←/→ (shift: 5 s), j/k for the next / previous action.
   const keys = useRef<(event: KeyboardEvent) => void>(undefined);
@@ -348,6 +387,8 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
     } else if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
       event.preventDefault();
       seek(position + (event.key === "ArrowLeft" ? -1 : 1) * (event.shiftKey ? 5 : 1));
+    } else if (side !== "actions") {
+      // j / k move through the actions, which are not on screen.
     } else if (event.key === "j") {
       step(current + 1);
     } else if (event.key === "k" && steps?.length) {
@@ -370,7 +411,8 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
             {kindName(recording)} · <span className="serial">{recording.serial}</span>
           </h2>
           <p className="entry-meta">
-            {dateTime(recording.createdEpochMs)} · {duration(recording.durationSeconds)} · {plural(recording.actions, "action")} · {bytes(recording.bytes)}
+            {dateTime(recording.createdEpochMs)} · {duration(recording.durationSeconds)} · {plural(recording.actions, "action")}
+            {recording.logEntries > 0 && ` · ${recording.logEntries} log ${recording.logEntries === 1 ? "entry" : "entries"}`} · {bytes(recording.bytes)}
             {parts.length > 1 && ` · ${parts.length} parts`}
             {recording.ended && recording.ended !== "stopped" && ` · ended: ${recording.ended}`}
           </p>
@@ -382,6 +424,11 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
         <a className="button" href={`${base}/steps.json`} download={`${recording.id}-steps.json`} title="The actions and their video offsets, as JSON">
           steps.json
         </a>
+        {log && !log.missing && (
+          <a className="button" href={`${base}/log.json`} download={`${recording.id}-log.json`} title="The device log during the video and each entry's video offset, as JSON">
+            log.json
+          </a>
+        )}
         <button className="icon-button danger" aria-label={`Delete this ${kindName(recording).toLowerCase()}`} title="Delete" onClick={onDelete}>
           <Icon.Trash />
         </button>
@@ -416,10 +463,50 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
             <span className="time">
               {clockTime(position)} / {clockTime(total)}
             </span>
-            <RecordingTrack total={total} position={position} parts={parts} steps={steps ?? []} current={current} onSeek={(seconds) => seek(seconds)} onStep={step} />
+            <RecordingTrack
+              total={total}
+              position={position}
+              parts={parts}
+              steps={steps ?? []}
+              current={current}
+              log={notable}
+              onSeek={(seconds) => seek(seconds)}
+              onStep={step}
+              onLog={(row) => {
+                pickLog(row);
+                setSide("log");
+              }}
+            />
           </div>
         </div>
-        <ol ref={list} className="rows viewer-steps" aria-label="Actions in this recording">
+        <div className="side viewer-side">
+        <div className="side-tabs" role="tablist" aria-label="Beside the video">
+          <button role="tab" aria-selected={side === "actions"} onClick={() => setSide("actions")}>
+            Actions <span className="count">{steps?.length ?? 0}</span>
+          </button>
+          <button role="tab" aria-selected={side === "log"} onClick={() => setSide("log")}>
+            Log <span className="count">{logRows.length}</span>
+          </button>
+        </div>
+        <LogPanel
+          rows={logRows}
+          version={0}
+          time={logTime}
+          timeLabel="In the video"
+          at={logAt}
+          selected={logSeq}
+          onPick={pickLog}
+          hidden={side !== "log"}
+          note={log?.error || undefined}
+          empty={
+            !log
+              ? "Loading…"
+              : log.missing
+                ? "This entry was saved before the watcher kept device logs."
+                : `The device logged nothing during this ${kindName(recording).toLowerCase()}, or its log capture was off.`
+          }
+        />
+        <ol ref={list} className="rows viewer-steps" aria-label="Actions in this recording" hidden={side !== "actions"}>
           {!loaded && !stepsError && <li className="empty">Loading…</li>}
           {stepsError && <li className="empty bad">{stepsError}</li>}
           {steps?.length === 0 && <li className="empty">No actions ran during this {kindName(recording).toLowerCase()}.</li>}
@@ -440,10 +527,13 @@ function Viewer({ recording, onDelete }: { recording: Recording; onDelete: () =>
             </li>
           ))}
         </ol>
+        </div>
       </div>
     </section>
   );
 }
+
+const NO_ROWS: LogRow[] = [];
 
 type TrackProps = {
   total: number;
@@ -451,13 +541,16 @@ type TrackProps = {
   parts: Part[];
   steps: Step[];
   current: number;
+  /** The log's markers, errors and gaps. */
+  log: LogRow[];
   onSeek: (seconds: number) => void;
   onStep: (index: number) => void;
+  onLog: (row: LogRow) => void;
 };
 
 /** The recording (or the zoomed part of it): actions as markers, where the stream changed as
- * dashed ticks. */
-function RecordingTrack({ total, position, parts, steps, current, onSeek, onStep }: TrackProps) {
+ * dashed ticks, and the log's markers, errors and gaps under the rail. */
+function RecordingTrack({ total, position, parts, steps, current, log, onSeek, onStep, onLog }: TrackProps) {
   const track = useRef<HTMLDivElement>(null);
   const zoom = useZoom(track, total, position, false);
   const fraction = (seconds: number) => (total > 0 ? zoom.fraction(seconds) : 0);
@@ -506,6 +599,17 @@ function RecordingTrack({ total, position, parts, steps, current, onSeek, onStep
           onClick={() => onStep(index)}
         />
       ))}
+      {ticks(log, (row) => fraction(row.video!.offset)).map((tick) => (
+        <button
+          key={String(tick.row.seq)}
+          className={`marker log-tick${tick.row.bad ? " bad" : ""}`}
+          style={{ left: `${tick.at * 100}%` }}
+          data-tip={tickLabel(tick)}
+          aria-label={tickLabel(tick)}
+          tabIndex={-1}
+          onClick={() => onLog(tick.row)}
+        />
+      ))}
       {shown(position) && <div className="head" style={{ left: `${at(position)}%` }} />}
       <Overview zoom={zoom} />
     </div>
@@ -528,6 +632,12 @@ function clockTime(seconds: number): string {
   return h ? `${h}:${String(m).padStart(2, "0")}:${s}` : `${m}:${s}`;
 }
 
+/** 0:07.250: a log entry's place in the recording. */
+function offsetTime(seconds: number): string {
+  const ms = Math.max(0, Math.round(seconds * 1000));
+  return `${clockTime(ms / 1000)}.${String(ms % 1000).padStart(3, "0")}`;
+}
+
 /** Asks before deleting: what goes, how much space it frees, and that it cannot be undone. */
 function ConfirmDelete({ entries, onCancel, onConfirm }: { entries: Recording[]; onCancel: () => void; onConfirm: () => void }) {
   const dialog = useRef<HTMLDialogElement>(null);
@@ -546,7 +656,7 @@ function ConfirmDelete({ entries, onCancel, onConfirm }: { entries: Recording[];
     <dialog ref={dialog} className="dialog" aria-labelledby="confirm-delete-title" onClose={onCancel}>
       <h2 id="confirm-delete-title">{title}</h2>
       <p>
-        {detail} The video files and their steps are removed from disk; this cannot be undone.
+        {detail} The video files, their steps and their log are removed from disk; this cannot be undone.
       </p>
       <div className="dialog-actions">
         <button className="button" autoFocus onClick={() => dialog.current?.close()}>

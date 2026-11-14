@@ -13,7 +13,7 @@ from unittest.mock import Mock
 import pytest
 from connectrpc.errors import ConnectError
 from connectrpc.request import RequestContext
-from fakes import FakeDaemon, encoded, event, serve, until
+from fakes import FakeDaemon, attached, encoded, event, line, serve, until
 from starlette.testclient import TestClient
 from tap_e2e.client import Endpoint
 from tap_e2e.proto import watch_pb2 as watch
@@ -30,6 +30,9 @@ async def record(tmp_path):
     daemon = FakeDaemon()
     header, frames = encoded([index * 100_000 for index in range(9)])
     daemon.video = (header, frames[:4])
+    # Attached before the recording: one line too early for the video, one during it.
+    daemon.logs["a1"] = [line(1, 0, "before the video"), line(2, 160_000_000)]
+    daemon.push(attached("a1", "serial"))
     server, endpoint = await serve(daemon)
     watcher = Watcher(Library(tmp_path), endpoint)
     ctx = Mock(spec=RequestContext)
@@ -49,8 +52,11 @@ async def record(tmp_path):
         daemon.push(event(1, "serial", 150_000_000, 180_000_000, failed=True))
         daemon.push(event(2, "other", 150_000_000, 180_000_000))
         await until(
-            lambda: watcher.activity.connected and len(watcher.activity._history) == 2
+            lambda: watcher.activity.connected and len(watcher.activity._history) == 3
         )
+        daemon.log("a1", line(3, 250_000_000, "while recording"))
+        daemon.log("a1", line(4, 900_000_000, "after the last frame"))
+        await until(lambda: watcher.logs._devices["serial"].seq == 4)
         status = await watcher.status(pb.StatusRequest(), ctx)
         assert [r.serial for r in status.recordings] == ["serial"]
         # The device rotates: a new stream, recorded on as the second part.
@@ -73,6 +79,7 @@ async def record(tmp_path):
             1,
         )
         assert saved.parts == 2
+        assert saved.log_entries == 3
         assert saved.duration_seconds == pytest.approx(0.4)
         assert not (await watcher.status(pb.StatusRequest(), ctx)).recordings
         with pytest.raises(ConnectError):
@@ -106,8 +113,29 @@ def test_recording_saves_files_that_download_after_a_restart(tmp_path):
         download = client.get(f"/recordings/{identifier}.zip")
         assert "attachment" in download.headers["content-disposition"]
         with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
-            assert archive.namelist() == ["video-1.mp4", "video-2.mp4", "steps.json"]
+            assert archive.namelist() == [
+                "video-1.mp4",
+                "video-2.mp4",
+                "steps.json",
+                "log.json",
+            ]
             assert json.loads(archive.read("steps.json"))["serial"] == "serial"
+        log = client.get(f"/recordings/{identifier}/log.json").json()
+        assert (log["format"], log["serial"], log["omitted"]) == (
+            "tap-watch-log/1",
+            "serial",
+            0,
+        )
+        # Each entry sits at the frame the daemon had when it got it.
+        assert [
+            (e["entry"]["cursor"], e["part"], e["videoOffsetUs"], e["offsetUs"])
+            for e in log["entries"]
+        ] == [
+            ("1", 0, "0", "0"),
+            ("2", 0, "100000", "100000"),
+            ("3", 0, "200000", "200000"),
+        ]
+        assert log["entries"][2]["entry"]["line"]["message"] == "while recording"
         assert not list(tmp_path.glob(".zip-*"))
         assert client.get("/recordings/not-a-valid-id/video-1.mp4").status_code == 404
         assert client.get(f"/recordings/{identifier}/video-3.mp4").status_code == 404

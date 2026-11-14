@@ -126,4 +126,30 @@ Owner approved (2026-11-14): the agent's step recording and the device log are o
 - logcat's own buffers can still drop lines under extreme load before the daemon reads them;
   that shows as nothing (logcat prints no notice in this format), not as a gap entry.
 - Typed records parsed from log lines (HTTP exchanges): `feature-todo.md`.
-- The Watcher and Studio do not show the device log yet.
+- Studio does not show the device log yet. The watcher does (below).
+
+## The watcher
+
+`WatchService.WatchLog(attached_device_id, after_cursor)` is the read-only way in: it names no
+connection, renews nothing, and returns the same redacted entries as `ReadLog` with `follow`.
+`LogEntry.host_monotonic_ns` puts each entry on the clock of the video frames and the actions.
+
+The watcher back end (`tap_watcher/logs.py`) follows every attachment it learns of from the
+activity stream (and from the snapshot after a reconnect) until the device is detached, whether
+or not a page is open, and keeps the newest 50 000 entries per serial with its own per-serial
+sequence (an attachment's cursors restart at 1; a serial outlives its attachments). So the log
+of a test that already ended is still there to read and to save. The cost in the daemon is one
+follower per attachment.
+
+- **Page**: an **Actions | Log** switch beside the screen. The log is a virtual list with a
+  search box and a minimum priority; picking an entry pauses the screen on the last frame the
+  daemon received at or before it, a line in the list marks where the video is, and markers,
+  errors and gaps are ticks under the scrubber (entries closer than 1/240 of the bar share one).
+- **Recordings and clips** save `log.json` (`tap-watch-log/1`) beside `steps.json`: the entries
+  the daemon got between a part's first and last frame, each with its part and video offsets.
+  A recording notes entries as they arrive (at most 200 000; more are counted as `omitted`); a
+  clip takes them from the 50 000 the back end kept.
+- Placement is by the daemon's monotonic clock, not the device clock: an entry sits where the
+  daemon read the line, a few milliseconds after the app wrote it.
+- Not verified on a device yet: checked with the daemon's unit tests, the watcher's tests
+  against a fake daemon, and the page in a browser against that fake.

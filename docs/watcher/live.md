@@ -16,6 +16,7 @@ saved clips and recordings ([Clips, recordings and the Library](library.md)).
   driver said: for a selector that matched nothing, how many nodes each part matched alone and
   without it (`text("Pay"): 0 alone, 1 without it`); for a state wait that timed out, which
   parts of the condition held and what the node had (`✗ text("Pay") (has "Paying…")`).
+- **Log** (right, beside **Actions**): the device's log, see [The device log](#the-device-log).
 
 Selecting an action whose video is still retained pauses the screen where it started and
 marks it on the scrubber. Failed actions are red on the scrubber; hovering a marker names the
@@ -28,6 +29,28 @@ the screen as the action started, and shortly after it finished (up to 1 s, or u
 action). Both are fixed frames of that action; `j` / `k` move the comparison to the next or
 previous action. Moving through the video (scrubbing, play, `←` / `→`, **Live**) closes it and
 shows the screen at that point.
+
+## The device log
+
+**Log** shows what the device logged while a test had it attached: the app's and the system's
+`logcat` lines, the actions Tap ran (`▸ tap text("Pay") → ok · 42 ms`), the markers a test
+wrote (`⚑ checkout`) and a notice where lines may be missing. It is the same log a test reads
+with `device.logs` ([Device logs](../guide/logs.md)), with secrets replaced the same way.
+
+- **Click an entry** to see the screen at that moment: the video pauses on the last frame
+  received at or before it, and the entry's full text and process open below the list. If that
+  moment is older than the retained video (the last two minutes), the watcher says so.
+- While you look back, a line in the list marks where the video is: entries above it were
+  logged before the frame on screen. The list follows it as you scrub or replay; live, it
+  follows the newest entry.
+- **Markers, errors and gaps are dots under the scrubber** (errors red). Click one to go there
+  and open the entry; entries that fall on the same spot share a dot, which says how many.
+- **Search** matches the tag and the text; the level menu hides lines below a priority (actions
+  and markers always stay).
+
+The watcher reads the log of every attached device from the moment it is attached, whether or
+not the page is open, and keeps the newest 50 000 entries per device, also after the test
+detached it. A device attached with log capture turned off has no log, and the tab says so.
 
 ## Rotations
 
@@ -60,7 +83,8 @@ the clip bar.
 ## What the times mean
 
 Frame times are when the server **received** each frame, not when the device captured it;
-action times are when the server sent the call and got its reply. Before / After frames
+action times are when the server sent the call and got its reply; a log entry's time is when
+the server read the line from the device. Before / After frames
 and action markers are therefore approximate (encoding, transport and frame rate add delay).
 A still screen sends no new frames, so a recording's media time can be shorter than the
 wall time it covered; no frames are invented. The watcher does not show test names or outcomes yet,

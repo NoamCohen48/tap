@@ -1,7 +1,7 @@
 """The back end's one channel to the Tap daemon, limited to read-only calls.
 
 Nothing here calls Connect, Attach, Observe, Events (which renews a held connection), Execute,
-Screenshot or app lifecycle methods. The token stays in this process.
+Screenshot, ReadLog (which names a connection) or app lifecycle methods. The token stays in this process.
 """
 
 from __future__ import annotations
@@ -107,6 +107,25 @@ class Daemon:
         assert self._watch is not None
         call = self._watch.WatchVideo(
             watch.WatchVideoRequest(serial=serial), metadata=self._metadata
+        )
+        try:
+            async for response in call:
+                yield response
+        except grpc.aio.AioRpcError as error:
+            raise to_connect(error) from error
+        finally:
+            call.cancel()
+
+    async def watch_log(
+        self, attached_device_id: str, after_cursor: int
+    ) -> AsyncGenerator[watch.WatchLogResponse, None]:
+        await self._open()
+        assert self._watch is not None
+        call = self._watch.WatchLog(
+            watch.WatchLogRequest(
+                attached_device_id=attached_device_id, after_cursor=after_cursor
+            ),
+            metadata=self._metadata,
         )
         try:
             async for response in call:

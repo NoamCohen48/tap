@@ -4,6 +4,12 @@ export function clock(epochMs: bigint | number): string {
   return new Date(Number(epochMs)).toLocaleTimeString([], { hour12: false });
 }
 
+/** 14:03:07.250: a log line's time. */
+export function clockMs(epochMs: bigint | number): string {
+  const ms = Number(epochMs);
+  return `${clock(ms)}.${String(((ms % 1000) + 1000) % 1000).padStart(3, "0")}`;
+}
+
 export function dateTime(epochMs: bigint | number): string {
   return new Date(Number(epochMs)).toLocaleString([], { hour12: false, month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }

@@ -102,6 +102,12 @@ name the components affected. Earlier releases used independent version lines. T
   `unquarantine`); `devices` marks quarantines that are retried on attach or under inspection.
 - Tap Studio: the device list inspects and unquarantines a quarantined device. Tap watcher
   shows the quarantine reason and, as a tooltip, the `tap unquarantine` command.
+- Tap watcher shows the device log. A **Log** tab beside the actions lists the device's `logcat`
+  lines with Tap's actions and the test's markers, searchable and filtered by priority; clicking
+  an entry shows the screen at that moment, and markers, errors and gaps are dots on the
+  scrubber. Recordings and clips save the log of their time as `log.json` (in the ZIP too), and
+  the Library player shows it the same way. The server's new read-only `WatchService.WatchLog`
+  serves it, and `LogEntry.host_monotonic_ns` places an entry on the video's clock.
 - Tap watcher says why a failed action failed. The selected action's details list, under its
   error, the selector parts that ruled every node out (each part alone and without it, with the
   values seen) or, for a state wait that timed out, which parts of the condition held and what

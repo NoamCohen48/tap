@@ -1,11 +1,12 @@
 // Streams and polls the page keeps open: activity (always), status and devices (polled), and
-// the selected device's video.
+// the selected device's video and log.
 
 import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { ActivityStore } from "./activity";
 import { aborted, api, denied, errorText, permanent, sleep } from "./api";
 import type { ListDevicesResponse } from "./gen/device_pb";
 import type { StatusResponse } from "./gen/watcher_pb";
+import { LogStore } from "./log";
 import { FrameBuffer, type Limits } from "./video";
 
 export const store = new ActivityStore();
@@ -152,6 +153,62 @@ export function useVideo(serial: string, limits: Limits | undefined, onFrames: (
   }, [serial]);
 
   return { buffer: buffer.current, version, state, error };
+}
+
+export type LogFeed = {
+  store: LogStore;
+  /** Bumped at most every 250 ms while entries arrive. */
+  version: number;
+  error: string;
+};
+
+/**
+ * The selected device's log: what the back end retains for the serial, then live, resuming
+ * after the last seq when the stream breaks.
+ */
+export function useLog(serial: string): LogFeed {
+  const log = useRef(new LogStore());
+  const [version, setVersion] = useState(0);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    const store = new LogStore();
+    log.current = store;
+    setVersion((n) => n + 1);
+    setError("");
+    if (!serial) return;
+    const abort = new AbortController();
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const render = () => {
+      if (timer === undefined) timer = setTimeout(() => ((timer = undefined), setVersion((n) => n + 1)), RENDER_MS);
+    };
+    (async () => {
+      let retryMs = 1000;
+      while (!abort.signal.aborted) {
+        try {
+          let first = true;
+          for await (const response of api.watchLog({ serial, afterSeq: store.lastSeq }, { signal: abort.signal })) {
+            if (store.receive(response, first)) render();
+            if (first) setError("");
+            first = false;
+            retryMs = 1000;
+          }
+        } catch (failure) {
+          if (aborted(failure) || abort.signal.aborted) return;
+          setError(errorText(failure));
+          if (permanent(failure)) return;
+        }
+        await sleep(retryMs, abort.signal);
+        retryMs = Math.min(retryMs * 2, 10000);
+      }
+    })();
+    return () => {
+      abort.abort();
+      clearTimeout(timer);
+    };
+  }, [serial]);
+
+  return { store: log.current, version, error };
 }
 
 /** The current time, refreshed every [ms] (for "12 s ago" labels). */
