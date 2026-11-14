@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING
 from . import _gen as pb
 from . import _proto
 from .errors import CommandError, WaitTimeoutError
-from .models import Direction, ElementSnapshot, StandardAction
+from .models import Direction, ElementSnapshot, OutsideTouch, StandardAction
 from .selectors import Selector
 
 if TYPE_CHECKING:
@@ -119,6 +119,32 @@ class Element:
         """Two taps at the centre of the one matching node's visible bounds, inside Android's
         double-tap window."""
         self._run(timeout, double_tap=pb.DoubleTap(selector=self._target))
+
+    def tap_outside_panel(self, timeout: float | None = None, *, allow_reach_below: bool = False) -> OutsideTouch:
+        """Tap outside the panel this element is in: a dialog, popup, menu, drawer or bottom
+        sheet, Views or Compose. Select any node inside the panel, such as its title; it need not
+        be tappable itself. This is how a test checks "a touch outside closes it".
+
+        The panel is the nearest node from this one up that offers Android's dismiss action or
+        has a pane title (drawers and bottom sheets), and the touch goes beside it, where no
+        control of the app's own would take it; otherwise it is the element's window (dialogs,
+        popups, menus), and the touch goes just past its edge. Sides are tried below, above,
+        right, left, skipping the system bars and gesture area, the keyboard and windows above.
+
+        Fails before any input with ``NOT_INTERACTABLE`` and detail ``NO_OUTSIDE_POINT`` when no
+        side has room (a full-screen window that is not a panel, such as a plain screen), or
+        ``TOUCH_REACHES_BELOW`` when the only free points are on the screen under a panel that
+        lets touches through (an autocomplete dropdown, a non-focusable popup): pass
+        ``allow_reach_below=True`` to send the touch there anyway. Whether the panel closes is the
+        app's choice: assert it, for example with ``app.wait(selector).gone()``. Wait until the
+        panel has finished opening first: the point is placed from its bounds at that moment.
+        Default display only.
+
+        Returns where it touched and which panel it chose (:class:`OutsideTouch`).
+        """
+        result = self._run(timeout, tap_outside_panel=pb.TapOutsidePanel(selector=self._target, allow_reach_below=allow_reach_below))
+        touch = result.outside_touch
+        return OutsideTouch(x=touch.x, y=touch.y, panel=touch.panel)
 
     def ime_action(self, timeout: float | None = None) -> None:
         """Run the one matching text field's keyboard action (Search, Go, Send, Done, … as the

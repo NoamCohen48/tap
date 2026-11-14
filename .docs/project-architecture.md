@@ -125,6 +125,7 @@ tap/
 |   |   |   +-- UiObjectAccess.kt        resolve/hasObject/count/containerHasObject per MatchLimit
 |   |   |   +-- TouchReachability.kt     OBSCURED check (touch point in the target's window) + TouchPoints
 |   |   |   +-- WindowFrames.kt          a window's real frame (devices that report it moved by its surface insets) + VisibleBounds
+|   |   |   +-- OutsidePanel.kt          tap_outside_panel: the panel holding a node (dismiss action / pane title, else its window) and the point outside it
 |   |   |   +-- GestureCommands.kt, TextInputCommands.kt, KeyInput.kt, QueryCommands.kt, WaitCommands.kt, ScreenStability.kt, ArtifactCommands.kt
 |   |   |   |                        tap, longTap, swipe, scroll, doubleTap, drag, pinch, fling / set/type/clearText / pressKey / exists, count, snapshot, deviceInfo / waitVisible/Gone/AppVisible / waitScreenStable / screenshot, dumpHierarchy
 |   |   |   +-- HierarchyDump.kt         diagnostic UiAutomator-format XML plus showing-hint, content-invalid and error
@@ -273,6 +274,7 @@ tap/
     |   +-- InsetWindowActivity.kt   a dialog's bottom-right corner and an elevated popup beside / over buttons (window surface insets)
     |   +-- DrawerActivity.kt        a DrawerLayout drawer over a counted button (in-window OBSCURED), a decorative not-important view
     |   +-- ComposeDrawerActivity.kt a ModalNavigationDrawer, whose content leaves the tree while open
+    |   +-- OutsidePanelActivity.kt  a dialog, popup menu, pass-through popup, tall bottom sheet and drawer to tap outside of; ComposeOutsidePanelActivity.kt the Compose drawer and sheet
     |   +-- PortOccupierActivity.kt  occupies the driver port for startup-retry faults
     |   +-- FixtureFaultProvider.kt  delayed-mutation hook for the late-work fault (authority ...fixture.fault)
     |   +-- FixtureApplication.kt    Application + FaultTapCounter

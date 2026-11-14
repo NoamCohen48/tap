@@ -449,6 +449,8 @@ function command(c: Command | undefined, secret: string | undefined): string {
       return `${element(c.op.value.selector)}.tap(count = ${c.op.value.count}, interval = ${c.op.value.intervalMs ?? 100n}.milliseconds)`;
     case "hold":
       return `${element(c.op.value.selector)}.longTap(duration = ${c.op.value.durationMs}.milliseconds)`;
+    case "tapOutsidePanel":
+      return `${element(c.op.value.selector)}.tapOutsidePanel(${c.op.value.allowReachBelow ? "allowReachBelow = true" : ""})`;
     case "setText":
       return `${element(c.op.value.selector)}.setText(${value(c.op.value.text, secret)})`;
     case "clearText":

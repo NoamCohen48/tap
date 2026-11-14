@@ -57,6 +57,13 @@ name the components affected. Earlier releases used independent version lines. T
   after 10.0 s", with what it printed, instead of an empty "for a reason other than port
   occupancy".
 
+- **Tap outside a panel** (`tap_outside_panel`): one tap outside the dialog, popup, menu,
+  drawer or bottom sheet that holds the selected node, for testing that an outside touch closes
+  it. Drawers and sheets are found by their dismiss action or pane title, other panels by their
+  window. Refused before input as `NOT_INTERACTABLE` / `NO_OUTSIDE_POINT` (no panel with room
+  around the node) or `TOUCH_REACHES_BELOW` (a panel that passes touches through; opt in with
+  `allow_reach_below`).
+
 ### Clients and tools
 
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
@@ -79,6 +86,11 @@ name the components affected. Earlier releases used independent version lines. T
 - `tap-agent wait --until CONDITION` (MCP `wait_for` `until`) waits until the target's node
   satisfies a condition in the target grammar, such as `enabled=true,text=Pay` or a JSON
   selector, in one device wait. A ref, `index` / `first` or `pkg` in it is a usage error.
+- Tap outside a panel: Kotlin `Element.tapOutsidePanel()`, Python `Element.tap_outside_panel()`
+  (returns `OutsideTouch`: where it touched and which panel), Tap agent `tap --outside-panel
+  [--allow-reach-below]` (MCP: `outside_panel`, `allow_reach_below`), a Tap Studio "Tap outside
+  panel" action (with an opt-in for a panel that lets touches through), and the step's target in
+  Tap watcher.
 
 ## 0.1.0 — 2026-11-08
 

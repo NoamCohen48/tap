@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- OutsidePanelActivity's views. -->
+    <item name="outside_status" type="id" />
+</resources>

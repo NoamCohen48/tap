@@ -114,6 +114,34 @@ def test_counted_taps_timed_press_and_invalid_combinations(fake, agent):
         assert len(fake.devices.commands) == before
 
 
+def test_tap_outside_panel_sends_one_command_and_refuses_other_options(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: pb.CommandResult(outside_touch=pb.OutsideTouch(x=540, y=1519, panel="window [28,943][1052,1456], below"))
+    assert agent.tap("text=Title", outside_panel=True) == "tapped outside the panel of text=Title at (540, 1519): window [28,943][1052,1456], below"
+    assert fake.devices.commands[-1].tap_outside_panel.selector.node.match.value == "Title"
+    assert not fake.devices.commands[-1].tap_outside_panel.allow_reach_below
+    agent.tap("text=Title", outside_panel=True, allow_reach_below=True, timeout=3)
+    assert fake.devices.commands[-1].tap_outside_panel.allow_reach_below
+    assert fake.devices.commands[-1].timeout_ms == 3000
+    for options in ({"long": True}, {"double": True}, {"count": 2}, {"duration": 1}, {"outside_panel": False, "allow_reach_below": True}):
+        before = len(fake.devices.commands)
+        with pytest.raises(AgentError) as error:
+            agent.tap("text=Title", **{"outside_panel": True, **options})
+        assert error.value.exit_code == EXIT_USAGE
+        assert len(fake.devices.commands) == before
+
+
+@pytest.mark.parametrize(("detail", "hint"), [
+    ("NO_OUTSIDE_POINT", "target a node inside the panel"),
+    ("TOUCH_REACHES_BELOW", "add --allow-reach-below"),
+])
+def test_a_refused_outside_tap_says_what_to_do(fake, agent, detail, hint):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_INTERACTABLE, detail=detail))
+    with pytest.raises(AgentError, match=f"NOT_INTERACTABLE/{detail}.*\n.*{hint}"):
+        agent.tap("text=Title", outside_panel=True)
+
+
 def test_an_obscured_node_says_to_close_the_covering_window(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_INTERACTABLE, detail="OBSCURED"))
@@ -479,6 +507,11 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     assert cli.main(["tap", "text=OK", "--duration", "1500ms", "--timeout", "4s", "-s", "cli"]) == 0
     assert capsys.readouterr().out == "long-tapped text=OK\n"
     assert fake.devices.commands[-1].hold.duration_ms == 1500
+    fake.devices.responder = lambda command: pb.CommandResult(outside_touch=pb.OutsideTouch(x=1, y=2, panel="window [0,0][9,9], below"))
+    assert cli.main(["tap", "text=Title", "--outside-panel", "--allow-reach-below", "-s", "cli"]) == 0
+    assert capsys.readouterr().out == "tapped outside the panel of text=Title at (1, 2): window [0,0][9,9], below\n"
+    fake.devices.responder = None
+    assert fake.devices.commands[-1].tap_outside_panel.allow_reach_below
     assert cli.main(["pinch", "text=Map", "open", "--percent", "50", "-s", "cli"]) == 0
     assert capsys.readouterr().out == "pinched open 50% text=Map\n"
     assert cli.main(["app", "open-link", "com.example", "example://x", "--any-app", "-s", "cli"]) == 0
@@ -650,6 +683,8 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert not result.is_error and fake.devices.commands[-1].hold.duration_ms == 1500
         result = await client.call_tool("tap", {"target": "text=OK", "duration": 1.5, "double": True})
         assert result.is_error
+        result = await client.call_tool("tap", {"target": "text=OK", "outside_panel": True})
+        assert not result.is_error and fake.devices.commands[-1].WhichOneof("op") == "tap_outside_panel"
         result = await client.call_tool("screenshot", {})
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
         result = await client.call_tool("open_panel", {"panel": "quick_settings"})

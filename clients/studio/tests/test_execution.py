@@ -22,6 +22,7 @@ def step(document):
 @pytest.mark.parametrize("command", [
     {"multi_tap": {"selector": SELECTOR, "count": 3, "interval_ms": "125"}},
     {"hold": {"selector": SELECTOR, "duration_ms": "1200"}},
+    {"tap_outside_panel": {"selector": SELECTOR, "allow_reach_below": True}},
 ])
 def test_new_touch_commands_forward_exactly_once(daemon, device, command):
     prepared = prepare(step({"action": {"command": {**command, "timeout_ms": "5000"}}}), None, precondition_timeout_ms=750)

@@ -63,6 +63,9 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/audio-recording.md` — research + decision record: device audio/video recording through a
   host-owned scrcpy child (`StartRecording`), its measured timing limits, the pre-merge review,
   and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).
+- `.docs/tap-outside-panel.md` — decision record: `tap_outside_panel`, one tap outside the dialog,
+  popup, menu, drawer or sheet that holds a node (panel by dismiss action / pane title, else the
+  window), its refusals, the device evidence and the rejected placement design.
 - `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
   foreground/background/deep links, permission dialogs, gestures), the group in progress with its
   per-action design and upstream comparison, and the prioritised backlog.

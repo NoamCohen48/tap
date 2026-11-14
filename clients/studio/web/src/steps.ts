@@ -59,6 +59,11 @@ export function hold(target: Target, durationMs: number): PerformRequest {
   return request(action({ case: "hold", value: { selector: target.selector, durationMs: BigInt(durationMs) } }, target.origin));
 }
 
+/** One tap outside the dialog, menu, drawer or sheet that holds the target. */
+export function tapOutsidePanel(target: Target, allowReachBelow = false): PerformRequest {
+  return request(action({ case: "tapOutsidePanel", value: { selector: target.selector, allowReachBelow } }, target.origin));
+}
+
 /** The SDKs' gesture distance, in percent of the element: left out of a step that uses it. */
 export const DEFAULT_DISTANCE = 80;
 

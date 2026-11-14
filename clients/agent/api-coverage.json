@@ -30,7 +30,7 @@
     "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["logs", "capture"],
     "exists": ["exists", "scroll_until"], "count": ["count", "wait_for"], "snapshot": ["inspect", "wait_for", "accessibility_action"],
     "wait_visible": ["wait_for"], "wait_gone": ["wait_for"], "wait_state": ["wait_for"], "wait_app_visible": ["app"], "wait_screen_stable": ["settle"],
-    "tap": ["tap", "type_text"], "long_tap": ["tap"], "double_tap": ["tap"], "multi_tap": ["tap"], "hold": ["tap"],
+    "tap": ["tap", "type_text"], "long_tap": ["tap"], "double_tap": ["tap"], "multi_tap": ["tap"], "hold": ["tap"], "tap_outside_panel": ["tap"],
     "set_text": ["fill"], "type_text": ["type_text"], "clear_text": ["clear"], "swipe": ["swipe"], "scroll": ["scroll", "scroll_until"], "drag": ["drag"], "pinch": ["pinch"], "fling": ["fling"],
     "open_system_panel": ["open_panel"], "set_orientation": ["rotate"], "set_display_rotation": ["rotate"], "unfreeze_rotation": ["rotate"], "dismiss_keyguard": ["screen"],
     "wait_permission_prompt": ["permission"], "choose_permission": ["permission"], "hide_keyboard": ["keyboard"], "perform_ime_action": ["submit"],
@@ -65,7 +65,7 @@
     ],
     "Element": [
       {"methods": ["exists", "count", "snapshot", "text", "is_enabled", "is_checked"], "tools": ["exists", "count", "inspect"]},
-      {"methods": ["tap", "triple_tap", "long_tap", "double_tap", "ime_action", "perform_action", "perform_custom_action", "set_progress", "drag_to", "pinch_open", "pinch_close", "fling", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until"], "tools": ["tap", "submit", "accessibility_action", "set_progress", "drag", "pinch", "fling", "fill", "type_text", "clear", "swipe", "scroll", "scroll_until"]},
+      {"methods": ["tap", "triple_tap", "long_tap", "double_tap", "tap_outside_panel", "ime_action", "perform_action", "perform_custom_action", "set_progress", "drag_to", "pinch_open", "pinch_close", "fling", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until"], "tools": ["tap", "submit", "accessibility_action", "set_progress", "drag", "pinch", "fling", "fill", "type_text", "clear", "swipe", "scroll", "scroll_until"]},
       {"methods": ["wait", "descendant", "child", "first", "at"], "tools": ["wait_for", "tap"], "reason": "Targets support equivalent relational JSON and explicit first/index."}
     ],
     "ElementWait": [

@@ -223,6 +223,31 @@ message TimedPress {
   Selector selector = 1;
   int64 duration_ms = 2;
 }
+// A tap outside the panel that holds the selected element: a dialog, popup, menu, drawer or
+// bottom sheet. The selector names any node inside the panel (its title, a row). The panel is
+// the nearest node from the selected one up that offers ACTION_DISMISS or has a pane title
+// (drawers, bottom sheets, both Views and Compose); the touch then goes beside it, inside its
+// nearest larger ancestor, where no actionable node other than a scrim would take it.
+// Otherwise, or with no such side, the panel is the node's window, and the touch goes past its
+// frame by the window touch slop plus 8 dp. Sides are tried below, above, right, left; a point
+// on the system bars or gesture area, the keyboard or a window above the panel is skipped. Refused before input with
+// NOT_INTERACTABLE / NO_OUTSIDE_POINT when no side has room (a full-screen window that is not a
+// panel), or / TOUCH_REACHES_BELOW when every free point is in another app window below the
+// panel (a panel that lets touches through) and allow_reach_below is false. Whether the panel
+// closed is the app's choice and the test's to check. Default display only. An older
+// implementation rejects this operation.
+message TapOutsidePanel {
+  Selector selector = 1;
+  bool allow_reach_below = 2;
+}
+// Where tap_outside_panel touched and which panel it chose, for logs and failures.
+message OutsideTouch {
+  int32 x = 1;
+  int32 y = 2;
+  // How the panel was found and where it is, e.g. `pane "Navigation menu" [0,42][420,1396]`
+  // or `window "Popup Window" [150,651][570,828]`, plus the side.
+  string panel = 3;
+}
 // `sensitive` (a password, a token): the daemon logs the command without its text, so the
 // per-connection event log, `tap-watcher` and exports never hold it. The driver ignores it.
 message SetText {
@@ -401,6 +426,7 @@ message Command {
     MultiTap multi_tap = 47;
     TimedPress hold = 48;
     WaitState wait_state = 49;
+    TapOutsidePanel tap_outside_panel = 50;
   }
 }
 
@@ -578,5 +604,6 @@ message CommandResult {
     Toast toast = 15;
     DeviceNotification notification = 16; // await_notification
     NotificationList notifications = 17; // list_notifications
+    OutsideTouch outside_touch = 18; // tap_outside_panel
   }
 }

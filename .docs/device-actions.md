@@ -96,6 +96,12 @@ duplicate lifecycle methods. Corrected stale contract/guide wording: launch and 
 report Android's acceptance, cold launch observes the new identity after stopping, and Home
 is not a promise Android retains the process. Explicit visibility waits remain explicit.
 
+## Tap outside a panel (implemented)
+
+`tapOutsidePanel()` / `tap_outside_panel()` / `tap --outside-panel`: one tap outside the dialog,
+popup, menu, drawer or bottom sheet that holds the selected node. Decision record, device evidence
+and limits: `.docs/tap-outside-panel.md`. Device check: `OutsidePanelTest`.
+
 ## Group 1 (implemented)
 
 Chosen 2026-10-01 as the actions real app tests hit most. Upstream references are the pinned
@@ -503,7 +509,9 @@ evidence) and the Android 14 sources.
 - Fling `canScrollMore` (whether the content can still move after a fling).
 
 **Out, or separate projects**
-- Taps at coordinates: element-only by design.
+- Taps at coordinates: element-only by design. Touch points are placed relative to matched
+  elements and their windows (`tap_outside_panel`, `.docs/tap-outside-panel.md`); a test never
+  gives screen coordinates.
 - WebView content (`framework-gaps.md`, plan §17).
 - Crash/ANR as error codes (`framework-gaps.md`).
 - Fingerprint (emulator only), time/timezone.

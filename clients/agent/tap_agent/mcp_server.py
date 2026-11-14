@@ -261,13 +261,16 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         interval: Annotated[float, Field(ge=0.04, le=1, description="Release-to-press gap in seconds for counted taps.")] = 0.1,
         duration: Annotated[float | None, Field(ge=0.001, le=30, description="Hold duration in seconds; implies long press.")] = None,
         timeout: Annotated[float | None, Field(ge=0.001, le=120, description="Command budget in seconds, including the whole gesture.")] = None,
+        outside_panel: Annotated[bool, Field(description="Tap outside the dialog, menu, drawer or sheet the target is in, instead of on the target.")] = False,
+        allow_reach_below: Annotated[bool, Field(description="With outside_panel: touch even the screen under a panel that lets touches through.")] = False,
         settle: Settle = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Tap the one node matching target."""
+        """Tap the one node matching target, or outside the panel it is in."""
         return await call(session, lambda a: a.tap(target, device or None, long=long, settle=settle, double=double,
-                                                 count=count, interval=interval, duration=duration, timeout=timeout))
+                                                 count=count, interval=interval, duration=duration, timeout=timeout,
+                                                 outside_panel=outside_panel, allow_reach_below=allow_reach_below))
 
     @mcp.tool(name="fill")
     async def fill(
