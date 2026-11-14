@@ -156,6 +156,11 @@ data class DeviceOptions(
      * Not for tests: a test should never run on a quarantined device.
      */
     val inspectQuarantined: Boolean = false,
+    /**
+     * Capture the device log for this attachment ([Device.logs]). False runs no `logcat` on the
+     * server; failure artifacts then hold what the device's own ring buffers still have.
+     */
+    val captureLogs: Boolean = true,
 )
 
 /**
@@ -259,6 +264,12 @@ class Device internal constructor(
 
     /** Elements of any window, of any app or the system UI; see [Screen]. */
     val screen: Screen = Screen(this)
+
+    /**
+     * The device log since the attachment opened: logcat lines, Tap's actions and markers
+     * ([DeviceLog.read], [DeviceLog.follow], [DeviceLog.mark], [DeviceLog.redact]).
+     */
+    val logs: DeviceLog = DeviceLog(this)
 
     /** The app [packageName] on this device: its elements, lifecycle and waits; see [App]. Performs no I/O. */
     fun app(packageName: String): App = App(this, packageName)
@@ -1026,8 +1037,9 @@ class Device internal constructor(
     }
 
     /**
-     * What the device recorded since this attachment opened: logcat, crashes and ANRs, and the
-     * activity and window state now ([DeviceLogs]). Diagnostic; not in the event log.
+     * What the device recorded since this attachment opened, as text: the whole device log
+     * ([logs]), crashes and ANRs, and the activity and window state now ([DeviceLogs]).
+     * Diagnostic; not in the event log. For part of the log, or its entries, use [logs].
      */
     suspend fun deviceLogs(timeout: Duration = 30.seconds): DeviceLogs {
         ensureTapBound("Device.deviceLogs")
@@ -1421,6 +1433,8 @@ class Device internal constructor(
                         if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                         if (options.skipDriverInstall) setSkipDriverInstall(true)
                         if (options.inspectQuarantined) setInspectQuarantined(true)
+                        // Absent = the server captures the device log.
+                        if (!options.captureLogs) setCaptureLogs(false)
                     }.build()
             val response =
                 mapped(serial) {

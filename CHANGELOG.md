@@ -74,6 +74,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Clients and tools
 
+- Kotlin: `device.logs.read(LogStart, LogFilter)`, `follow(...)` (a `Flow`), `mark(name)` and
+  `redact(patterns)` read the device log; `withStep { id -> … }` runs calls as one step and
+  `LogFilter(step = id)` reads that step's part of the log.
+
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
   `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:
   `TapClient.unquarantine(serial)`, `attach_device(serial, inspect_quarantined=True)`,
