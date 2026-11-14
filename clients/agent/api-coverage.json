@@ -27,7 +27,8 @@
     "tap.v1.ClientConnectionService.Observe": "Observed test-client liveness is infrastructure; agents use held connections.",
     "tap.v1.AppService.AwaitIdle": "Synchronization is work in progress and intentionally deferred; state/tree/pixel waits are independent.",
     "tap.v1.WatchService.Watch": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
-    "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording."
+    "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
+    "tap.v1.WatchService.WatchLog": "Passive shared observation belongs to tap-watcher; an agent reads its own device's log with ReadLog."
   },
   "operations": {
     "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["capture"],

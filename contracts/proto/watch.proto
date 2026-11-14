@@ -1,5 +1,5 @@
-// tap.v1 — read-only watching: what every connection does on its devices, and a device's
-// screen as video. A watcher owns nothing: it names no client connection, never renews a held
+// tap.v1 — read-only watching: what every connection does on its devices, a device's
+// screen as video and an attached device's log. A watcher owns nothing: it names no client connection, never renews a held
 // connection's idle timeout, and its streams ending changes nothing for the connections it
 // watches. Anyone with the daemon token can watch (screens and typed text included).
 
@@ -8,6 +8,7 @@ syntax = "proto3";
 package tap.v1;
 
 import "client_connection.proto";
+import "device_log.proto";
 import "event_log.proto";
 
 option java_package = "io.github.noamcohen48.tap.api.v1";
@@ -23,6 +24,13 @@ service WatchService {
   // that serial; readers of one serial share it. Needs `tap start --scrcpy-server`. No input,
   // no screen wake, no attachment.
   rpc WatchVideo(WatchVideoRequest) returns (stream WatchVideoResponse);
+  // The log of an attached device (`device_log.proto`) after `after_cursor`: what the daemon
+  // still has, then new entries as they arrive, until the device is detached (the stream then
+  // ends normally) or the client cancels. Redacted like `ReadLog`, unfiltered. A reader that
+  // falls too far behind is ended with RESOURCE_EXHAUSTED and reads again after its last
+  // cursor. NOT_FOUND for an attachment that is gone, FAILED_PRECONDITION when it captures no
+  // log.
+  rpc WatchLog(WatchLogRequest) returns (stream WatchLogResponse);
 }
 
 message WatchRequest {
@@ -75,6 +83,21 @@ message DeviceDetached {
   string serial = 2;
   // "detached", or why its connection ended.
   string reason = 3;
+}
+
+message WatchLogRequest {
+  // `DeviceAttached.attached_device_id`.
+  string attached_device_id = 1;
+  // Only entries with a larger cursor; 0 for everything the daemon still has.
+  uint64 after_cursor = 2;
+}
+
+message WatchLogResponse {
+  repeated LogEntry entries = 1;
+  // First response only: entries after `after_cursor` the daemon had already forgotten.
+  uint64 dropped = 2;
+  // First response only: the clock of the entries' `host_monotonic_ns`.
+  string clock_id = 3;
 }
 
 message WatchVideoRequest {

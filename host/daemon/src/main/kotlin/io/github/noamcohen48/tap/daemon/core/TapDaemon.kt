@@ -440,6 +440,15 @@ class TapDaemon internal constructor(
         synchronized(lifecycleLock) { connectionsLocked() to activity.subscribe(afterSeq) }
 
     /**
+     * The log of attachment [id] for a watcher: no owner is named, nothing is renewed and the
+     * driver need not be usable.
+     */
+    internal fun watchedLog(id: String): DeviceLog {
+        val found = synchronized(lifecycleLock) { attachedDevicesById[id] } ?: throw UnknownAttachedDeviceException(id)
+        return found.logs ?: throw LogCaptureOffException(found.deviceSession.serial)
+    }
+
+    /**
      * Marks a call naming held connection [id] as running until the calling coroutine's job
      * completes (the gRPC call), so the idle clock starts only when it has finished. Observed
      * and unknown connections are left alone.

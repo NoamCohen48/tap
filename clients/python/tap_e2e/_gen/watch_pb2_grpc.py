@@ -44,6 +44,11 @@ class WatchServiceStub:
                 request_serializer=watch__pb2.WatchVideoRequest.SerializeToString,
                 response_deserializer=watch__pb2.WatchVideoResponse.FromString,
                 _registered_method=True)
+        self.WatchLog = channel.unary_stream(
+                '/tap.v1.WatchService/WatchLog',
+                request_serializer=watch__pb2.WatchLogRequest.SerializeToString,
+                response_deserializer=watch__pb2.WatchLogResponse.FromString,
+                _registered_method=True)
 
 
 class WatchServiceServicer:
@@ -67,6 +72,18 @@ class WatchServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def WatchLog(self, request, context):
+        """The log of an attached device (`device_log.proto`) after `after_cursor`: what the daemon
+        still has, then new entries as they arrive, until the device is detached (the stream then
+        ends normally) or the client cancels. Redacted like `ReadLog`, unfiltered. A reader that
+        falls too far behind is ended with RESOURCE_EXHAUSTED and reads again after its last
+        cursor. NOT_FOUND for an attachment that is gone, FAILED_PRECONDITION when it captures no
+        log.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_WatchServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -79,6 +96,11 @@ def add_WatchServiceServicer_to_server(servicer, server):
                     servicer.WatchVideo,
                     request_deserializer=watch__pb2.WatchVideoRequest.FromString,
                     response_serializer=watch__pb2.WatchVideoResponse.SerializeToString,
+            ),
+            'WatchLog': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchLog,
+                    request_deserializer=watch__pb2.WatchLogRequest.FromString,
+                    response_serializer=watch__pb2.WatchLogResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -135,6 +157,33 @@ class WatchService:
             '/tap.v1.WatchService/WatchVideo',
             watch__pb2.WatchVideoRequest.SerializeToString,
             watch__pb2.WatchVideoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchLog(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/tap.v1.WatchService/WatchLog',
+            watch__pb2.WatchLogRequest.SerializeToString,
+            watch__pb2.WatchLogResponse.FromString,
             options,
             channel_credentials,
             insecure,

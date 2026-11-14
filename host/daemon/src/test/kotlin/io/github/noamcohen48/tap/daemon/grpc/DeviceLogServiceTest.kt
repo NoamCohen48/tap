@@ -11,6 +11,8 @@ import io.github.noamcohen48.tap.api.v1.MarkLogRequest
 import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.github.noamcohen48.tap.api.v1.RedactLogRequest
 import io.github.noamcohen48.tap.api.v1.TypeText
+import io.github.noamcohen48.tap.api.v1.WatchLogRequest
+import io.github.noamcohen48.tap.host.MediaClock
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.FakeProcess
@@ -29,6 +31,8 @@ import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
 import io.grpc.kotlin.GrpcContextElement
 import io.grpc.stub.MetadataUtils
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
@@ -260,6 +264,41 @@ class DeviceLogServiceTest {
                 assertEquals("before", messages(backlog.entriesList).first())
                 assertTrue(live.entriesCount > 0 && live.entriesList.all { it.hasMarker() })
                 assertEquals(backlog.entriesList.last().cursor + 1, live.entriesList.first().cursor, "no gap and no overlap")
+            }
+        }
+
+    @Test
+    fun `a watcher follows the redacted log without owning the device until it is detached`(): Unit =
+        runBlocking {
+            AttachedHarness.with(Device(), captureLogs = true) {
+                val log = attached.logs!!
+                log.line(line("login token=abc"))
+                val cursor = mark("checkout")
+                log.line(line("pay clicked"))
+                val request = WatchLogRequest.newBuilder().setAttachedDeviceId(attached.id)
+
+                val first = watch.watchLog(request.build()).first()
+                assertEquals(listOf("login token=<redacted>", "marker:checkout", "pay clicked"), messages(first.entriesList))
+                assertEquals(MediaClock.id, first.clockId)
+                assertEquals(0, first.dropped)
+                assertTrue(first.entriesList.all { it.hostMonotonicNs > 0 && it.hostTimeMs > 0 })
+                assertTrue(first.entriesList.zipWithNext().all { (a, b) -> a.hostMonotonicNs <= b.hostMonotonicNs })
+
+                val following = CompletableDeferred<Unit>()
+                val followed = async { watch.watchLog(request.setAfterCursor(cursor).build()).onEach { following.complete(Unit) }.toList() }
+                // The follower is registered before its first response is sent.
+                withTimeout(5_000) { following.await() }
+                log.line(line("paid"))
+                daemon.detachDevice(attached.id, connectionId)
+                val entries = withTimeout(5_000) { followed.await() }.flatMap { it.entriesList }
+                assertEquals(listOf("pay clicked", "paid"), messages(entries), "after the cursor, live, and ended by the detach")
+
+                assertEquals(Status.Code.NOT_FOUND, status { watch.watchLog(request.build()).toList() }.status.code)
+                assertEquals(Status.Code.INVALID_ARGUMENT, status { watch.watchLog(WatchLogRequest.getDefaultInstance()).toList() }.status.code)
+            }
+            AttachedHarness.with(Device()) {
+                val refused = status { watch.watchLog(WatchLogRequest.newBuilder().setAttachedDeviceId(attached.id).build()).toList() }
+                assertEquals(Status.Code.FAILED_PRECONDITION, refused.status.code)
             }
         }
 

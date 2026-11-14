@@ -92,6 +92,10 @@ message LogEntry {
     // missing: why.
     string gap = 6;
   }
+  // The daemon's monotonic clock when it got the entry: the clock of
+  // `LoggedEvent.started_monotonic_ns` and `VideoFrame.received_monotonic_ns`, comparable only
+  // with values of the same daemon (`WatchLogResponse.clock_id`).
+  int64 host_monotonic_ns = 7;
 }
 
 // One logcat line. A message of several lines arrives as several entries.

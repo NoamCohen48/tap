@@ -1,5 +1,6 @@
 # ruff: noqa
 from . import client_connection_pb2 as _client_connection_pb2
+from . import device_log_pb2 as _device_log_pb2
 from . import event_log_pb2 as _event_log_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
@@ -78,6 +79,24 @@ class DeviceDetached(_message.Message):
     serial: str
     reason: str
     def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
+
+class WatchLogRequest(_message.Message):
+    __slots__ = ("attached_device_id", "after_cursor")
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    AFTER_CURSOR_FIELD_NUMBER: _ClassVar[int]
+    attached_device_id: str
+    after_cursor: int
+    def __init__(self, attached_device_id: _Optional[str] = ..., after_cursor: _Optional[int] = ...) -> None: ...
+
+class WatchLogResponse(_message.Message):
+    __slots__ = ("entries", "dropped", "clock_id")
+    ENTRIES_FIELD_NUMBER: _ClassVar[int]
+    DROPPED_FIELD_NUMBER: _ClassVar[int]
+    CLOCK_ID_FIELD_NUMBER: _ClassVar[int]
+    entries: _containers.RepeatedCompositeFieldContainer[_device_log_pb2.LogEntry]
+    dropped: int
+    clock_id: str
+    def __init__(self, entries: _Optional[_Iterable[_Union[_device_log_pb2.LogEntry, _Mapping]]] = ..., dropped: _Optional[int] = ..., clock_id: _Optional[str] = ...) -> None: ...
 
 class WatchVideoRequest(_message.Message):
     __slots__ = ("serial",)
