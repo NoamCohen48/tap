@@ -22,6 +22,10 @@ Configuration (ini option, or environment variable):
                                    after the last one if that start created the server
                                    (default false: a server must already be running)
     tap_acquire_timeout            seconds to wait for a device another session holds (default 300)
+    tap_app_deaths / TAP_APP_DEATHS
+                                   fail (default) = a test whose watched app crashed or stopped
+                                   responding, with nothing handing the death to the test, fails
+                                   with AppDied; off = no end-of-test check (see below)
 
 Fixtures: ``tap_device`` (role "device") and ``tap_devices`` (dict role → Device).
 Markers: ``@pytest.mark.tap_devices("left", "right")`` declares roles. A role given as a keyword
@@ -41,6 +45,12 @@ slow phone). Nothing is reset between them — the app keeps the previous test's
 brings it where it needs it (``cold_launch()``, ``clear_data()``). A reused device is probed
 before each test; one that stopped working is detached and a fresh one attached. Failure artifacts
 are still captured per test; the devices are detached when the scope ends.
+
+After each test the plugin asks its devices for watched app deaths (crashes, ANRs) that nothing
+handed to the test: no command failed with them and no ``guard()`` / ``watch_deaths()`` /
+``expect_death()`` block claimed them. A passing test then fails with ``AppDied``; a failing one
+fails with ``AppDied`` instead, chained to its own failure. ``@pytest.mark.tap_allow_app_death``
+turns the check off for a test (or a class or module), ``tap_app_deaths=off`` for the run.
 """
 
 from __future__ import annotations
@@ -52,6 +62,7 @@ import os
 import pathlib
 import re
 import sys
+import time
 import traceback
 from collections.abc import Generator
 from dataclasses import dataclass, field
@@ -59,7 +70,8 @@ from dataclasses import dataclass, field
 import pytest  # type: ignore[import-not-found]
 
 from .device import Device
-from .errors import DeviceBusyError, DeviceQuarantinedError
+from ._deaths import SETTLE
+from .errors import AppDied, DeviceBusyError, DeviceQuarantinedError
 from .client import TapConnection, TapClient, start_daemon, stop_daemon
 from .models import DeviceEntry
 from ._run_records import RunRecords
@@ -94,6 +106,11 @@ def pytest_addoption(parser: pytest.Parser) -> None:
         default="false",
     )
     parser.addini(
+        "tap_app_deaths",
+        "fail or off: fail a test whose watched app died unhandled",
+        default="fail",
+    )
+    parser.addini(
         "tap_acquire_timeout",
         "seconds to wait for a device another session holds",
         default=str(DEFAULT_ACQUIRE_TIMEOUT),
@@ -105,6 +122,10 @@ def pytest_configure(config: pytest.Config) -> None:
         "markers",
         "tap_devices(*roles, **role_criteria): device roles this test needs (default: one "
         "'device'); role={'min_api': 30, 'emulator': False, ...} limits which devices play it",
+    )
+    config.addinivalue_line(
+        "markers",
+        "tap_allow_app_death: no end-of-test check for watched app crashes and ANRs in this test",
     )
 
 
@@ -130,6 +151,8 @@ class TapConfig:
             ``TAP_REPORT``: ``on`` or ``off``, default ``on``).
         device_scope: How long attached devices are kept: ``function`` (default), ``class``,
             ``module`` or ``session`` (``tap_device_scope`` / ``TAP_DEVICE_SCOPE``).
+        app_deaths: Fail a test whose watched app crashed or stopped responding unhandled
+            (``tap_app_deaths`` / ``TAP_APP_DEATHS``: ``fail``, the default, or ``off``).
     """
 
     serials: list[str]
@@ -141,6 +164,8 @@ class TapConfig:
     device_scope: str = "function"
     report: bool = True
     """Write tap-run/1 metadata, lifecycle JSONL and artifact manifests (tap_report / TAP_REPORT)."""
+    app_deaths: bool = True
+    """Run the end-of-test app death check (tap_app_deaths / TAP_APP_DEATHS)."""
 
     @classmethod
     def from_pytest(cls, config: pytest.Config) -> TapConfig:
@@ -173,6 +198,7 @@ class TapConfig:
             in ("1", "true", "yes"),
             capture_on_failure=_capture_mode(option("tap_capture", "TAP_CAPTURE", "onFailure")),
             device_scope=_device_scope(option("tap_device_scope", "TAP_DEVICE_SCOPE", "function")),
+            app_deaths=_app_deaths_mode(option("tap_app_deaths", "TAP_APP_DEATHS", "fail")),
         )
 
 
@@ -264,6 +290,70 @@ def pytest_runtest_teardown(item: pytest.Item, nextitem: pytest.Item | None) -> 
     errors = _detach_all(held.devices)
     if errors:
         raise errors[0]
+
+
+def _app_deaths_mode(value: str) -> bool:
+    """``tap_app_deaths``: True for ``fail``, False for ``off`` (case-insensitive)."""
+    modes = {"fail": True, "off": False}
+    try:
+        return modes[value.strip().lower()]
+    except KeyError:
+        raise pytest.UsageError(f"tap_app_deaths must be one of ['fail', 'off'], was {value!r}") from None
+
+
+def _death_marks(devices: dict[str, Device]) -> dict[str, int]:
+    """Each device's latest death sequence before the test; a device that cannot answer is left out."""
+    marks: dict[str, int] = {}
+    for role, device in devices.items():
+        with contextlib.suppress(Exception):
+            marks[role] = device.death_sequence()
+    return marks
+
+
+def _app_death_failure(
+    devices: dict[str, Device], marks: dict[str, int], failure: BaseException | None
+) -> AppDied | None:
+    """The end-of-test check after the test body: the ``AppDied`` to raise (chained to the test's
+    own ``failure``) when a device's watched app died with nothing handing the death to the test,
+    else None. Waits ``SETTLE`` first, since Android logs a crash shortly after its input. A
+    skip, an xfail and an interrupt are never replaced; a device that cannot answer is left out."""
+    if isinstance(failure, (pytest.skip.Exception, pytest.xfail.Exception, KeyboardInterrupt, SystemExit)):
+        return None
+    if not marks:
+        return None
+    time.sleep(SETTLE)
+    deaths = []
+    for role, mark in marks.items():
+        with contextlib.suppress(Exception):
+            deaths += devices[role].take_unhandled_deaths(mark)
+    if not deaths:
+        return None
+    return AppDied(sorted(deaths, key=lambda d: d.at), failure)
+
+
+@pytest.hookimpl(wrapper=True)
+def pytest_runtest_call(item: pytest.Item):
+    """Runs the end-of-test app death check around the test body (``tap_app_deaths``)."""
+    state = item.stash.get(_STATE, None)
+    if (
+        state is None
+        or not state.devices
+        or item.get_closest_marker("tap_allow_app_death") is not None
+        or not TapConfig.from_pytest(item.config).app_deaths
+    ):
+        return (yield)
+    marks = _death_marks(state.devices)
+    try:
+        result = yield
+    except BaseException as failure:
+        died = _app_death_failure(state.devices, marks, failure)
+        if died is None:
+            raise
+        raise died from failure
+    died = _app_death_failure(state.devices, marks, None)
+    if died is not None:
+        raise died
+    return result
 
 
 def _capture_mode(value: str) -> bool:
