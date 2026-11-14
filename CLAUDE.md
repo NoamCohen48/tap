@@ -65,6 +65,9 @@ See `CONTRIBUTING.md` for build/run commands.
   and what is deferred (start readiness, shutdown-budget overrun, bundling scrcpy).
 - `.docs/device-capabilities.md` — approved design and implementation plan for read-only
   per-attachment operation support, shared by the server, SDKs and tap-agent (G37).
+- `.docs/app-logs.md` — decision record: the device log (`DeviceLogService`): logcat streamed
+  for the whole attachment with the driver's own action lines, markers and redaction on read;
+  the log parser pipeline (HTTP exchanges) is deferred to `.docs/feature-todo.md`.
 - `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
   foreground/background/deep links, permission dialogs, gestures), the group in progress with its
   per-action design and upstream comparison, and the prioritised backlog.

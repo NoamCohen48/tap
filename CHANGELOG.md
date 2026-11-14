@@ -8,6 +8,17 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Device logs: the server reads `logcat` for every attached device from the moment it is
+  attached and serves it through `DeviceLogService` (`ReadLog`, `MarkLog`, `RedactLog`): the
+  app's lines in order with the actions Tap ran (the driver logs each action and wait when it
+  starts and finishes) and the markers a test wrote, filtered by package, priority, tag or a
+  regular expression, read from a marker, a cursor, the newest N or the newest action, or
+  followed live. Secrets are replaced on read (auth headers, tokens, sensitive typed text, your
+  own patterns). A client that sends a `tap-step` header gets its step id on the actions and
+  calls it caused. Python: `device.logs.read(...)` / `follow` / `mark` / `redact`,
+  `with tap_e2e.step() as id:`; `tap-agent log`. Each app line names the packages installed
+  under its uid. `attach_device(capture_logs=False)` turns the capture off. See the [device logs guide](docs/guide/logs.md).
+
 - Read per-device operation support with `device.capabilities()` in Kotlin/Python,
   `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
   explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining
@@ -63,6 +74,25 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Clients and tools
 
+- Kotlin: `device.logs.read(LogStart, LogFilter)`, `follow(...)` (a `Flow`), `mark(name)` and
+  `redact(patterns)` read the device log; `withStep { id -> … }` runs calls as one step and
+  `LogFilter(step = id)` reads that step's part of the log.
+- `tap-agent` records every session's steps by itself and joins them with the device log.
+  `record start|stop` is gone: actions and explicit waits are recorded from the first one until
+  `release`, and `export [NAME] [-o FILE]` writes that history (`tap-agent-recording/2`, each
+  step with an `id`). `log mark NAME` writes a marker to the device log and the history;
+  `export --since NAME --until OTHER` cuts the export between markers, `--logs` adds the device
+  log and `--calls` the server's record of each call (the former `history` output), both
+  matched to the steps by id. `log` names the session's steps, `log --step N` prints one
+  step's part, `log --until NAME` ends a read at a marker and `log --json` returns the entries
+  as data. A read from a start returns its first entries and says how many more follow (read on
+  with `--after`); `@CURSOR` names one marker exactly; times are the host's. `export --logs`
+  takes `log`'s filters, a failed step keeps its Tap error code (`outcome.error`), and a
+  history whose session ended without a release is shown and exported as stopped. `history [list|clean]` replaces `record list|clean`; `logs driver` is
+  `log driver`, `logs device` is `log evidence`, `logs hierarchy` is dropped (`capture` saves
+  the dump). An `unknown` or interrupted step no longer blocks later input, and a full history
+  is followed by a new one. MCP: the `record` and `logs` tools are removed.
+
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
   `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:
   `TapClient.unquarantine(serial)`, `attach_device(serial, inspect_quarantined=True)`,
@@ -72,6 +102,12 @@ name the components affected. Earlier releases used independent version lines. T
   `unquarantine`); `devices` marks quarantines that are retried on attach or under inspection.
 - Tap Studio: the device list inspects and unquarantines a quarantined device. Tap watcher
   shows the quarantine reason and, as a tooltip, the `tap unquarantine` command.
+- Tap watcher shows the device log. A **Log** tab beside the actions lists the device's `logcat`
+  lines with Tap's actions and the test's markers, searchable and filtered by priority; clicking
+  an entry shows the screen at that moment, and markers, errors and gaps are dots on the
+  scrubber. Recordings and clips save the log of their time as `log.json` (in the ZIP too), and
+  the Library player shows it the same way. The server's new read-only `WatchService.WatchLog`
+  serves it, and `LogEntry.host_monotonic_ns` places an entry on the video's clock.
 - Tap watcher says why a failed action failed. The selected action's details list, under its
   error, the selector parts that ruled every node out (each part alone and without it, with the
   values seen) or, for a state wait that timed out, which parts of the condition held and what

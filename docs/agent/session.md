@@ -164,20 +164,22 @@ ok, `1` the step failed, `2` usage, `3` no server running.
 `screenshot` and `capture` (screenshot, hierarchy, device info, driver log) save evidence
 under `.tap/agent/` and print the paths.
 
-## History, named recordings and release
+## Step history, export and release
 
-The raw session log is now `history` (previously `export`):
+Every action and explicit wait is recorded as a step from the first one; nothing has to be
+started. `export` writes the history, also after `release`:
 
 ```console
-$ tap-agent history -o session.json
-wrote 9 events (3 failed) to session.json
+$ tap-agent export -o session.json
+exported step history 'agent-20261114-101502' (9 steps) to session.json
 $ tap-agent release
 released session 'agent' (detached emulator-5554)
 ```
 
-For a durable named flow, use `record start NAME` before the actions, `record stop` afterwards,
-then `export NAME [-o FILE]`—even after release. `record list` lists archives and `record clean NAME`
-deletes a stopped one. Only actions and explicit waits are steps, not inspections/polls.
+`log mark NAME` puts a marker in the device log and in the history; `export --since NAME`
+exports from it, and `--logs` / `--calls` add the device log and the server's record of each
+call while the session is live. `history` lists the saved histories. Only actions and explicit
+waits are steps, not inspections/polls.
 [Record steps and turn them into tests](export.md) explains persistence, redaction and outcomes.
 
 ## SDK workflows and diagnostics
@@ -215,9 +217,91 @@ or changes focus implicitly. As before, a changing-screen timeout returns a note
 assertion about app state. These are ordinary SDK waits, **not** synchronization/`awaitIdle`.
 
 `snapshot --candidates` returns structured SDK screen data with selector candidates instead of
-rendered lines; use the default view. `logs device`, `logs driver` and `logs hierarchy` save SDK
-diagnostics to new mode-0600 files, not inline text. `-o PATH` chooses a new file, never overwrites.
-Hierarchy remains diagnostic only. Accessibility data and logs can contain secrets; keep them local.
+rendered lines; use the default view. `log driver` saves the Tap driver's own log and
+`log evidence` the device's failure evidence (log, crashes and ANRs, activity and window state)
+to new mode-0600 files, not inline text. `-o PATH` chooses a new file, never overwrites.
+`capture` saves the hierarchy dump. Accessibility data and logs can contain secrets; keep them local.
+
+`log` prints the device log since the attach, inline: the app's logcat lines with Tap's own
+actions and markers between them, secrets redacted. Each entry starts with the time the server
+got it, on the host's clock (local time), the clock of the steps in an export; a device whose
+own clock is far off is noted once at the top.
+
+```console
+$ tap-agent tap 'text=Pay'
+$ tap-agent log --last-action --package com.shop --priority warn
+14:01:47.636 ── tap  text="Pay"
+14:01:47.880 W Payments: retrying (timeout)
+14:01:47.881 ── tap  → ok  243 ms
+cursor 1843
+$ tap-agent log --after 1843 --package com.shop     # what came since
+```
+
+A read returns at most 200 entries (`--limit`, up to 5000). A read with a start (`--since`,
+`--after`, `--step`, `--last-action`) returns the **first** ones from that start and ends with
+how many more follow; read on from the cursor it prints. A read without one returns the newest.
+A busy device logs hundreds of lines a second, so narrow with `--package` or page on:
+
+```console
+$ tap-agent log --since checkout
+14:01:47.600 ── marker checkout
+…
+(4210 more entries after this; read on with --after 2039)
+cursor 2039
+$ tap-agent log --after 2039
+```
+
+The session's own steps are named where their actions begin, and `--step` prints one step's
+part of the log, by its number or id:
+
+```console
+$ tap-agent log --step 3
+── step 3 fill  [5f0c2a9d41b7e6a3]
+── set_text  res="card"
+12:01:49.120 D Payments: card field changed
+── set_text  → ok  88 ms
+cursor 1863
+```
+
+`log mark NAME` writes a marker and `log --since NAME` reads from it; `--until OTHER` ends the
+read at a second marker instead of now. A name means the newest marker with it, so marking the
+same name again moves it (`log mark` says so). `mark` prints the marker's cursor: `--since @1840`
+and `--until @1844` name exactly that marker, whatever happened since. `--tag` and `--grep`
+narrow further. `log redact REGEX` hides matches in the whole log, lines already captured
+included, until the device is detached; it cannot be undone, and `--grep` then matches the
+redacted text.
+
+`--json` returns the same entries as data, for filtering or computing on them:
+
+```console
+$ tap-agent log mark checkout
+$ tap-agent tap 'text=Pay'
+$ tap-agent log mark paid
+$ tap-agent log --since checkout --until paid --package com.shop --json
+{
+  "dropped": 0,
+  "omitted": 0,
+  "more": 0,
+  "device_clock_offset_s": 0.012,
+  "steps": {"5f0c2a9d41b7e6a3": {"seq": 4, "action": "tap"}},
+  "entries": [
+    {"cursor": 1840, "at": "2026-11-14T12:01:47.600Z", "marker": "checkout"},
+    {"cursor": 1841, "at": "2026-11-14T12:01:47.636Z", "action": {"operation": "tap", "target": "text=\"Pay\"", "finished": false, "request_id": 42, "step": "5f0c2a9d41b7e6a3"}},
+    {"cursor": 1842, "at": "2026-11-14T12:01:47.880Z", "line": {"priority": "W", "tag": "Payments", "message": "retrying (timeout)", "packages": ["com.shop"], "uid": 10123, "pid": 2346, "tid": 2357, "device_time": 1794657707.879}},
+    {"cursor": 1843, "at": "2026-11-14T12:01:47.881Z", "action": {"operation": "tap", "finished": true, "outcome": "ok", "duration": 0.243, "request_id": 42, "step": "5f0c2a9d41b7e6a3"}},
+    {"cursor": 1844, "at": "2026-11-14T12:01:48.300Z", "marker": "paid"}
+  ],
+  "cursor": 1844
+}
+```
+
+Each entry has one of `line`, `action`, `marker` or `gap`, its `cursor` and `at` (the server's
+clock, UTC). A line also has `packages` (the apps installed under its uid; none for a system
+process) and `device_time` (the device's clock, in seconds; `device_clock_offset_s` is how far
+it is ahead of the host's). `steps` names the session's steps the actions refer to. `omitted`
+counts earlier entries left out by `--limit`, `more` later ones (read on with `--after` the
+`cursor`), `dropped` entries the server no longer has (it keeps the newest 16 MiB). See
+[Device logs](../guide/logs.md).
 MCP screenshot/capture now also accept `path`, matching CLI `-o`.
 
 ## Record an owned device
@@ -242,8 +326,8 @@ An optional new `-o` copy never overwrites. If that copy fails, the error names 
 canonical artifact: copy it locally, **do not repeat the device stop**. No failed start/stop is
 replayed automatically. The existing recorder startup/shutdown timing limits still apply.
 
-`history --after-seq N` retrieves raw events after a known sequence number. Named `export` reads
-stored action-and-wait recordings instead; it does not need a live session.
+`export` reads the stored step history and does not need a live session; `export --calls` adds
+the server's raw record of each call while the session lives.
 
 ## What else it can do
 

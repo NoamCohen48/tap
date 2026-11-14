@@ -31,6 +31,7 @@ import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.SystemPanel
+import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
 import io.grpc.MethodDescriptor
@@ -48,10 +49,13 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -75,6 +79,10 @@ import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import io.github.noamcohen48.tap.api.v1.LogAction as LogActionProto
+import io.github.noamcohen48.tap.api.v1.LogEntry as LogEntryProto
+import io.github.noamcohen48.tap.api.v1.LogLine as LogLineProto
+import io.github.noamcohen48.tap.api.v1.LogPriority as LogPriorityProto
 
 /**
  * In-process grpc-kotlin fakes for the coroutine client: linearized Observe ownership/lifetime,
@@ -87,6 +95,10 @@ class TapClientTest {
     private lateinit var fakeDevices: FakeDevices
     private lateinit var fakeApps: FakeApps
     private lateinit var fakeAppData: FakeAppPrivateDataService
+    private lateinit var fakeLogs: FakeDeviceLogService
+
+    /** The `tap-step` header of every call the server got, by method name (`Execute`); null when it had none. */
+    private val steps = java.util.concurrent.CopyOnWriteArrayList<Pair<String, String?>>()
     private lateinit var grpcServer: io.grpc.Server
     private lateinit var channel: ManagedChannel
 
@@ -97,6 +109,7 @@ class TapClientTest {
         fakeDevices = FakeDevices()
         fakeApps = FakeApps()
         fakeAppData = FakeAppPrivateDataService()
+        fakeLogs = FakeDeviceLogService()
         grpcServer =
             InProcessServerBuilder
                 .forName(serverName)
@@ -105,7 +118,20 @@ class TapClientTest {
                 .addService(fakeDevices)
                 .addService(fakeApps)
                 .addService(fakeAppData)
-                .build()
+                .addService(fakeLogs)
+                .intercept(
+                    object : io.grpc.ServerInterceptor {
+                        override fun <ReqT, RespT> interceptCall(
+                            call: io.grpc.ServerCall<ReqT, RespT>,
+                            headers: io.grpc.Metadata,
+                            next: io.grpc.ServerCallHandler<ReqT, RespT>,
+                        ): io.grpc.ServerCall.Listener<ReqT> {
+                            val step = headers.get(io.grpc.Metadata.Key.of("tap-step", io.grpc.Metadata.ASCII_STRING_MARSHALLER))
+                            steps += call.methodDescriptor.bareMethodName.orEmpty() to step
+                            return next.startCall(call, headers)
+                        }
+                    },
+                ).build()
                 .start()
         channel = InProcessChannelBuilder.forName(serverName).directExecutor().build()
     }
@@ -151,6 +177,212 @@ class TapClientTest {
             }
         } finally {
             connection.close()
+        }
+    }
+
+    private suspend fun withDevice(
+        options: DeviceOptions = DeviceOptions(),
+        block: suspend (Device) -> Unit,
+    ) {
+        val connection = client().connect("logs")
+        try {
+            tapScope {
+                val device = connection.attachDevice("emulator-5554", options = options)
+                try {
+                    block(device)
+                } finally {
+                    device.detach()
+                }
+            }
+        } finally {
+            connection.close()
+        }
+    }
+
+    private fun logLine(
+        cursor: Long,
+        message: String,
+        priority: LogPriorityProto = LogPriorityProto.LOG_PRIORITY_INFO,
+        uid: Int? = 10123,
+    ): LogEntryProto =
+        LogEntryProto
+            .newBuilder()
+            .setCursor(cursor)
+            .setHostTimeMs(1_794_608_507_900 + cursor)
+            .setLine(
+                LogLineProto
+                    .newBuilder()
+                    .setDeviceTimeMs(1_794_608_507_879)
+                    .setPid(2346)
+                    .setTid(2357)
+                    .setPriority(priority)
+                    .setTag("Shop")
+                    .setMessage(message)
+                    .apply { uid?.let { setUid(it) } },
+            ).build()
+
+    @Test
+    fun `the device log decodes every kind of entry and renders it as text`() {
+        runBlocking {
+            withDevice { device ->
+                fakeLogs.dropped = 7
+                fakeLogs.entries +=
+                    listOf(
+                        LogEntryProto.newBuilder().setCursor(1).setMarker("checkout").build(),
+                        LogEntryProto
+                            .newBuilder()
+                            .setCursor(2)
+                            .setAction(LogActionProto.newBuilder().setOperation("tap").setTarget("text=\"Pay\"").setRequestId(42))
+                            .build(),
+                        logLine(3, "paying", LogPriorityProto.LOG_PRIORITY_WARN),
+                        LogEntryProto
+                            .newBuilder()
+                            .setCursor(4)
+                            .setAction(
+                                LogActionProto
+                                    .newBuilder()
+                                    .setOperation("tap")
+                                    .setFinished(true)
+                                    .setOutcome("ok")
+                                    .setDurationMs(243)
+                                    .setRequestId(42),
+                            ).build(),
+                        LogEntryProto.newBuilder().setCursor(5).setGap("logcat ended").build(),
+                        logLine(6, "no uid", uid = null),
+                    )
+
+                val entries = device.logs.read()
+
+                assertEquals(7, entries.dropped)
+                assertEquals(listOf(1L, 2L, 3L, 4L, 5L, 6L), entries.map { it.cursor })
+                assertEquals("checkout", entries[0].marker)
+                assertEquals(LogAction("tap", "text=\"Pay\"", false, null, null, 42), entries[1].action)
+                assertEquals(LogAction("tap", null, true, "ok", 243.milliseconds, 42), entries[3].action)
+                val warning = assertNotNull(entries[2].line)
+                assertEquals(LogPriority.WARN, warning.priority)
+                assertEquals(10123, warning.uid)
+                assertEquals(1_794_608_507_879, warning.deviceTime.toEpochMilli())
+                assertEquals(1_794_608_507_903, entries[2].at.toEpochMilli())
+                assertNull(entries[5].line?.uid)
+                assertEquals(listOf("paying", "no uid"), entries.messages)
+                assertEquals(
+                    listOf(
+                        "── marker checkout",
+                        "── tap  text=\"Pay\"",
+                        "1794608507.879 10123  2346  2357 W Shop: paying",
+                        "── tap  → ok  243 ms",
+                        "── gap logcat ended",
+                        "1794608507.879     ?  2346  2357 I Shop: no uid",
+                    ),
+                    entries.text.trimEnd().lines(),
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `a log read sends its starting point and filter`() {
+        runBlocking {
+            withDevice { device ->
+                assertEquals(1, device.logs.mark("checkout"))
+                device.logs.read(
+                    LogStart.Marker("checkout"),
+                    LogFilter(listOf("com.shop"), LogPriority.WARN, listOf("Shop"), "pa.d", actions = false),
+                )
+                device.logs.read(LogStart.After(12))
+                device.logs.read(LogStart.Tail(5), LogFilter(minPriority = LogPriority.FATAL))
+                device.logs.read(LogStart.LastAction)
+                device.logs.read()
+                device.logs.redact("session=(\\w+)", "4111[0-9]{12}")
+
+                val owner =
+                    ReadLogRequest.newBuilder().setClientConnectionId(device.ownerConnection.id).setAttachedDeviceId(device.attachedDeviceId)
+                assertEquals(
+                    listOf(
+                        owner
+                            .clone()
+                            .setMarker("checkout")
+                            .addPackages("com.shop")
+                            .setMinPriority(LogPriorityProto.LOG_PRIORITY_WARN)
+                            .addTags("Shop")
+                            .setMessageRegex("pa.d")
+                            .setExcludeActions(true)
+                            .build(),
+                        owner.clone().setAfterCursor(12).build(),
+                        owner.clone().setTail(5).setMinPriority(LogPriorityProto.LOG_PRIORITY_FATAL).build(),
+                        owner.clone().setLastAction(true).build(),
+                        owner.build(),
+                    ),
+                    fakeLogs.reads.toList(),
+                )
+                assertEquals("checkout", fakeLogs.marks.single().name)
+                assertEquals(listOf("session=(\\w+)", "4111[0-9]{12}"), fakeLogs.redactions.single().patternsList)
+
+                val unknown = assertFailsWith<ServerException> { device.logs.read(LogStart.Marker("never")) }
+                assertEquals(io.github.noamcohen48.tap.sdk.FailureReason.UNKNOWN_LOG_MARKER, unknown.reason)
+            }
+        }
+    }
+
+    @Test
+    fun `following the log yields the backlog then live entries and does not hold up detach`() {
+        runBlocking {
+            withDevice { device ->
+                fakeLogs.entries += listOf(logLine(1, "old"), logLine(2, "older"))
+                fakeLogs.live.trySend(logLine(3, "live"))
+
+                val seen = device.logs.follow(filter = LogFilter(tags = listOf("Shop"))).take(3).toList()
+
+                assertEquals(listOf("old", "older", "live"), seen.map { it.line?.message })
+                assertTrue(fakeLogs.reads.single().follow)
+                withTimeout(10_000) { fakeLogs.followerEnded.await() }
+
+                // A follower still collecting when the device is detached ends with the stream.
+                coroutineScope {
+                    val follower = async { device.logs.follow(LogStart.After(3)).toList() }
+                    withTimeout(10_000) { while (fakeLogs.reads.size < 2) delay(10) }
+                    fakeLogs.live.close()
+                    assertEquals(listOf(1L, 2L), withTimeout(10_000) { follower.await() }.map { it.cursor })
+                }
+            }
+        }
+    }
+
+    @Test
+    fun `calls inside a step carry its id and a read can ask for the step`() {
+        runBlocking {
+            withDevice { device ->
+                fakeLogs.entries +=
+                    LogEntryProto.newBuilder().setCursor(1).setAction(LogActionProto.newBuilder().setOperation("tap").setStep("s-1")).build()
+                device.pressBack()
+                val inner =
+                    withStep("s-1") { outer ->
+                        device.pressBack()
+                        val inner = withStep { id -> device.pressBack(); id }
+                        device.pressBack()
+                        assertEquals("s-1", outer)
+                        inner
+                    }
+                device.pressBack()
+
+                assertEquals(listOf(null, "s-1", inner, "s-1", null), steps.filter { it.first == "Execute" }.map { it.second })
+                assertEquals(16, inner.length)
+                assertEquals(listOf("s-1"), device.logs.read(filter = LogFilter(step = "s-1")).map { it.action?.step })
+                assertEquals("s-1", fakeLogs.reads.last().step)
+                assertFailsWith<IllegalArgumentException> { withStep("two words") { } }
+            }
+        }
+    }
+
+    @Test
+    fun `attaching captures the device log unless turned off`() {
+        runBlocking {
+            withDevice { assertFalse(fakeDevices.attachRequests.last().hasCaptureLogs()) }
+            withDevice(DeviceOptions(captureLogs = false)) {
+                val request = fakeDevices.attachRequests.last()
+                assertTrue(request.hasCaptureLogs())
+                assertFalse(request.captureLogs)
+            }
         }
     }
 

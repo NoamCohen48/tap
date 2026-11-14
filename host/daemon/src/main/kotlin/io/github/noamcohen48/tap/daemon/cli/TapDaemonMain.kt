@@ -7,10 +7,12 @@ import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.DriverApks
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.daemon.grpc.AppDataService
+import io.github.noamcohen48.tap.daemon.grpc.DeviceLogService
 import io.github.noamcohen48.tap.daemon.grpc.AppService
 import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
 import io.github.noamcohen48.tap.daemon.grpc.DeviceService
+import io.github.noamcohen48.tap.daemon.grpc.StepInterceptor
 import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
 import io.github.noamcohen48.tap.daemon.grpc.WatchService
 import io.github.noamcohen48.tap.host.Adb
@@ -230,7 +232,9 @@ private fun serve(
             .addService(DeviceService(daemon))
             .addService(AppService(daemon))
             .addService(AppDataService(daemon))
+            .addService(DeviceLogService(daemon))
             .addService(WatchService(daemon))
+            .intercept(StepInterceptor())
             .intercept(TokenAuthInterceptor(token))
             .maxInboundMessageSize(8 * 1024 * 1024)
             .build()

@@ -1,4 +1,5 @@
-"""H.264 → MP4 muxing with the original packet timestamps, and the `steps.json` beside it.
+"""H.264 → MP4 muxing with the original packet timestamps, and the `steps.json` and `log.json`
+beside it.
 
 No decoder or encoder runs: packets are copied as they arrived, so a variable frame rate
 stays variable and nothing is re-encoded. One MP4 holds one stream, so a recording that spans
@@ -19,6 +20,11 @@ from tap_e2e.proto import event_log_pb2 as event_log
 from tap_e2e.proto import watch_pb2 as watch
 
 STEPS_FORMAT = "tap-watch-steps/2"
+LOG_FORMAT = "tap-watch-log/1"
+LOG_CORRELATION = (
+    "Approximate: frame times are host receipt of the encoded packet, entry times are when the "
+    "daemon read the line from logcat (or wrote the marker or action). Neither is device time."
+)
 CORRELATION = (
     "Approximate: frame times are host receipt of the encoded packet, action times are host "
     "boundaries of the RPC. Neither is device input or capture time."
@@ -232,6 +238,44 @@ def steps(
             for index, part in enumerate(parts)
         ],
         "actions": actions,
+    }
+
+
+def log_document(
+    *,
+    serial: str,
+    parts: list[Mp4Writer],
+    records: list[Any],
+    omitted: int,
+) -> dict[str, Any]:
+    """The `log.json` document: the device log entries ([records]: `LogRecord`s on the parts'
+    clocks, oldest first) the daemon got while the video was recorded, each placed in a part
+    and on the whole recording's timeline like the actions of `steps.json`."""
+    starts, at = [], 0
+    for part in parts:
+        starts.append(at)
+        at += part.duration_us
+    entries = []
+    for record in records:
+        ns = record.entry.host_monotonic_ns
+        index = _part_at(parts, record.clock_id, ns)
+        part = parts[index]
+        offset = part.frames[_frame_at(part.frames, ns)].pts_us - part.frames[0].pts_us
+        entries.append(
+            {
+                "part": index,
+                "videoOffsetUs": str(offset),
+                "offsetUs": str(starts[index] + offset),
+                "entry": json_format.MessageToDict(record.entry),
+            }
+        )
+    return {
+        "format": LOG_FORMAT,
+        "serial": serial,
+        "correlation": LOG_CORRELATION,
+        # Entries the recording could not keep (it holds at most 200000).
+        "omitted": omitted,
+        "entries": entries,
     }
 
 

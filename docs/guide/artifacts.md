@@ -125,7 +125,7 @@ the result:
     ├── hierarchy.xml              accessibility hierarchy
     ├── device-info.json           API, model, display, focused package
     ├── driver-log.txt             the driver's log for the session
-    ├── logcat.txt                 logcat (main, system, crash) since attachment
+    ├── logcat.txt                 the device log since attachment: logcat, Tap's actions, markers
     ├── crashes.txt                crashes and ANRs, only when present
     ├── activities.txt             dumpsys activity activities, at the failure
     └── windows.txt                dumpsys window windows, at the failure
@@ -133,10 +133,11 @@ the result:
 
 The logs come from the device itself, so they cover what the driver cannot see: the app's own
 log lines, a crash of the app (its `FATAL EXCEPTION` and stack trace) or an ANR, and which
-activity and windows were on screen. They start when the device was attached (on the device's
-clock), keep going across app restarts, and are capped at the newest 4 MiB of logcat. Android
-keeps logcat in ring buffers, so on a busy device the oldest lines of a long test may already be
-gone. `device.device_logs()` (Kotlin `deviceLogs()`) returns the same parts on their own.
+activity and windows were on screen. They start when the device was attached, keep going across app restarts, and are capped at the
+newest 4 MiB of log. `logcat.txt` is the [device log](logs.md) the server captured for the whole
+attachment: the app's lines with Tap's own actions and the test's markers between them (lines
+starting with `──`), secrets redacted. `device.device_logs()` (Kotlin `deviceLogs()`) returns
+the same parts on their own; `device.logs` reads part of the log during the test.
 
 Each manifest entry names the test/attempt, role, serial, generation, media type, relative
 path, byte size and SHA-256. Missing capture parts have a collection-error entry instead.

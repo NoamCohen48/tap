@@ -809,9 +809,180 @@ kbd {
   z-index: 2;
 }
 
-/* timeline */
-.timeline {
+/* beside the screen: tabs over the actions or the device log */
+.side {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: var(--surface);
   border-left: 1px solid var(--line);
+}
+.side-tabs {
+  flex: none;
+  display: flex;
+  height: 38px;
+  padding: 0 6px;
+  border-bottom: 1px solid var(--line);
+}
+.side-tabs button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+.side-tabs button[aria-selected="true"] {
+  color: var(--ink);
+  border-bottom-color: var(--accent-fill);
+}
+.side > .timeline,
+.side > .log,
+.side > .rows {
+  flex: 1;
+  min-height: 0;
+}
+
+/* device log */
+.log {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.log > .note {
+  padding: 8px 12px 0;
+}
+.level select {
+  height: 32px;
+  padding: 0 6px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+}
+.log-rows {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+}
+.log-rows ol {
+  position: relative;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.log-rows li {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 22px;
+}
+.log-row {
+  display: grid;
+  grid-template-columns: 86px 12px minmax(0, 1fr);
+  gap: 6px;
+  width: 100%;
+  height: 22px;
+  padding: 0 10px 0 9px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-bottom: 1px solid transparent;
+  background: none;
+  color: var(--ink);
+  font: 12px/21px var(--mono);
+  text-align: left;
+  cursor: pointer;
+}
+.log-row:hover {
+  background: var(--surface-2);
+}
+.log-time {
+  color: var(--faint);
+  font-variant-numeric: tabular-nums;
+}
+.log-level {
+  color: var(--muted);
+  font-weight: 600;
+  text-align: center;
+}
+.log-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-tag {
+  margin-right: 6px;
+  color: var(--muted);
+}
+.log-row.warn .log-level,
+.log-row.warn .log-text {
+  color: var(--warn);
+}
+.log-row.bad {
+  border-left-color: var(--bad);
+}
+.log-row.bad .log-level,
+.log-row.bad .log-text {
+  color: var(--bad);
+}
+.log-row.action .log-text,
+.log-row.action .log-level {
+  color: var(--muted);
+}
+.log-row.action.bad .log-text {
+  color: var(--bad);
+}
+.log-row.marker {
+  background: var(--accent-soft);
+  font-weight: 600;
+}
+.log-row.marker .log-level {
+  color: var(--accent);
+}
+.log-row.selected {
+  background: var(--accent-soft);
+  border-left-color: var(--accent-fill);
+}
+/* The video is here: entries above the line were logged before the frame on screen. */
+.log-row.head {
+  border-bottom-color: var(--accent-fill);
+}
+.log-message {
+  margin: 8px 0;
+  max-height: 160px;
+  overflow: auto;
+  font: 12px/1.5 var(--mono);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* Log ticks sit under the rail, below the action markers. */
+.marker.log-tick {
+  top: 19px;
+  height: 10px;
+}
+.marker.log-tick::before {
+  left: 1px;
+  top: 2px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent-fill);
+}
+.marker.log-tick.bad::before {
+  width: 6px;
+  background: var(--bad);
+}
+
+/* timeline */
+.side > .timeline {
+  border-left: 0;
 }
 .timeline-head {
   display: flex;
@@ -1245,7 +1416,6 @@ kbd {
 }
 .viewer-steps {
   background: var(--surface);
-  border-left: 1px solid var(--line);
 }
 .viewer-steps .row {
   grid-template-columns: 44px minmax(0, 1fr);
@@ -1320,7 +1490,7 @@ kbd {
     grid-template-columns: 1fr;
     grid-template-rows: minmax(280px, 1fr) minmax(200px, 40%);
   }
-  .viewer-steps {
+  .viewer-side {
     border-left: 0;
     border-top: 1px solid var(--line);
   }
@@ -1335,15 +1505,13 @@ kbd {
     grid-template-columns: 1fr;
     grid-template-rows: auto;
   }
-  .timeline {
+  .live > .side {
     border-left: 0;
     border-top: 1px solid var(--line);
+    height: 70vh;
   }
   .stage {
     min-height: 420px;
-  }
-  .timeline {
-    max-height: 70vh;
   }
   .rail-devices,
   .library-list {

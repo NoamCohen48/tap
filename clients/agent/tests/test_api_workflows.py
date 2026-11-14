@@ -32,7 +32,7 @@ def test_detach_preserves_other_devices_and_the_session(fake, agent):
     assert "no device" in agent.sessions()
 
 
-def test_metadata_candidates_and_incremental_history(fake, agent):
+def test_metadata_candidates_and_exported_calls(fake, agent):
     fake.devices.listed = [pb.DeviceEntry(serial="first", state=pb.DEVICE_FREE,
         properties=pb.DeviceProperties(api_level=34, manufacturer="Google", model="Phone", emulator=True))]
     assert "API 34  Google Phone  emulator" in agent.devices()
@@ -43,10 +43,11 @@ def test_metadata_candidates_and_incremental_history(fake, agent):
     agent.snapshot(candidates=True)
     assert fake.devices.snapshot_requests[-1].selector_candidates
     agent.tap("id=save")
+    agent.log("mark", "second")
     agent.tap("id=cancel")
-    events = json.loads(agent.history())["events"]
+    events = json.loads(agent.export(calls=True))["calls"]["events"]
     assert len(events) == 2
-    later = json.loads(agent.history(after_seq=events[0]["seq"]))["events"]
+    later = json.loads(agent.export(calls=True, since="second"))["calls"]["events"]
     assert later == events[1:]
 
 
@@ -122,16 +123,15 @@ def test_scroll_until_has_count_and_deadline_bounds(fake, agent):
     assert len([c for c in fake.devices.commands[before:] if c.WhichOneof("op") == "scroll"]) == 1
 
 
-@pytest.mark.parametrize("kind", ["device", "driver", "hierarchy"])
+@pytest.mark.parametrize("kind", ["evidence", "driver"])
 def test_diagnostics_save_private_new_outputs(fake, agent, tmp_path, kind):
     agent.attach("first")
-    fake.devices.responder = lambda c: pb.CommandResult(text="<hierarchy/>") if c.WhichOneof("op") == "dump_hierarchy" else None
-    path = pathlib.Path(agent.logs(kind))
+    path = pathlib.Path(agent.log(kind))
     assert path.exists() and stat.S_IMODE(path.stat().st_mode) == 0o600
     assert path.read_bytes()
     before = len(fake.devices.owners)
     with pytest.raises(AgentError, match="already exists"):
-        agent.logs(kind, out=str(path))
+        agent.log(kind, out=str(path))
     assert len(fake.devices.owners) == before
 
 
@@ -242,7 +242,9 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
     ("settle", {"stable_for": 31}), ("settle", {"stable_for": .0001}),
     ("settle", {"stable_for": 2, "timeout": 1}), ("settle", {"signal": "unknown"}),
     ("snapshot", {"candidates": True, "level": "all"}),
-    ("history", {"after_seq": -1}), ("history", {"after_seq": True}),
+    ("history", {"action": "export"}), ("history", {"name": "x"}), ("history", {"action": "clean", "all_histories": 1}),
+    ("export", {"since": ""}), ("export", {"until": 3}), ("log", {"action": "driver", "tail": 5}), ("log", {"out": "x"}),
+    ("log", {"step": "1", "last_action": True}),
     ("wait", {"target": "id=input", "state": "count", "value": "²"}),
     ("wait", {"target": "id=input", "state": "count", "value": "9" * 5000}),
     ("wait", {"target": "id=input", "state": "count", "value": 10**5000}),
@@ -271,7 +273,7 @@ def test_cli_forwards_new_parameters(fake, agent):
     assert fake.devices.commands[-1].wait_screen_stable.stable_for_ms == 100
     assert fake.devices.commands[-1].wait_screen_stable.signal == pb.STABILITY_ALL
     assert json.loads(run(["app", "installed", "com.example"])) is True
-    assert json.loads(run(["history", "--after-seq", "999"]))["events"] == []
+    assert "wait_screen_stable" in json.loads(run(["export", "--calls"]))["calls"]["events"][-1]["command"]
     assert "detached" in run(["detach"])
 
 

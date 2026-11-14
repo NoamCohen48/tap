@@ -1,8 +1,15 @@
-"""Private, cross-process storage for named high-level agent recordings.
+"""Private, cross-process storage for the step history of every agent session.
 
-This is client intent, not a copy of the daemon's bounded event history. SQLite commits an
-intent before input; a separate per-recording SQLite lease is held across execution so stop,
-clean and another process cannot race that step. No global database writer spans device I/O.
+A history is what one held connection did, as the agent's own steps (its commands with their
+parameters), and the markers written between them. It starts by itself with the session's first
+step and stops when the session is released; nothing has to be switched on. This is client
+intent, not a copy of the daemon's bounded event history. SQLite commits an intent before input;
+a separate per-history SQLite lease is held across execution so clean and another process cannot
+race that step. No global database writer spans device I/O.
+
+Each step has an id, which the agent sends with the step's calls (``tap_e2e.step``): the server
+writes it on the device log's action entries, so a step and what it did on the device are
+matched by it.
 """
 from __future__ import annotations
 
@@ -19,7 +26,9 @@ import uuid
 from collections.abc import Iterator
 from typing import Any
 
-FORMAT = "tap-agent-recording/1"
+FORMAT = "tap-agent-recording/2"
+# Stopped histories kept when a new one starts; older ones are removed.
+KEEP_STOPPED = 20
 MAX_STEPS = 10_000
 MAX_STEP_BYTES = 1024 * 1024
 MAX_RECORD_BYTES = 32 * 1024 * 1024
@@ -39,6 +48,15 @@ _SCHEMA = (
  PRIMARY KEY(record_id, seq)
 )""",
 )
+# Version 2: a step's id, and the markers between steps (``after_seq``: the last step before it).
+_SCHEMA_2 = (
+    "ALTER TABLE steps ADD COLUMN step_id TEXT",
+    """CREATE TABLE markers (
+ record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+ after_seq INTEGER NOT NULL, name TEXT NOT NULL, at TEXT NOT NULL, serial TEXT, cursor INTEGER
+)""",
+)
+VERSION = 2
 
 
 class RecordError(Exception):
@@ -151,7 +169,17 @@ class RecordStore:
                 connection.execute("COMMIT")
             if version == 0:
                 raise _NoCatalog()
-            if version != 1:
+            if version == 1:
+                # A catalog an earlier tap-agent wrote: its recordings stay, as stopped histories.
+                connection.execute("BEGIN IMMEDIATE")
+                version = connection.execute("PRAGMA user_version").fetchone()[0]
+                if version == 1:
+                    for statement in _SCHEMA_2:
+                        connection.execute(statement)
+                    connection.execute(f"PRAGMA user_version={VERSION}")
+                    version = VERSION
+                connection.execute("COMMIT")
+            if version != VERSION:
                 raise RecordError("unknown agent recording catalog version")
             connection.execute("BEGIN IMMEDIATE" if write else "BEGIN")
             yield connection
@@ -219,19 +247,44 @@ class RecordStore:
                 raise RecordError("recording not found")
             return dict(row)
 
-    def start(self, name: str, session: str, connection_id: str) -> dict[str, Any]:
-        """Create, never overwrite/append; pin to one held connection generation."""
-        if re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", name) is None:
-            raise RecordError("recording name must be 1..80 ASCII letters/digits/dots/dashes/underscores, starting with a letter/digit")
-        identifier = uuid.uuid4().hex
+    def ensure(self, session: str, connection_id: str) -> dict[str, Any]:
+        """The history of this session's held connection, started if there is none.
+
+        A history left active by a connection that has ended is stopped first, and one that
+        reached its size limit is stopped and followed by a new one, so recording never has to
+        be switched on and never blocks input for being full. Starting a history removes the
+        stopped ones beyond the newest ``KEEP_STOPPED``."""
+        removed: list[str] = []
         with self._db(write=True, create=True) as connection:
-            if connection.execute("SELECT 1 FROM records WHERE name=?", (name,)).fetchone():
-                raise RecordError("recording name already exists; export/clean it or choose a new name")
-            if connection.execute("SELECT 1 FROM records WHERE session=? AND state='recording'", (session,)).fetchone():
-                raise RecordError("this session already has an active recording; stop it first")
+            row = connection.execute("SELECT * FROM records WHERE session=? AND state='recording'", (session,)).fetchone()
+            if row is not None:
+                used = connection.execute("SELECT count(*), coalesce(sum(length(CAST(parameters AS BLOB))+length(CAST(targets AS BLOB))+1024),0) FROM steps WHERE record_id=?", (row["id"],)).fetchone()
+                full = used[0] >= MAX_STEPS or used[1] + MAX_STEP_BYTES > MAX_RECORD_BYTES
+                if row["connection_id"] == connection_id and not full:
+                    return dict(row)
+                self._stop(connection, row["id"], "full" if row["connection_id"] == connection_id else "connection ended")
+            identifier = uuid.uuid4().hex
+            base = re.sub(r"[^A-Za-z0-9_.-]", "-", session).strip("-.")[:40] or "session"
+            base = f"{base}-{datetime.datetime.now(datetime.timezone.utc):%Y%m%d-%H%M%S}"
+            name, suffix = base, 1
+            while connection.execute("SELECT 1 FROM records WHERE name=?", (name,)).fetchone():
+                suffix += 1
+                name = f"{base}-{suffix}"
             self._create_lease(identifier)
             connection.execute("INSERT INTO records(id,name,session,connection_id,started_at,state) VALUES(?,?,?,?,?,'recording')", (identifier, name, session, connection_id, _now()))
-        return self.select(name, session)
+            old = [r[0] for r in connection.execute("SELECT id FROM records WHERE state='stopped' ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?", (KEEP_STOPPED,))]
+            for stale in old:
+                connection.execute("DELETE FROM records WHERE id=?", (stale,))
+            removed = old
+            created = dict(connection.execute("SELECT * FROM records WHERE id=?", (identifier,)).fetchone())
+        for stale in removed:
+            self._lease_path(stale).unlink(missing_ok=True)
+        return created
+
+    @staticmethod
+    def _stop(connection: sqlite3.Connection, identifier: str, reason: str) -> None:
+        connection.execute("UPDATE records SET state='stopped',stopped_at=coalesce(stopped_at,?),stop_reason=coalesce(stop_reason,?) WHERE id=?", (_now(), reason, identifier))
+        connection.execute("UPDATE steps SET status='unknown' WHERE record_id=? AND status='running'", (identifier,))
 
     def list(self) -> list[dict[str, Any]]:
         if not self._exists():
@@ -249,19 +302,57 @@ class RecordStore:
         if size > MAX_STEP_BYTES or row[0] >= MAX_STEPS or row[1] + size > MAX_RECORD_BYTES:
             raise RecordError("recording size/step limit reached; stop/export it before more input; no new input was sent")
 
-    def begin(self, recording: dict[str, Any], action: str, parameters: dict[str, Any], *, kind: str = "action") -> int:
-        """Caller holds its lease; commit a pending intent before any device mutation."""
+    def begin(self, recording: dict[str, Any], action: str, parameters: dict[str, Any], *, kind: str = "action", step_id: str | None = None) -> int:
+        """Caller holds its lease; commit a pending intent before any device mutation.
+
+        A step an earlier process left ``running`` (it died mid-step) becomes ``unknown``: the
+        lease is held, so nothing else is running it. An unknown outcome does not block later
+        steps; it stays in the history and makes its export ``complete: false``."""
         encoded = _json(parameters)
         with self._db(write=True) as connection:
             current = connection.execute("SELECT state FROM records WHERE id=?", (recording["id"],)).fetchone()
             if current is None or current[0] != "recording":
-                raise RecordError("recording was stopped/removed before execution; no input was sent")
-            if connection.execute("SELECT 1 FROM steps WHERE record_id=? AND status IN ('running','unknown','interrupted')", (recording["id"],)).fetchone():
-                raise RecordError("recording has an unfinished step; inspect the outcome and stop it before more input; never replay blindly")
+                raise RecordError("the session's history was stopped/removed before execution; no input was sent")
+            connection.execute("UPDATE steps SET status='unknown' WHERE record_id=? AND status='running'", (recording["id"],))
             self._capacity(connection, recording["id"], encoded, "{}")
             sequence = connection.execute("SELECT coalesce(max(seq),0)+1 FROM steps WHERE record_id=?", (recording["id"],)).fetchone()[0]
-            connection.execute("INSERT INTO steps(record_id,seq,action,kind,parameters,started_at,status) VALUES(?,?,?,?,?,?,'running')", (recording["id"], sequence, action, kind, encoded, _now()))
+            connection.execute("INSERT INTO steps(record_id,seq,action,kind,parameters,started_at,status,step_id) VALUES(?,?,?,?,?,?,'running',?)", (recording["id"], sequence, action, kind, encoded, _now(), step_id))
             return sequence
+
+    def mark(self, recording: dict[str, Any], name: str, serial: str | None, cursor: int | None) -> None:
+        """A marker after the history's last step (``cursor``: its entry in the device log)."""
+        with self._db(write=True) as connection:
+            after = connection.execute("SELECT coalesce(max(seq),0) FROM steps WHERE record_id=?", (recording["id"],)).fetchone()[0]
+            connection.execute("INSERT INTO markers(record_id,after_seq,name,at,serial,cursor) VALUES(?,?,?,?,?,?)", (recording["id"], after, name, _now(), serial, cursor))
+
+    def marker_names(self) -> dict[str, list[str]]:
+        """Every history's marker names by history id, oldest first."""
+        if not self._exists():
+            return {}
+        try:
+            with self._db() as connection:
+                names: dict[str, list[str]] = {}
+                for row in connection.execute("SELECT record_id,name FROM markers ORDER BY rowid"):
+                    names.setdefault(row[0], []).append(row[1])
+                return names
+        except _NoCatalog:
+            return {}
+
+    def markers(self, session: str, serial: str) -> list[dict[str, Any]]:
+        """The markers of this session's active history on ``serial`` (``name``, ``cursor``), oldest first."""
+        recording = self.active(session)
+        if recording is None:
+            return []
+        with self._db() as connection:
+            return [dict(row) for row in connection.execute("SELECT name,cursor FROM markers WHERE record_id=? AND serial=? ORDER BY rowid", (recording["id"], serial))]
+
+    def steps(self, session: str) -> dict[str, dict[str, Any]]:
+        """The steps of this session's active history by step id (``seq``, ``action``); empty when there is none."""
+        recording = self.active(session)
+        if recording is None:
+            return {}
+        with self._db() as connection:
+            return {row["step_id"]: {"seq": row["seq"], "action": row["action"]} for row in connection.execute("SELECT seq,action,step_id FROM steps WHERE record_id=? AND step_id IS NOT NULL", (recording["id"],))}
 
     def device(self, identifier: str, sequence: int, serial: str) -> None:
         with self._db(write=True) as connection:
@@ -293,11 +384,13 @@ class RecordStore:
         if recording is None:
             raise RecordError("this session has no active recording")
         with self.lease(recording["id"]), self._db(write=True) as connection:
-            connection.execute("UPDATE records SET state='stopped',stopped_at=coalesce(stopped_at,?),stop_reason=coalesce(stop_reason,?) WHERE id=?", (_now(), reason, recording["id"]))
-            connection.execute("UPDATE steps SET status='unknown' WHERE record_id=? AND status='running'", (recording["id"],))
+            self._stop(connection, recording["id"], reason)
         return self.select(recording["name"], session)
 
-    def export(self, name: str | None, session: str) -> dict[str, Any]:
+    def export(self, name: str | None, session: str, *, since: str | int | None = None, until: str | int | None = None) -> dict[str, Any]:
+        """The history as a document: its steps (each with its ``id``) and markers. ``since`` /
+        ``until`` cut it to the steps between two markers, each given by its name (the newest
+        marker with it) or its cursor."""
         recording = self.select(name, session)
         with self._db() as connection:
             current = connection.execute("SELECT * FROM records WHERE id=?", (recording["id"],)).fetchone()
@@ -306,12 +399,31 @@ class RecordStore:
             recording = dict(current)
             steps = []
             for row in connection.execute("SELECT * FROM steps WHERE record_id=? ORDER BY seq", (recording["id"],)):
-                step = {key: row[key] for key in ("seq", "action", "kind", "serial", "started_at", "finished_at", "duration_ms")}
+                step = {"seq": row["seq"], "id": row["step_id"], **{key: row[key] for key in ("action", "kind", "serial", "started_at", "finished_at", "duration_ms")}}
                 step["parameters"] = _decode(row["parameters"])
                 step["targets"] = _decode(row["targets"])
-                step["outcome"] = {"status": row["status"], "error_type": row["error_type"]}
+                step["outcome"] = {"status": row["status"], "error": row["error_type"]}
                 steps.append(step)
-        return {"format": FORMAT, **{key: recording[key] for key in ("name", "session", "connection_id", "state", "started_at", "stopped_at", "stop_reason")},
+            markers = [dict(row) for row in connection.execute("SELECT name,at,after_seq,serial,cursor FROM markers WHERE record_id=? ORDER BY rowid", (recording["id"],))]
+        bounds = {}
+        for key, wanted in (("since", since), ("until", until)):
+            if wanted is None:
+                continue
+            found = [marker for marker in markers if (marker["cursor"] == wanted if isinstance(wanted, int) else marker["name"] == wanted)]
+            if not found:
+                described = f"at cursor {wanted}" if isinstance(wanted, int) else f"named {wanted!r}"
+                raise RecordError(f"no marker {described} in history {recording['name']!r}")
+            bounds[key] = found[-1]
+        if "since" in bounds and "until" in bounds and markers.index(bounds["until"]) < markers.index(bounds["since"]):
+            raise RecordError("the --until marker was written before the --since marker")
+        if bounds:
+            low = bounds["since"]["after_seq"] if "since" in bounds else 0
+            high = bounds["until"]["after_seq"] if "until" in bounds else float("inf")
+            first = markers.index(bounds["since"]) if "since" in bounds else 0
+            last = markers.index(bounds["until"]) if "until" in bounds else len(markers) - 1
+            steps = [step for step in steps if low < step["seq"] <= high]
+            markers = markers[first:last + 1]
+        return {"format": FORMAT, "markers": markers, **({"range": {key: {"name": marker["name"], "cursor": marker["cursor"]} for key, marker in bounds.items()}} if bounds else {}), **{key: recording[key] for key in ("name", "session", "connection_id", "state", "started_at", "stopped_at", "stop_reason")},
             "complete": recording["state"] == "stopped" and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}
 
     def clean(self, name: str | None, session: str, *, all_records: bool = False) -> int:
@@ -321,9 +433,9 @@ class RecordStore:
             raise RecordError("choose a name or --all, not both")
         if not all_records and name is None:
             raise RecordError("clean needs a name or explicit --all")
-        recordings = self.list() if all_records else [self.select(name, session)]
+        recordings = [row for row in self.list() if row["state"] == "stopped"] if all_records else [self.select(name, session)]
         if any(recording["state"] != "stopped" for recording in recordings):
-            raise RecordError("stop active recordings before cleaning them")
+            raise RecordError("a live session's history cannot be cleaned; release the session first")
         with contextlib.ExitStack() as stack:
             for recording in sorted(recordings, key=lambda row: row["id"]):
                 stack.enter_context(self.lease(recording["id"]))

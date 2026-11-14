@@ -109,20 +109,22 @@ class ListDevicesResponse(_message.Message):
     def __init__(self, devices: _Optional[_Iterable[_Union[DeviceEntry, _Mapping]]] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
-    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms", "inspect_quarantined")
+    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms", "inspect_quarantined", "capture_logs")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     SKIP_DRIVER_INSTALL_FIELD_NUMBER: _ClassVar[int]
     DEFAULT_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     INSPECT_QUARANTINED_FIELD_NUMBER: _ClassVar[int]
+    CAPTURE_LOGS_FIELD_NUMBER: _ClassVar[int]
     client_connection_id: str
     serial: str
     skip_driver_install: bool
     default_timeout_ms: int
     lease_timeout_ms: int
     inspect_quarantined: bool
-    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ..., inspect_quarantined: _Optional[bool] = ...) -> None: ...
+    capture_logs: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ..., inspect_quarantined: _Optional[bool] = ..., capture_logs: _Optional[bool] = ...) -> None: ...
 
 class AttachResponse(_message.Message):
     __slots__ = ("attached_device_id", "serial", "generation", "device_info", "quarantine_reason")

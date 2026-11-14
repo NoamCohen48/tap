@@ -93,10 +93,16 @@ class ActivityHub:
         self.connected = False
         self.error = "connecting to the Tap daemon"
         self._listeners: list[Callable[[watch.Activity], None]] = []
+        self._resynced: list[Callable[[], None]] = []
 
     def listen(self, listener: Callable[[watch.Activity], None]) -> None:
         """Calls [listener] with every new activity, in order (the recordings use it)."""
         self._listeners.append(listener)
+
+    def on_resync(self, listener: Callable[[], None]) -> None:
+        """Calls [listener] each time the live connections were replaced by the daemon's
+        snapshot: attachments in it may never appear as activity."""
+        self._resynced.append(listener)
 
     async def run(self, retry_s: float = 1.0) -> None:
         """Follows the daemon until cancelled, reconnecting with backoff."""
@@ -157,6 +163,8 @@ class ActivityHub:
         self.connections = current
         for entry in current.values():
             self.names[entry.client_connection_id] = entry.name
+        for listener in self._resynced:
+            listener()
 
     def _append(self, upstream: watch.Activity) -> None:
         activity = watch.Activity()

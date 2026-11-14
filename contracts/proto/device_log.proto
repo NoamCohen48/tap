@@ -1,0 +1,174 @@
+// tap.v1 — the device log of an attachment: every logcat line from the moment the device was
+// attached, with the actions Tap ran on it and the markers a test wrote in between.
+//
+// The daemon reads `logcat` (main, system and crash buffers) continuously while the device is
+// attached, unless the attachment turned that off (`AttachRequest.capture_logs`); every call
+// here is then FAILED_PRECONDITION. It keeps the newest 16 MiB in memory and forgets them at
+// detach. Nothing is stored unredacted outside the daemon: what these calls return has secrets
+// replaced (`RedactLog`).
+
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "DeviceLogProto";
+
+service DeviceLogService {
+  // The entries from a starting point, oldest first, in batches. With `follow` the stream stays
+  // open for new entries until the caller cancels it or the device is detached; a follower that
+  // falls too far behind is ended with RESOURCE_EXHAUSTED and reads again after its last cursor.
+  rpc ReadLog(ReadLogRequest) returns (stream ReadLogResponse);
+  // Writes a named marker into the log, at the time the daemon gets the call.
+  rpc MarkLog(MarkLogRequest) returns (MarkLogResponse);
+  // Adds patterns whose matches are replaced by `<redacted>` in everything read from now on,
+  // lines already captured included.
+  rpc RedactLog(RedactLogRequest) returns (RedactLogResponse);
+}
+
+enum LogPriority {
+  LOG_PRIORITY_UNSPECIFIED = 0;
+  LOG_PRIORITY_VERBOSE = 1;
+  LOG_PRIORITY_DEBUG = 2;
+  LOG_PRIORITY_INFO = 3;
+  LOG_PRIORITY_WARN = 4;
+  LOG_PRIORITY_ERROR = 5;
+  LOG_PRIORITY_FATAL = 6;
+}
+
+message ReadLogRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // Where to start; absent = the first entry the daemon still has.
+  oneof from {
+    // Entries after this cursor (`LogEntry.cursor`, or `MarkLogResponse.cursor`).
+    uint64 after_cursor = 3;
+    // From the newest marker with this name, the marker included. NOT_FOUND when there is none.
+    string marker = 4;
+    // The newest `tail` entries that pass the filters (1 to 100000).
+    uint32 tail = 5;
+    // From the start of the newest action, that entry included; everything when there is none.
+    bool last_action = 6;
+  }
+  // Keep the stream open for entries logged after the call.
+  bool follow = 7;
+  // The filters below apply to log lines only: markers, actions and gaps always pass.
+  // Lines of these apps only (by the uid Android gave each package). A package that is not
+  // installed is INVALID_ARGUMENT.
+  repeated string packages = 8;
+  // Lines of this priority or higher; absent = all.
+  LogPriority min_priority = 9;
+  // Lines with one of these tags, compared exactly.
+  repeated string tags = 10;
+  // Lines whose message contains a match of this regular expression (java.util.regex syntax),
+  // tested after redaction.
+  optional string message_regex = 11;
+  // Leave the action entries out.
+  bool exclude_actions = 12;
+  // Only the entries from the first action of this step to its last (`LogAction.step`), both
+  // included; nothing when the log has no action of that step. Not with `follow`.
+  optional string step = 13;
+}
+
+message ReadLogResponse {
+  repeated LogEntry entries = 1;
+  // First response only: how many entries older than the starting point the daemon had already
+  // forgotten (its buffer keeps the newest 16 MiB). Not counted for `tail`.
+  uint64 dropped = 2;
+}
+
+message LogEntry {
+  // 1, 2, 3, … per attachment, in the order the daemon got the entries; never reused.
+  uint64 cursor = 1;
+  // The daemon host's clock when it got the entry, the clock `LoggedEvent.at_epoch_ms` is on.
+  int64 host_time_ms = 2;
+  oneof kind {
+    LogLine line = 3;
+    // `MarkLog`: the marker's name.
+    string marker = 4;
+    LogAction action = 5;
+    // The capture was interrupted here (the device disconnected, logcat ended) and lines may be
+    // missing: why.
+    string gap = 6;
+  }
+  // The daemon's monotonic clock when it got the entry: the clock of
+  // `LoggedEvent.started_monotonic_ns` and `VideoFrame.received_monotonic_ns`, comparable only
+  // with values of the same daemon (`WatchLogResponse.clock_id`).
+  int64 host_monotonic_ns = 7;
+}
+
+// One logcat line. A message of several lines arrives as several entries.
+message LogLine {
+  // The device's clock, which need not agree with the host's.
+  int64 device_time_ms = 1;
+  // The Linux uid of the process that logged it; absent when logcat did not print a number.
+  optional uint32 uid = 2;
+  uint32 pid = 3;
+  uint32 tid = 4;
+  LogPriority priority = 5;
+  string tag = 6;
+  string message = 7;
+  // The apps installed under `uid`: one for an app, several for apps that share a uid, none for
+  // a system process (uid below 10000) or an app no longer installed. Read from the device when
+  // the daemon first needs it and again when an app it does not know logs.
+  repeated string packages = 8;
+}
+
+// Something Tap did on the device: one entry when it starts, one when it finishes.
+//
+// A command the driver runs (a tap, typed text, a wait) is logged by the driver itself into the
+// device log, so its entries are ordered exactly among the app's lines. Queries (`exists`,
+// `count`, `snapshot`, …) are left out. A call the host runs over ADB (an app launch, a device
+// setting) is written by the daemon when the call starts and ends, so it sits within a few
+// milliseconds of the app's lines.
+//
+// Steps: a client may send the header `tap-step: <id>` (1 to 64 of `A-Z a-z 0-9 . _ -`) with any
+// DeviceService, AppService or AppDataService call; a malformed one is INVALID_ARGUMENT. The id is
+// copied to the action entries the call caused and to its `LoggedEvent.step`.
+message LogAction {
+  // The operation in snake_case: a command's name (`tap`, `wait_visible`), an AppService call
+  // (`launch`) or a DeviceService call (`set_network`).
+  string operation = 1;
+  // What it acted on: the rendered selector of a command, the package of an app call. Never an
+  // argument such as typed text.
+  optional string target = 2;
+  bool finished = 3;
+  // With `finished`: `ok`, a command error code (`NOT_FOUND`) or a failure reason
+  // (`APP_LIFECYCLE`).
+  optional string outcome = 4;
+  optional int64 duration_ms = 5;
+  // Driver commands: the request the driver answered (`CommandResult.request_id`) and the
+  // device clock when it logged the line.
+  optional int64 request_id = 6;
+  optional int64 device_time_ms = 7;
+  // The step the client ran it in: what the call that caused it carried in its `tap-step`
+  // header. A client that records its own steps (an agent's commands, a test's lines) stores the
+  // same id with each step and matches the two by it. Absent when the call carried none.
+  optional string step = 8;
+}
+
+message MarkLogRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // 1 to 200 characters, no line breaks.
+  string name = 3;
+}
+
+message MarkLogResponse {
+  // The marker's entry.
+  uint64 cursor = 1;
+}
+
+message RedactLogRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // Regular expressions (java.util.regex syntax), 1 to 64 per attachment, each at most 512
+  // characters. A match is replaced whole; a pattern with a capturing group has only its first
+  // group replaced. Redacted without any call: `Authorization` / `Cookie` style headers,
+  // `password=` / `token=` style values, bearer tokens, JWTs, and the text of every `sensitive`
+  // set_text / type_text of this attachment (4 characters or longer).
+  repeated string patterns = 3;
+}
+
+message RedactLogResponse {}

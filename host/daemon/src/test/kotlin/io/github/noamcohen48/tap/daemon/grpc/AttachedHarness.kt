@@ -3,6 +3,8 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
+import io.github.noamcohen48.tap.api.v1.DeviceLogServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.WatchServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
@@ -18,9 +20,11 @@ import io.github.noamcohen48.tap.host.FakeDriverServer
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.stamped
 import io.grpc.ManagedChannel
+import io.grpc.Metadata
 import io.grpc.Server
 import io.grpc.inprocess.InProcessChannelBuilder
 import io.grpc.inprocess.InProcessServerBuilder
+import io.grpc.stub.MetadataUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
@@ -33,6 +37,7 @@ import java.security.SecureRandom
 internal class AttachedHarness private constructor(
     private val driver: FakeDriverServer,
     private val client: DriverClient,
+    val daemon: TapDaemon,
     val connectionId: String,
     val attached: AttachedDevice,
     private val server: Server,
@@ -40,16 +45,25 @@ internal class AttachedHarness private constructor(
 ) {
     val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
     val apps = AppServiceGrpcKt.AppServiceCoroutineStub(channel)
+    val logs = DeviceLogServiceGrpcKt.DeviceLogServiceCoroutineStub(channel)
+    val watch = WatchServiceGrpcKt.WatchServiceCoroutineStub(channel)
 
-    /** Sends [command] and answers it, as the driver would, with [result]. */
+    /** Sends [command], with the `tap-step` header when [step] is given, and answers it, as the driver would, with [result]. */
     suspend fun execute(
         command: Command,
         result: CommandResult.Builder,
+        step: String? = null,
     ): CommandResult =
         coroutineScope {
+            val stub =
+                if (step == null) {
+                    devices
+                } else {
+                    devices.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(Metadata().apply { put(StepInterceptor.HEADER, step) }))
+                }
             val call =
                 async {
-                    devices.execute(
+                    stub.execute(
                         ExecuteRequest
                             .newBuilder()
                             .setClientConnectionId(connectionId)
@@ -90,6 +104,7 @@ internal class AttachedHarness private constructor(
         suspend fun <T> with(
             adb: Adb,
             apps: (String) -> AppLifecycle = { error("no app in this fake") },
+            captureLogs: Boolean = false,
             block: suspend AttachedHarness.() -> T,
         ): T {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
@@ -106,7 +121,7 @@ internal class AttachedHarness private constructor(
                     daemon.attachDevice(
                         connection.id,
                         SERIAL,
-                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0),
+                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0, captureLogs = captureLogs),
                     )
                 val name = InProcessServerBuilder.generateName()
                 val server =
@@ -115,14 +130,18 @@ internal class AttachedHarness private constructor(
                         .directExecutor()
                         .addService(DeviceService(daemon))
                         .addService(AppService(daemon))
+                        .addService(DeviceLogService(daemon))
+                        .addService(WatchService(daemon))
+                        .intercept(StepInterceptor())
                         .build()
                         .start()
                 val channel = InProcessChannelBuilder.forName(name).directExecutor().build()
-                val harness = AttachedHarness(driver, client, connection.id, attached, server, channel)
+                val harness = AttachedHarness(driver, client, daemon, connection.id, attached, server, channel)
                 try {
                     harness.block()
                 } finally {
                     harness.close()
+                    runCatching { daemon.detachDevice(attached.id, connection.id) }
                 }
             }
         }

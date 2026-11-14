@@ -20,6 +20,7 @@ import io.github.noamcohen48.tap.host.DeviceDoctor
 import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DeviceSession
 import io.github.noamcohen48.tap.host.DeviceSessionConfig
+import io.github.noamcohen48.tap.host.LogcatCapture
 import io.github.noamcohen48.tap.host.DriverClient
 import io.github.noamcohen48.tap.host.JournalState
 import io.github.noamcohen48.tap.host.SessionJournalStore
@@ -253,7 +254,18 @@ class AttachedDevice internal constructor(
     val attachedAtEpochSeconds: Long? = null,
     /** Turns a command failure caused by a dead or hung app into `AUT_CRASHED` / `AUT_ANR`. */
     internal val appDeaths: AppDeaths,
+    /** The device's log since the attachment opened; null when the attachment captures none. */
+    internal val logs: DeviceLog? = null,
 ) {
+    /** The logcat reader feeding [logs]; started once the attachment is registered. */
+    internal var logcat: LogcatCapture? = null
+
+    /** Stops the log capture and forgets the log; idempotent, never throws. */
+    internal fun closeLogs() {
+        runCatching { logcat?.close() }
+        logs?.close()
+    }
+
     /** The latest screen snapshot and its refs (`DeviceService.ScreenSnapshot` / `ResolveRef`). */
     internal val screen = io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshotState()
 }
@@ -426,6 +438,15 @@ class TapDaemon internal constructor(
      */
     fun watch(afterSeq: Long): Pair<List<ConnectionInfo>, ActivityLog.Subscription> =
         synchronized(lifecycleLock) { connectionsLocked() to activity.subscribe(afterSeq) }
+
+    /**
+     * The log of attachment [id] for a watcher: no owner is named, nothing is renewed and the
+     * driver need not be usable.
+     */
+    internal fun watchedLog(id: String): DeviceLog {
+        val found = synchronized(lifecycleLock) { attachedDevicesById[id] } ?: throw UnknownAttachedDeviceException(id)
+        return found.logs ?: throw LogCaptureOffException(found.deviceSession.serial)
+    }
 
     /**
      * Marks a call naming held connection [id] as running until the calling coroutine's job
@@ -679,6 +700,7 @@ class TapDaemon internal constructor(
         cleanupScope.launch {
             // Detached cleanup already runs in its own job; pass the full core close bound.
             val outcome = runCatching {
+                device.closeLogs()
                 val audioError = runCatching { device.recording.close() }.exceptionOrNull()?.message
                 val coreError = runCatching { device.deviceSession.close(timeoutMs.coerceAtLeast(1L)) }.exceptionOrNull()?.message
                 listOfNotNull(audioError, coreError).takeIf { it.isNotEmpty() }?.joinToString("; ")
@@ -691,6 +713,8 @@ class TapDaemon internal constructor(
     /** Stop scrcpy before releasing this session's serial lock. An audio failure does not skip
      * driver cleanup; both diagnostics are preserved in the detach detail. */
     private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long, shutdown: Boolean): String? {
+        // The logcat child is reaped off the caller's thread; it never fails a detach.
+        withContext(Dispatchers.IO) { device.closeLogs() }
         if (!shutdown) {
             // Outside shutdown nothing imposes a deadline, so the recorder does not borrow the
             // driver's: reaping scrcpy always ends (SIGTERM, then SIGKILL), and a slow scrcpy must
@@ -802,6 +826,8 @@ class TapDaemon internal constructor(
         val leaseTimeoutMs: Long,
         /** [DeviceSessionConfig.inspectQuarantined]. */
         val inspectQuarantined: Boolean = false,
+        /** Read the device's logcat for the whole attachment ([AttachedDevice.logs]). */
+        val captureLogs: Boolean = false,
     )
 
     /**
@@ -883,6 +909,7 @@ class TapDaemon internal constructor(
                                 ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
                             attachedAt,
                             AppDeaths(config.adb, serial, attachedAt, config.log),
+                            if (options.captureLogs) DeviceLog(installedPackages = { config.adb.packageUids(serial) }) else null,
                         )
                     attachedDevicesById[attachedDevice.id] = attachedDevice
                     activity.append(
@@ -906,6 +933,12 @@ class TapDaemon internal constructor(
                 config.log("orphaned attachment on $serial cleaned before exposure" + (detail?.let { " (quarantined: $it)" } ?: ""))
             }
             throw UnknownClientConnectionException(ownerConnectionId)
+        }
+        registered.logs?.let { logs ->
+            // Started only now: an attachment that lost to a disconnect never had a child to reap.
+            // A detach that already won closes the log, and the capture's lines then go nowhere.
+            registered.logcat = LogcatCapture(config.adb, serial, attachedAt, logs).also { it.start() }
+            if (synchronized(lifecycleLock) { attachedDevicesById[registered.id] } == null) registered.closeLogs()
         }
         config.log(
             "attached device ${registered.id} attached on $serial (generation ${device.generation}) for client connection $ownerConnectionId",

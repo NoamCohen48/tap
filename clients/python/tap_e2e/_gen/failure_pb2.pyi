@@ -35,6 +35,7 @@ class FailureReason(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FAILURE_REASON_DEVICE_SETTING: _ClassVar[FailureReason]
     FAILURE_REASON_DEVICE_FILE: _ClassVar[FailureReason]
     FAILURE_REASON_APP_DATA: _ClassVar[FailureReason]
+    FAILURE_REASON_UNKNOWN_LOG_MARKER: _ClassVar[FailureReason]
 FAILURE_REASON_UNSPECIFIED: FailureReason
 FAILURE_REASON_INTERNAL: FailureReason
 FAILURE_REASON_INVALID_ARGUMENT: FailureReason
@@ -61,6 +62,7 @@ FAILURE_REASON_UNSUPPORTED_API: FailureReason
 FAILURE_REASON_DEVICE_SETTING: FailureReason
 FAILURE_REASON_DEVICE_FILE: FailureReason
 FAILURE_REASON_APP_DATA: FailureReason
+FAILURE_REASON_UNKNOWN_LOG_MARKER: FailureReason
 
 class Failure(_message.Message):
     __slots__ = ("reason", "serial", "waited_ms", "error_code", "detail")

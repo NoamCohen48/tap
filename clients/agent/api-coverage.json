@@ -3,15 +3,18 @@
   "note": "Covered means a practical SDK-backed tool, not identical signatures or raw RPC access. SDK helper aliases are grouped. Empty tool lists require an explicit client-only/deferred reason.",
   "rpcs": {
     "tap.v1.ClientConnectionService": {
-      "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"], "Events": ["history"]
+      "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"], "Events": ["export"]
     },
     "tap.v1.DeviceService": {
       "ListDevices": ["devices"], "Unquarantine": ["unquarantine"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
-      "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["logs", "capture"], "DeviceLogs": ["logs"],
+      "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["log", "capture"], "DeviceLogs": ["log"],
       "StartRecording": ["media_record"], "StopRecording": ["media_record"],
       "ScreenSnapshot": ["snapshot", "settle"], "ResolveRef": ["tap"],
       "SetAnimations": ["condition"], "SetDarkMode": ["condition"], "SetFontScale": ["condition"], "SetDensity": ["condition"], "SetNetwork": ["condition"], "SetSystemLocales": ["condition"], "SetLocation": ["set_location"], "SetStayAwake": ["condition"], "SetAccessibilityDisplay": ["condition"],
       "GetForegroundActivity": ["foreground_activity"], "PushFile": ["push_file"], "PullFile": ["pull_file"], "AddMedia": ["add_media"]
+    },
+    "tap.v1.DeviceLogService": {
+      "ReadLog": ["log"], "MarkLog": ["log"], "RedactLog": ["log"]
     },
     "tap.v1.AppService": {
       "Install": ["app"], "Uninstall": ["app"], "IsInstalled": ["app"], "ForceStop": ["app"], "ClearData": ["app"], "GrantPermission": ["app"], "RevokePermission": ["app"], "IsPermissionGranted": ["app"], "SetLocales": ["app"], "GetLocales": ["app"], "Launch": ["app"], "ColdLaunch": ["app"], "Foreground": ["app"], "OpenLink": ["app"], "Process": ["app"], "IsRunning": ["app"]
@@ -24,10 +27,11 @@
     "tap.v1.ClientConnectionService.Observe": "Observed test-client liveness is infrastructure; agents use held connections.",
     "tap.v1.AppService.AwaitIdle": "Synchronization is work in progress and intentionally deferred; state/tree/pixel waits are independent.",
     "tap.v1.WatchService.Watch": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
-    "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording."
+    "tap.v1.WatchService.WatchVideo": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
+    "tap.v1.WatchService.WatchLog": "Passive shared observation belongs to tap-watcher; an agent reads its own device's log with ReadLog."
   },
   "operations": {
-    "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["logs", "capture"],
+    "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["capture"],
     "exists": ["exists", "scroll_until"], "count": ["count", "wait_for"], "snapshot": ["inspect", "wait_for", "accessibility_action"],
     "wait_visible": ["wait_for"], "wait_gone": ["wait_for"], "wait_state": ["wait_for"], "wait_app_visible": ["app"], "wait_screen_stable": ["settle"],
     "tap": ["tap", "type_text"], "long_tap": ["tap"], "double_tap": ["tap"], "multi_tap": ["tap"], "hold": ["tap"],
@@ -43,7 +47,7 @@
       {"methods": ["create", "resume", "close"], "tools": [], "reason": "Client transport/handle lifecycle; Agent constructs and closes its SDK client, never starts a daemon."}
     ],
     "TapConnection": [
-      {"methods": ["attach_device", "attached_devices", "close", "event_log", "events"], "tools": ["attach", "sessions", "release", "history"]},
+      {"methods": ["attach_device", "attached_devices", "close", "event_log", "events"], "tools": ["attach", "sessions", "release", "export"]},
       {"methods": ["ensure_usable", "available_serials", "broken", "usable"], "tools": [], "reason": "Client usability/filtering helpers; devices exposes inventory, no raw connection escape hatch."}
     ],
     "App": [
@@ -61,7 +65,7 @@
       {"methods": ["await_permission_prompt", "choose_permission", "keyboard_shown", "hide_keyboard", "set_clipboard", "clipboard"], "tools": ["permission", "keyboard", "clipboard"]},
       {"methods": ["set_animations", "set_dark_mode", "set_font_scale", "set_density", "set_network", "set_system_locales", "set_stay_awake", "set_accessibility_display", "set_location"], "tools": ["condition", "set_location"]},
       {"methods": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "await_notification", "notifications", "open_notification", "dismiss_notification", "type_text"], "tools": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "notification", "type_text"]},
-      {"methods": ["screenshot", "start_recording", "stop_recording", "dump_hierarchy", "screen_snapshot", "resolve_ref", "driver_log", "device_logs", "capture", "detach"], "tools": ["screenshot", "media_record", "logs", "snapshot", "capture", "detach", "tap"]},
+      {"methods": ["screenshot", "start_recording", "stop_recording", "dump_hierarchy", "screen_snapshot", "resolve_ref", "driver_log", "device_logs", "capture", "detach"], "tools": ["screenshot", "media_record", "log", "snapshot", "capture", "detach", "tap"]},
       {"methods": ["await_until", "detached"], "tools": [], "reason": "Local handle state and arbitrary Python predicates remain client-side; use held-session inventory and bounded waits, not user-code execution."}
     ],
     "Element": [

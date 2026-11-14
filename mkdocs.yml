@@ -142,6 +142,7 @@ nav:
       - Tests:
           - Multi-device tests: guide/multi-device.md
           - Errors: guide/errors.md
+          - Device logs: guide/logs.md
           - Screenshots and artifacts: guide/artifacts.md
       - Coming from Maestro or Appium: guide/coming-from.md
   - SDKs:
@@ -159,6 +160,7 @@ nav:
               - Screen: reference/python/screen.md
               - Client and connections: reference/python/client.md
               - Artifacts: reference/python/artifacts.md
+              - Device log: reference/python/logs.md
               - Values: reference/python/values.md
               - Enums: reference/python/enums.md
               - Snapshots and the event log: reference/python/snapshots.md

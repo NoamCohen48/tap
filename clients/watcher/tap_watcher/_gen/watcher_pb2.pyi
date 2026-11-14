@@ -1,5 +1,6 @@
 # ruff: noqa
 from tap_e2e.proto import device_pb2 as _device_pb2
+from tap_e2e.proto import device_log_pb2 as _device_log_pb2
 from tap_e2e.proto import watch_pb2 as _watch_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
@@ -55,8 +56,36 @@ class ActiveRecording(_message.Message):
     seconds: float
     def __init__(self, serial: _Optional[str] = ..., started_epoch_ms: _Optional[int] = ..., bytes: _Optional[int] = ..., seconds: _Optional[float] = ...) -> None: ...
 
+class WatchLogRequest(_message.Message):
+    __slots__ = ("serial", "after_seq")
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    AFTER_SEQ_FIELD_NUMBER: _ClassVar[int]
+    serial: str
+    after_seq: int
+    def __init__(self, serial: _Optional[str] = ..., after_seq: _Optional[int] = ...) -> None: ...
+
+class WatchLogResponse(_message.Message):
+    __slots__ = ("records", "dropped", "unavailable")
+    RECORDS_FIELD_NUMBER: _ClassVar[int]
+    DROPPED_FIELD_NUMBER: _ClassVar[int]
+    UNAVAILABLE_FIELD_NUMBER: _ClassVar[int]
+    records: _containers.RepeatedCompositeFieldContainer[LogRecord]
+    dropped: int
+    unavailable: str
+    def __init__(self, records: _Optional[_Iterable[_Union[LogRecord, _Mapping]]] = ..., dropped: _Optional[int] = ..., unavailable: _Optional[str] = ...) -> None: ...
+
+class LogRecord(_message.Message):
+    __slots__ = ("seq", "clock_id", "entry")
+    SEQ_FIELD_NUMBER: _ClassVar[int]
+    CLOCK_ID_FIELD_NUMBER: _ClassVar[int]
+    ENTRY_FIELD_NUMBER: _ClassVar[int]
+    seq: int
+    clock_id: str
+    entry: _device_log_pb2.LogEntry
+    def __init__(self, seq: _Optional[int] = ..., clock_id: _Optional[str] = ..., entry: _Optional[_Union[_device_log_pb2.LogEntry, _Mapping]] = ...) -> None: ...
+
 class Recording(_message.Message):
-    __slots__ = ("id", "kind", "serial", "created_epoch_ms", "duration_seconds", "bytes", "connection_names", "actions", "failures", "ended", "parts")
+    __slots__ = ("id", "kind", "serial", "created_epoch_ms", "duration_seconds", "bytes", "connection_names", "actions", "failures", "ended", "parts", "log_entries")
     ID_FIELD_NUMBER: _ClassVar[int]
     KIND_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
@@ -68,6 +97,7 @@ class Recording(_message.Message):
     FAILURES_FIELD_NUMBER: _ClassVar[int]
     ENDED_FIELD_NUMBER: _ClassVar[int]
     PARTS_FIELD_NUMBER: _ClassVar[int]
+    LOG_ENTRIES_FIELD_NUMBER: _ClassVar[int]
     id: str
     kind: RecordingKind
     serial: str
@@ -79,7 +109,8 @@ class Recording(_message.Message):
     failures: int
     ended: str
     parts: int
-    def __init__(self, id: _Optional[str] = ..., kind: _Optional[_Union[RecordingKind, str]] = ..., serial: _Optional[str] = ..., created_epoch_ms: _Optional[int] = ..., duration_seconds: _Optional[float] = ..., bytes: _Optional[int] = ..., connection_names: _Optional[_Iterable[str]] = ..., actions: _Optional[int] = ..., failures: _Optional[int] = ..., ended: _Optional[str] = ..., parts: _Optional[int] = ...) -> None: ...
+    log_entries: int
+    def __init__(self, id: _Optional[str] = ..., kind: _Optional[_Union[RecordingKind, str]] = ..., serial: _Optional[str] = ..., created_epoch_ms: _Optional[int] = ..., duration_seconds: _Optional[float] = ..., bytes: _Optional[int] = ..., connection_names: _Optional[_Iterable[str]] = ..., actions: _Optional[int] = ..., failures: _Optional[int] = ..., ended: _Optional[str] = ..., parts: _Optional[int] = ..., log_entries: _Optional[int] = ...) -> None: ...
 
 class StartRecordingRequest(_message.Message):
     __slots__ = ("serial",)

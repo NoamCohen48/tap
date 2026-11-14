@@ -457,6 +457,7 @@ def logged_event(event: pb.LoggedEvent) -> LoggedEvent:
         app=_json(event.app) if event.HasField("app") else None,
         error=_json(event.error) if event.HasField("error") else None,
         failure=_json(event.failure) if event.HasField("failure") else None,
+        step=event.step if event.HasField("step") else None,
     )
 
 

@@ -173,7 +173,7 @@ result type.
 | `op` | Message | Fields | Result (`CommandResult.outcome`) |
 |---|---|---|---|
 | `health` | `Health` (host-internal) | – | `done` |
-| `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, display size and rotation (`Surface.ROTATION_*`, 0..3), focused package, `screen_on` (`PowerManager.isInteractive`), `keyguard_locked`, `keyguard_secure`, `keyboard_shown` (an `AccessibilityWindowInfo.TYPE_INPUT_METHOD` window is on screen, any IME), `auto_rotate` (`Settings.System.ACCELEROMETER_ROTATION` is 1: the sensor turns the display; 0 while a rotation is frozen), `animations_enabled` (any of the three `Settings.Global` animation scales is not 0; an unset scale counts as 1), `dark_mode` (the night bit of `Configuration.uiMode`), `font_scale` and `density_dpi` (`Configuration.fontScale` / `densityDpi`), `airplane_mode`, `wifi_enabled` (`wifi_on` 1, or 2 = on under airplane mode) and `mobile_data_enabled` (`Settings.Global`; false without telephony), `system_locales` (the system configuration's `LocaleList` as BCP-47 tags), `stay_awake` (`Settings.Global.STAY_ON_WHILE_PLUGGED_IN` is not 0), `high_contrast_text` / `color_inversion` (`Settings.Secure` `high_text_contrast_enabled` / `accessibility_display_inversion_enabled`; absent when Android does not let the driver read them), `bold_text` (`Configuration.fontWeightAdjustment` > 0, API 31+; false below), all read from the driver's own resources and settings |
+| `device_info` | `DeviceInfoQuery` | – | `device_info` = API level, manufacturer/model/product, `driver_uid` (`Process.myUid()` of the driver: how the host tells the driver's own log lines from an app's, see [Action log](#action-log)), display size and rotation (`Surface.ROTATION_*`, 0..3), focused package, `screen_on` (`PowerManager.isInteractive`), `keyguard_locked`, `keyguard_secure`, `keyboard_shown` (an `AccessibilityWindowInfo.TYPE_INPUT_METHOD` window is on screen, any IME), `auto_rotate` (`Settings.System.ACCELEROMETER_ROTATION` is 1: the sensor turns the display; 0 while a rotation is frozen), `animations_enabled` (any of the three `Settings.Global` animation scales is not 0; an unset scale counts as 1), `dark_mode` (the night bit of `Configuration.uiMode`), `font_scale` and `density_dpi` (`Configuration.fontScale` / `densityDpi`), `airplane_mode`, `wifi_enabled` (`wifi_on` 1, or 2 = on under airplane mode) and `mobile_data_enabled` (`Settings.Global`; false without telephony), `system_locales` (the system configuration's `LocaleList` as BCP-47 tags), `stay_awake` (`Settings.Global.STAY_ON_WHILE_PLUGGED_IN` is not 0), `high_contrast_text` / `color_inversion` (`Settings.Secure` `high_text_contrast_enabled` / `accessibility_display_inversion_enabled`; absent when Android does not let the driver read them), `bold_text` (`Configuration.fontWeightAdjustment` > 0, API 31+; false below), all read from the driver's own resources and settings |
 | `press_key` | `PressKey` (mutation) | `key_code` ≥ 0 | `done` after one key press (every code, HOME `3` and BACK `4` included, is `UiDevice.pressKeyCode`: no idle wait, no check that the screen changed); `ACTION_REJECTED` if the platform refused to inject it |
 | `open_system_panel` | `OpenSystemPanel` (mutation) | `panel` = `SYSTEM_PANEL_NOTIFICATIONS` or `SYSTEM_PANEL_QUICK_SETTINGS` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | `done` once `UiAutomation.performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS / _QUICK_SETTINGS)` returned true (not `UiDevice.openNotification`/`openQuickSettings`, which wait for idle first; no check that the panel opened); `ACTION_REJECTED` if the system refused the action |
 | `set_orientation` | `SetOrientation` (mutation) | `orientation` = `PORTRAIT` or `LANDSCAPE` (`UNSPECIFIED`/unknown: `INVALID_REQUEST`) | already in that geometry: freezes the current rotation; otherwise freezes the quarter turn away from natural (`UiDevice.setOrientationPortrait/Landscape`'s choice, phone or tablet). `done` once `UiAutomation.setRotation` accepted it, after waiting up to 2 s (AndroidX `ROTATION_TIMEOUT`) for the display to report the rotation; the wait never fails. `ACTION_REJECTED` if `setRotation` returned false |
@@ -428,6 +428,34 @@ The driver requires periodic host traffic: any authenticated inbound frame (`REQ
 with `DRIVER_UNHEALTHY` / `HEARTBEAT_EXPIRED`, emits `TAP_POISONED`, and self-kills as above.
 The host client sends `PING` after `heartbeatIntervalMs` (default 5 000) of idle time on a
 background thread; `PING` is serialized so a stale `PONG` can never satisfy a later ping.
+
+### Action log
+
+The driver writes two lines to the device log (`android.util.Log.i`, tag `Tap`) around every
+command that acts on the device or waits for it: every mutation, and `wait_visible`,
+`wait_gone`, `wait_state`, `wait_app_visible`, `wait_screen_stable`, `wait_permission_prompt`,
+`await_toast`, `await_notification`. Queries (`exists`, `count`, `snapshot`, `device_info`, …)
+write nothing: a host polling a condition would bury the app's lines.
+
+```
+> #42 tap text="Pay"          just before the command starts running
+< #42 tap ok 243ms            once its response is decided, before it is written
+< #43 wait_visible WAIT_TIMEOUT 5000ms
+```
+
+`#N` is the request id, the word after it the command's `op` name, then the rendered selector
+(several joined by ` -> `; control characters become spaces, at most 200 characters) on the
+start line, and on the finish line `ok` or the error code's label and the result's
+`duration_ms`. A line never carries an argument: typed text, clipboard contents, coordinates
+and file data stay out of the device log. A command that never ran (cancelled or expired in
+the queue) writes neither line; a poisoned pipeline writes no finish line for the command
+that hung. `ActionLog` (`contracts/protocol`) builds and parses the lines for both sides.
+
+The lines are on the device's clock and in the same stream as the app's own, so a reader of
+logcat sees which command an app line follows. The host daemon reads them back as the
+`LogAction` entries of the device log (`server-api.md`, DeviceLogService), trusting a `Tap`
+line only when its uid is `DeviceInfo.driver_uid`. This is additive within protocol 5.1: a
+driver without it reports `driver_uid` 0 and its commands are simply missing from the log.
 
 ### Artifacts
 

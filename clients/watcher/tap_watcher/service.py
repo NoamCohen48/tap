@@ -21,6 +21,7 @@ from tap_e2e.proto import watch_pb2 as watch
 from ._gen import watcher_pb2 as pb
 from .activity import ActivityHub, ReaderOverflow
 from .daemon import Daemon
+from .logs import BATCH, LogHub
 from .recorder import Recorders
 from .recordings import MAX_LIBRARY_BYTES, Library
 from .video import HISTORY_BYTES, HISTORY_SECONDS, VideoHub
@@ -35,7 +36,8 @@ class Watcher:
         self.daemon = Daemon(endpoint)
         self.activity = ActivityHub(self.daemon)
         self.video = VideoHub(self.daemon)
-        self.recorders = Recorders(library, self.activity, self.video)
+        self.logs = LogHub(self.daemon, self.activity)
+        self.recorders = Recorders(library, self.activity, self.video, self.logs)
         self._following: asyncio.Task[None] | None = None
         self._sweeping: asyncio.Task[None] | None = None
 
@@ -66,6 +68,7 @@ class Watcher:
         only its read streams end."""
         await self.recorders.close()
         self.activity.close()
+        await self.logs.close()
         await self.video.close()
         for task in (self._following, self._sweeping):
             if task is not None:
@@ -120,6 +123,33 @@ class Watcher:
             raise ConnectError(Code.INVALID_ARGUMENT, "serial is required")
         async for response in self.video.feed(request.serial).read():
             yield response
+
+    async def watch_log(
+        self, request: pb.WatchLogRequest, ctx: RequestContext
+    ) -> AsyncGenerator[pb.WatchLogResponse, None]:
+        if not request.serial:
+            raise ConnectError(Code.INVALID_ARGUMENT, "serial is required")
+        if request.after_seq < 0:
+            raise ConnectError(Code.INVALID_ARGUMENT, "after_seq must be >= 0")
+        subscription = self.logs.subscribe(request.serial, request.after_seq)
+        try:
+            backlog = subscription.backlog
+            yield pb.WatchLogResponse(
+                records=backlog[:BATCH],
+                dropped=subscription.dropped,
+                unavailable=subscription.unavailable,
+            )
+            for start in range(BATCH, len(backlog), BATCH):
+                yield pb.WatchLogResponse(records=backlog[start : start + BATCH])
+            while (batch := await self.logs.next_batch(subscription)) is not None:
+                yield pb.WatchLogResponse(records=batch)
+        except ReaderOverflow as error:
+            raise ConnectError(
+                Code.RESOURCE_EXHAUSTED,
+                "log reader fell behind; resume after the last seq",
+            ) from error
+        finally:
+            self.logs.unsubscribe(request.serial, subscription)
 
     async def start_recording(
         self, request: pb.StartRecordingRequest, ctx: RequestContext

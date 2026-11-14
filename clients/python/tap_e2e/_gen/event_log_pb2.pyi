@@ -11,7 +11,7 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class LoggedEvent(_message.Message):
-    __slots__ = ("seq", "at_epoch_ms", "duration_ms", "serial", "command", "app", "device", "error", "failure", "started_monotonic_ns", "finished_monotonic_ns", "clock_id")
+    __slots__ = ("seq", "at_epoch_ms", "duration_ms", "serial", "command", "app", "device", "error", "failure", "started_monotonic_ns", "finished_monotonic_ns", "clock_id", "step")
     SEQ_FIELD_NUMBER: _ClassVar[int]
     AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
@@ -24,6 +24,7 @@ class LoggedEvent(_message.Message):
     STARTED_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
     FINISHED_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
     CLOCK_ID_FIELD_NUMBER: _ClassVar[int]
+    STEP_FIELD_NUMBER: _ClassVar[int]
     seq: int
     at_epoch_ms: int
     duration_ms: int
@@ -36,7 +37,8 @@ class LoggedEvent(_message.Message):
     started_monotonic_ns: int
     finished_monotonic_ns: int
     clock_id: str
-    def __init__(self, seq: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., duration_ms: _Optional[int] = ..., serial: _Optional[str] = ..., command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., app: _Optional[_Union[AppCall, _Mapping]] = ..., device: _Optional[_Union[DeviceCall, _Mapping]] = ..., error: _Optional[_Union[_command_pb2.Error, _Mapping]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ..., started_monotonic_ns: _Optional[int] = ..., finished_monotonic_ns: _Optional[int] = ..., clock_id: _Optional[str] = ...) -> None: ...
+    step: str
+    def __init__(self, seq: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., duration_ms: _Optional[int] = ..., serial: _Optional[str] = ..., command: _Optional[_Union[_command_pb2.Command, _Mapping]] = ..., app: _Optional[_Union[AppCall, _Mapping]] = ..., device: _Optional[_Union[DeviceCall, _Mapping]] = ..., error: _Optional[_Union[_command_pb2.Error, _Mapping]] = ..., failure: _Optional[_Union[_failure_pb2.Failure, _Mapping]] = ..., started_monotonic_ns: _Optional[int] = ..., finished_monotonic_ns: _Optional[int] = ..., clock_id: _Optional[str] = ..., step: _Optional[str] = ...) -> None: ...
 
 class AppCall(_message.Message):
     __slots__ = ("operation", "package_name", "activity", "permission", "timeout_ms", "uri", "any_app", "extras", "locales")
