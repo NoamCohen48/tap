@@ -422,12 +422,16 @@ open class Adb internal constructor(
     }
 
     /**
-     * Best-effort screen preparation: wakes the display and dismisses an insecure keyguard so
-     * the AUT can reach the foreground. A secure lock is not bypassed; the app-visible wait
-     * then reports the lock screen package as the last observation.
+     * Best-effort screen preparation: wakes the display unless power state positively reports
+     * it already awake, then dismisses an insecure keyguard. Unknown/OEM power output keeps the
+     * wake path. A secure lock is not bypassed; the app-visible wait then reports the lock screen
+     * package as the last observation. Power is checked afresh on every attachment, never cached.
      */
     open suspend fun wakeAndDismissKeyguard(serial: String) {
-        execResult(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP", timeoutMs = 10_000)
+        val power = execResult(serial, "shell", "dumpsys", "-t", "1", "power", timeoutMs = 10_000)
+        if (power.exitCode != 0 || !powerStateDefinitelyAwake(power.output)) {
+            execResult(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP", timeoutMs = 10_000)
+        }
         execResult(serial, "shell", "wm", "dismiss-keyguard", timeoutMs = 10_000)
     }
 

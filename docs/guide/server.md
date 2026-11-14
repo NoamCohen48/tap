@@ -58,7 +58,9 @@ journals, not cached files.
 ## Attachment timing
 
 Each attachment starts fresh driver instrumentation; detaching stops it and restores the
-session's tracked changes. Driver APKs stay installed.
+session's tracked changes. Driver APKs stay installed. Before starting, Tap checks the device's
+power state and sends the wake key only when it cannot confirm that the device is already
+awake and stable. It still attempts to dismiss an insecure keyguard; a secure lock is not bypassed.
 
 The server log (`<state-dir>/daemon.log` with `tap start`) includes lifecycle stage durations:
 
