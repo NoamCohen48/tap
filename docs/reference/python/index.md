@@ -19,6 +19,7 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 | [Screen](screen.md) | `Screen`, from `device.screen` |
 | [Client and connections](client.md) | `TapClient`, `TapConnection`, the server's device list, `start_daemon` / `stop_daemon` |
 | [Artifacts](artifacts.md) | `Screenshot`, `Hierarchy`, `DeviceInfo`, `DriverLog`, `Recording`, `Capture` |
+| [Device log](logs.md) | `DeviceLog`, `LogEntries`, `LogEntry`, `LogLine`, `LogAction`, `LogFollower`, `step` |
 | [Values](values.md) | `ElementSnapshot`, `AppProcess`, `PermissionPrompt`, `Toast`, `Notification`, `Long`, … |
 | [Enums](enums.md) | `Direction`, `Orientation`, `PermissionChoice`, `StandardAction`, `StabilitySignal`, … |
 | [Snapshots and the event log](snapshots.md) | `ScreenSnapshot`, `ScreenNode`, `EventLog`, `LoggedEvent` |

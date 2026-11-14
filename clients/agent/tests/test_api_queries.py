@@ -175,3 +175,65 @@ async def test_mcp_queries_and_budget_schema_match_core(fake, agent):
         assert not settled.is_error
         waits = [command for command in fake.devices.commands if command.HasField("wait_screen_stable")]
         assert waits and waits[-1].timeout_ms == 3000
+
+
+def _log_line(cursor: int, message: str, priority=pb.LOG_PRIORITY_INFO) -> pb.LogEntry:
+    return pb.LogEntry(
+        cursor=cursor,
+        line=pb.LogLine(device_time_ms=1_794_608_507_879, uid=10123, pid=1, tid=1, priority=priority, tag="Shop", message=message),
+    )
+
+
+def test_log_reads_the_newest_entries_compactly_and_ends_with_the_cursor(fake, agent):
+    agent.attach("emulator-5554")
+    fake.device_log.dropped = 4
+    fake.device_log.entries = [
+        _log_line(7, "old"),
+        pb.LogEntry(cursor=8, action=pb.LogAction(operation="tap", target='text="Pay"')),
+        _log_line(9, "paying", pb.LOG_PRIORITY_WARN),
+        pb.LogEntry(cursor=10, action=pb.LogAction(operation="tap", finished=True, outcome="ok", duration_ms=243)),
+    ]
+
+    assert agent.log(limit=3).splitlines() == [
+        "(4 older entries are no longer kept by the server)",
+        "(1 earlier entries not shown; raise --limit or narrow the read)",
+        '── tap  text="Pay"',
+        "22:21:47.879 W Shop: paying",
+        "── tap  → ok  243 ms",
+        "cursor 10",
+    ]
+    assert fake.device_log.requests[-1].tail == 3
+
+    agent.log(after=10, packages=["com.shop"], priority="W", tags=["Shop"], grep="pay", actions=False)
+    request = fake.device_log.requests[-1]
+    assert (request.after_cursor, list(request.packages), request.min_priority) == (10, ["com.shop"], pb.LOG_PRIORITY_WARN)
+    assert (list(request.tags), request.message_regex, request.exclude_actions) == (["Shop"], "pay", True)
+    agent.log(last_action=True)
+    assert fake.device_log.requests[-1].last_action
+
+    fake.device_log.entries = []
+    fake.device_log.dropped = 0
+    assert agent.log(tail=5) == "no entries"
+
+
+def test_log_marks_redacts_and_refuses_mixed_arguments(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.log("mark", "checkout") == "marked 'checkout' at cursor 1"
+    assert agent.log(since="checkout").splitlines() == ["── marker checkout", "cursor 1"]
+    assert agent.log("redact", r"session=(\w+)") == "redacting matches in everything read from now on"
+    assert list(fake.device_log.requests[-1].patterns) == [r"session=(\w+)"]
+
+    for call in (
+        lambda: agent.log("mark"),
+        lambda: agent.log("mark", "x", tail=3),
+        lambda: agent.log("read", "x"),
+        lambda: agent.log(since="a", tail=3),
+        lambda: agent.log(priority="loud"),
+        lambda: agent.log(limit=0),
+        lambda: agent.log("tail"),
+    ):
+        with pytest.raises(AgentError) as refused:
+            call()
+        assert refused.value.exit_code == EXIT_USAGE
+    with pytest.raises(AgentError, match="never"):
+        agent.log(since="never")

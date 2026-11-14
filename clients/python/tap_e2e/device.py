@@ -39,6 +39,7 @@ from .models import (
     StabilitySignal,
     Toast,
 )
+from .logs import DeviceLog
 from .selectors import Selector
 from .screen import Screen
 from .client import TapConnection, mapped_errors
@@ -112,6 +113,9 @@ class Device:
         is; ``None`` otherwise."""
         self.screen: Screen = Screen(self)
         """Whatever is visible, without an implicit package predicate."""
+        self.logs: DeviceLog = DeviceLog(self)
+        """The device log since the attachment opened: logcat lines, Tap's actions and markers
+        (``read``, ``follow``, ``mark``, ``redact``)."""
         self.timeouts: Timeouts = timeouts
         """Default timeouts for actions, waits and app lifecycle calls on this device."""
         self._detached = False
@@ -125,6 +129,7 @@ class Device:
         skip_driver_install: bool = False,
         wait_for_device: float = 0,
         inspect_quarantined: bool = False,
+        capture_logs: bool = True,
     ) -> Device:
         """Attach ``serial`` (used by ``TapConnection.attach_device``).
         The attachment holds the device's per-serial lock until ``detach``; if another device session holds
@@ -143,6 +148,8 @@ class Device:
             request.skip_driver_install = True
         if inspect_quarantined:
             request.inspect_quarantined = True
+        if not capture_logs:  # absent = the server captures the device log
+            request.capture_logs = False
         with mapped_errors(serial):
             response = owner_connection.client.device_stub.Attach(
                 request, timeout=180 + wait_for_device
@@ -867,9 +874,9 @@ class Device:
             )
 
     def device_logs(self, timeout: float = 30.0) -> DeviceLogs:
-        """What the device recorded since this attachment opened: logcat, crashes and ANRs,
-        and the activity and window state now (``DeviceLogs``). Diagnostic; not in the event
-        log."""
+        """What the device recorded since this attachment opened, as text: the whole device log
+        (``logs``), crashes and ANRs, and the activity and window state now (``DeviceLogs``).
+        Diagnostic; not in the event log. For part of the log, or its entries, use ``logs``."""
         self._ensure_usable("device_logs")
         with mapped_errors(self.serial):
             response = self.client.device_stub.DeviceLogs(

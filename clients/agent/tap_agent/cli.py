@@ -16,6 +16,8 @@ from .core import (
     EXIT_OK,
     EXIT_USAGE,
     KEYBOARD_ACTIONS,
+    LOG_ACTIONS,
+    LOG_LIMIT,
     NOTIFICATION_ACTIONS,
     PANELS,
     PERMISSION_CHOICES,
@@ -109,6 +111,21 @@ def parser() -> argparse.ArgumentParser:
     p = verb("logs", "save device/driver logs or diagnostic hierarchy privately", on_device)
     p.add_argument("kind", choices=("device", "driver", "hierarchy"), nargs="?", default="device")
     p.add_argument("-o", "--out", help="new local output file; never overwrite")
+
+    p = verb("log", "read the device log since the attach (app lines, Tap's actions, markers), or write a marker", on_device)
+    p.add_argument("action", choices=LOG_ACTIONS, nargs="?", default="read")
+    p.add_argument("value", nargs="?", help="mark: the marker's name; redact: a regular expression whose matches are hidden from now on")
+    start = p.add_mutually_exclusive_group()
+    start.add_argument("--since", metavar="MARKER", help="from the newest marker with this name")
+    start.add_argument("--after", type=int, metavar="CURSOR", help="what came after this cursor (printed by an earlier read)")
+    start.add_argument("--tail", type=int, metavar="N", help="the newest N entries that pass the filters")
+    start.add_argument("--last-action", action="store_true", help="from the start of the newest Tap action")
+    p.add_argument("--package", dest="packages", action="append", default=[], metavar="PACKAGE", help="only this app's lines (repeatable)")
+    p.add_argument("--priority", help="lines at least this severe: verbose, debug, info, warn, error, fatal")
+    p.add_argument("--tag", dest="tags", action="append", default=[], metavar="TAG", help="only lines with this tag (repeatable)")
+    p.add_argument("--grep", metavar="REGEX", help="only lines whose message matches")
+    p.add_argument("--no-actions", dest="actions", action="store_false", help="leave Tap's own actions out")
+    p.add_argument("--limit", type=int, default=LOG_LIMIT, help=f"print at most this many entries, the newest (default {LOG_LIMIT})")
 
     p = verb("record", "start/stop/list/clean named action-and-wait recordings", common)
     p.add_argument("action", choices=("start", "stop", "list", "clean"), nargs="?", default="list")
@@ -351,6 +368,12 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.capabilities(device, as_json=args.as_json)
     if v == "logs":
         return agent.logs(args.kind, device, args.out)
+    if v == "log":
+        return agent.log(
+            args.action, args.value, device, since=args.since, after=args.after, tail=args.tail,
+            last_action=args.last_action, packages=args.packages, priority=args.priority, tags=args.tags,
+            grep=args.grep, actions=args.actions, limit=args.limit,
+        )
     if v == "record":
         return agent.record(args.action, args.name, all_records=args.all_records)
     if v == "media-record":

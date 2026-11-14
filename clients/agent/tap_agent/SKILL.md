@@ -176,7 +176,11 @@ not an app-state assertion. None of this uses synchronization/awaitIdle.
 
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
 `capture` saves screenshot, hierarchy, device info and driver log together. Files go under
-`.tap/agent/` unless `-o` says otherwise. `logs device|driver|hierarchy` saves SDK diagnostics to
+`.tap/agent/` unless `-o` says otherwise. `log` prints the device log since the attach: the app's logcat lines with Tap's own actions
+(`── tap  text="Pay"`) and markers between them, newest 200 by default, secrets redacted. After an
+action, `log --last-action --package PKG --priority warn` shows what the app logged because of
+it; `log mark NAME` then `log --since NAME` brackets a longer step; the last line (`cursor N`)
+feeds `log --after N`. `logs device|driver|hierarchy` saves SDK diagnostics to
 new private files (0600), never inline or overwritten. Treat accessibility data and logs as
 potentially sensitive. `snapshot --candidates` returns structured SDK data instead of rendered
 lines, including selector candidates; use the default view.

@@ -142,6 +142,7 @@ class DeviceService(
                         defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else Defaults.ACTION_TIMEOUT_MS,
                         leaseTimeoutMs = if (request.hasLeaseTimeoutMs()) nonNegative(request.leaseTimeoutMs, "lease_timeout_ms") else 0L,
                         inspectQuarantined = request.hasInspectQuarantined() && request.inspectQuarantined,
+                        captureLogs = !request.hasCaptureLogs() || request.captureLogs,
                     ),
                 )
             // Attachment is registered by now; a failed first command must not leave it behind.
@@ -154,6 +155,8 @@ class DeviceService(
                     runCatching { daemon.detachDevice(attachedDevice.id, request.clientConnectionId) }
                     throw error
                 }
+            // Before the client's first command: from here the driver's own log lines are actions.
+            attachedDevice.logs?.driverUid = info.driverUid.takeIf { it > 0 }
             AttachResponse
                 .newBuilder()
                 .setAttachedDeviceId(attachedDevice.id)
@@ -201,13 +204,19 @@ class DeviceService(
             CommandValidation.validate(command)
             val timeoutMs =
                 if (command.hasTimeoutMs()) positive(command.timeoutMs, "command.timeout_ms") else attachedDevice.defaultTimeoutMs
+            // Before it is typed: an app that logs what it was given must not leak it through the log.
+            command.sensitiveText()?.let { attachedDevice.logs?.redactor?.literal(it) }
             val result =
                 if (command.opCase in UNLOGGED_OPS) {
                     resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
                 } else {
                     attachedDevice.recorded({ setCommand(command.forLog()) }, { it.takeIf { it.hasError() }?.error }) {
                         if (command.opCase in NOTIFICATION_OPS) attachedDevice.deviceSession.conditions.allowNotificationListener()
-                        attachedDevice.appDeaths.explain(resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)))
+                        val sentAt = System.currentTimeMillis()
+                        val pending = attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs)
+                        // The driver logs the command itself; its lines get the step by the request id.
+                        STEP.get()?.let { step -> attachedDevice.logs?.commandStep(pending.requestId, step, sentAt) }
+                        attachedDevice.appDeaths.explain(resultOf(pending))
                     }
                 }
             ExecuteResponse.newBuilder().setResult(result).build()
@@ -316,6 +325,7 @@ class DeviceService(
                     attachedDevice.deviceSession.serial,
                     attachedDevice.attachedAtEpochSeconds,
                     DeviceEvidence.partTimeoutMs(remainingMs),
+                    attachedDevice.logs,
                 )
             DeviceLogsResponse
                 .newBuilder()

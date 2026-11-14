@@ -23,6 +23,7 @@ from tap_e2e.pytest_plugin import (
     _capture_mode,
     _device_scope,
     _Held,
+    _mark_logs,
     _reusable,
     _rotate,
     _scope_key,
@@ -216,3 +217,16 @@ def test_declared_roles_take_positional_names_then_keyword_criteria():
         ["device"],
         {"device": DeviceCriteria(min_api=30)},
     )
+
+
+def test_test_markers_are_written_to_every_device_and_never_fail_the_test(fake):
+    with TapClient.create(fake.address, TOKEN) as client:
+        with client.connect("test") as connection:
+            devices = {"left": connection.attach_device("a"), "right": connection.attach_device("b")}
+            _mark_logs(devices, "test tests/test_pay.py::test_pay[a\nb]" + "x" * 300)
+            fake.device_log.capture_off = True
+            _mark_logs(devices, "test passed")
+
+    names = [request.name for request in fake.device_log.requests]
+    assert len(names) == 4 and names[0] == names[1]
+    assert names[0].startswith("test tests/test_pay.py::test_pay[a b]") and len(names[0]) == 200

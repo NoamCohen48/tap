@@ -90,7 +90,7 @@ tap/
 |
 +-- contracts/                   what the three components agree on
 |   +-- proto/                   the one protobuf schema; single source for every generated binding
-|   |   +-- *.proto              package tap.v1 (public): selector, command, failure, client_connection, device, app, event_log, watch
+|   |   +-- *.proto              package tap.v1 (public): selector, command, failure, client_connection, device, device_log, app, event_log, watch
 |   |   +-- wire/wire.proto      package tap.wire.v1 (internal): TAP1 payloads — handshake, Request(Command)/Response(CommandResult), host-internal ops, blob metadata
 |   |   +-- buf.yaml, BREAKING_BASELINE   lint/breaking config; commit before which CI skips `buf breaking` (the deliberate 3.0 break)
 |   +-- conformance/client-conformance.json   defaults + failure-reason → exception table loaded by the daemon, Kotlin and Python unit suites
@@ -102,6 +102,7 @@ tap/
 |   |   |   +-- Operations.kt        operation catalogue (public + host-internal), isMutation/targetSelector, Commands/Requests/Responses factories, CommandHandler + exhaustive Request.dispatch
 |   |   |   +-- Selectors.kt         Nodes/Selectors builders, and/or, children/conjunction, pick helpers, render()
 |   |   |   +-- CommandValidation.kt shared argument + selector validation (InvalidCommandException) -> NATIVE | TRAVERSAL plan kind
+|   |   |   +-- ActionLog.kt         the `Tap` logcat lines the driver writes around each mutation/wait (`> #42 tap …`, `< #42 tap ok 243ms`) and their parser
 |   |   |   +-- ErrorCode.kt         mayHaveMutated/retryable/normalized/label over tap.v1.ErrorCode, ErrorDetail sub-reasons, CommandFailure
 |   |   |   +-- Authentication.kt    nonces, HMAC domains over the sent bytes, transcript, negotiation over proto Hello/Challenge
 |   |   |   +-- Blob.kt              BLOB_CHUNK encoding, SHA-256
@@ -169,6 +170,7 @@ tap/
 |   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity/setNetwork/setSystemLocales/setLocation/setStayAwake/setAccessibilityDisplay, notification-listener access: capture once, write, read back (DeviceSession.change)
 |   |   |   +-- DeviceFiles.kt       push/pull/addMedia: path rules, never overwrite a device's file, size and media-index read-back; created files captured as absent (removed on detach)
 |   |   |   +-- ScrcpyRecorder.kt        optional host-owned, serial-scoped scrcpy child; bounded Opus/MP4/Matroska capture and cleanup
+|   |   |   +-- Logcat.kt            LogcatLine + parseLogcatLine (`-v threadtime -v epoch -v uid`), LogcatCapture: one long-lived `logcat` child per attachment, restarted from the last line with backoff
 |   |   |   +-- BlobReceiver.kt      verifying blob reassembly
 |   |   |   +-- CommandException.kt  RemoteCommandException / CommandTransportException, selector rendering
 |   |   +-- src/test/kotlin/...      DriverClientTest (17), SessionJournalTest (6), FakeDriverServer
@@ -183,6 +185,9 @@ tap/
 |   |   |   |   +-- DriverApks.kt      embedded driver APKs extracted to driver/<version>-<digest>/, or a `--driver-apk` override
 |   |   |   |   +-- EventLog.kt        per-connection bounded event log (`Events`, `.docs/agent-surface.md` decision 3)
 |   |   |   |   +-- ActivityLog.kt     daemon-wide activity log (connections, attachments, logged calls) behind `Watch`
+|   |   |   |   +-- DeviceLog.kt       per-attachment device log: logcat lines + Tap actions + markers, newest 16 MiB in memory, cursors, filters, bounded followers (`.docs/app-logs.md`)
+|   |   |   |   +-- LogRedactor.kt     redaction on read: built-in secret shapes, `sensitive` typed text, caller patterns
+|   |   |   |   +-- DeviceEvidence.kt  `DeviceLogs`: the captured log (or the ring buffers), crashes, dumpsys; redacted
 |   |   |   |   +-- SharedVideo.kt     one scrcpy video producer per serial, preroll snapshot, bounded readers (`WatchVideo`)
 |   |   |   +-- daemon/snapshot/       screen snapshots with refs (`.docs/agent-surface.md` decision 2); diagnostic only, never on the action path
 |   |   |   |   +-- HierarchyParser.kt   hand XML parser for the UiAutomator dump (no DTD/entities: XXE-safe, no JAXP in the native image) → pre-order DumpNodes
@@ -196,6 +201,7 @@ tap/
 |   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording, device conditions, streamed PushFile/AddMedia (spooled to <state-dir>/uploads) and PullFile
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- WatchService.kt             read-only Watch (activity) and WatchVideo; names no connection
+|   |   |       +-- DeviceLogService.kt         ReadLog (stream, follow, filters) / MarkLog / RedactLog over the attachment's DeviceLog
 |   |   |       +-- EventRecording.kt          records an Execute / app call and its outcome into the owner's EventLog
 |   |   |       +-- TokenAuthInterceptor.kt     bearer-token check on every call
 |   |   |       +-- common.kt                  Defaults (echoed in Info), suspend reply wrapper, exception → status + `tap-failure-bin` Failure trailer
@@ -225,6 +231,7 @@ tap/
 |   |   |       +-- Models.kt            SDK-owned value types: MatchMode, Direction, StabilitySignal, ErrorCode, FailureReason, DeviceState, Bounds, ElementSnapshot, AppProcess, DeviceEntry, ServerInfo/ServerDefaults
 |   |   |       +-- Artifacts.kt         Artifact (bytes, mediaType, extension, save) and Screenshot, Recording, Hierarchy, DeviceInfo, DriverLog
 |   |   |       +-- Capture.kt           Device.capture(): the four artifacts in parallel, bounded, never throws; Capture.saveTo
+|   |   |       +-- DeviceLog.kt         Device.logs: read/follow (Flow)/mark/redact, LogEntry/LogLine/LogAction, LogStart, LogFilter
 |   |   |       +-- ProtoMapping.kt      internal proto <-> model mappers (enums by name after the proto prefix)
 |   |   |       +-- TapExceptions.kt     TapException, ServerException (+ FailureReason), CommandException (ErrorCode), WaitTimeoutException, AppLifecycleException, DeviceBusyException, DeviceQuarantinedException
 |   |   +-- junit5/              :clients:kotlin:junit5 — JUnit 5 integration (package io.github.noamcohen48.tap.junit5)
@@ -241,6 +248,7 @@ tap/
 |       +-- tap_e2e/_gen/            committed generated stubs (<file>_pb2, <file>_pb2_grpc, .pyi); private: the public API is models.py
 |       +-- tap_e2e/{client,device,element,app,selectors,errors}.py   TapClient/TapConnection, Device, Element/ElementWait, App, selector DSL, typed errors (mapped by failure reason)
 |       +-- tap_e2e/models.py        client-owned value types and artifacts (mirrors Models.kt + Artifacts.kt); _proto.py maps proto <-> models
+|       +-- tap_e2e/logs.py          Device.logs: read/follow/mark/redact, LogEntry/LogLine/LogAction, LogPriority
 |       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, tap_device_scope reuse, failure capture
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
 |

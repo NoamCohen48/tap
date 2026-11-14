@@ -3,6 +3,8 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.daemon.core.ActivityReaderOverflowException
+import io.github.noamcohen48.tap.daemon.core.LogReaderOverflowException
+import io.github.noamcohen48.tap.daemon.core.UnknownLogMarkerException
 import io.github.noamcohen48.tap.daemon.core.DaemonPreconditionException
 import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
@@ -213,13 +215,17 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
             }
 
             // A watcher fell behind: it reconnects from its last seq (activity) or key frame (video).
-            is ActivityReaderOverflowException, is VideoReaderOverflowException -> {
+            is ActivityReaderOverflowException, is VideoReaderOverflowException, is LogReaderOverflowException -> {
                 Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             }
 
             // Video capture could not start or stopped; the device and its connections are untouched.
             is VideoException -> {
                 Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
+            is UnknownLogMarkerException -> {
+                Status.NOT_FOUND.also { failure.reason = FailureReason.FAILURE_REASON_UNKNOWN_LOG_MARKER }
             }
 
             is UnknownRefException -> {

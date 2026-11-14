@@ -70,6 +70,8 @@ enum FailureReason {
   // Debuggable-app data access was refused or failed (FAILED_PRECONDITION). `detail`
   // distinguishes RUN_AS_UNAVAILABLE, APP_RUNNING, SYMLINK, EXISTS, NOT_FOUND, LIMIT or IO_ERROR.
   FAILURE_REASON_APP_DATA = 25;
+  // No marker with that name was written to the attachment's log (NOT_FOUND).
+  FAILURE_REASON_UNKNOWN_LOG_MARKER = 26;
 }
 
 message Failure {

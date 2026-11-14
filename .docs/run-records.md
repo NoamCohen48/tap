@@ -102,8 +102,9 @@ writes, partial capture, and real pytest subprocesses with setup/call/teardown/s
 report opt-out and unwritable output. Device checks are recorded in the PR, not inferred from
 these unit tests.
 
-Still deferred: per-command events, cross-worker aggregation, manual-artifact indexing,
-streamed device logcat, custom JUnit XML/HTML, and reporting adapters. Capture keeps its
+The `logcat` artifact is the attachment's captured device log (`app-logs.md`), with the
+plugins' `test …` markers in it. Still deferred: per-command events, cross-worker aggregation, manual-artifact indexing,
+custom JUnit XML/HTML, and reporting adapters. Capture keeps its
 existing teardown ordering: a failure observed only after attachments have already been
 detached still gets an outcome but cannot produce new live device evidence. The existing public
 artifact guide documents this first format without claiming those features are complete.
