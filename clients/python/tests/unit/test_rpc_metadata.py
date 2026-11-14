@@ -4,7 +4,8 @@ from unittest.mock import Mock
 
 import grpc
 import pytest
-from tap_e2e.client import _BearerToken, _failure
+from tap_e2e import step
+from tap_e2e.client import _CallHeaders, _failure
 from tap_e2e.proto import failure_pb2 as pb
 
 
@@ -16,7 +17,7 @@ def test_interceptor_details_preserve_fields_and_binary_metadata():
     details.credentials = None
     details.wait_for_ready = True
     details.compression = grpc.Compression.Gzip
-    forwarded = _BearerToken("secret")._details(details)
+    forwarded = _CallHeaders("secret")._details(details)
     assert isinstance(forwarded, grpc.ClientCallDetails)
     assert forwarded.method == details.method
     assert forwarded.timeout == 2.0
@@ -24,6 +25,8 @@ def test_interceptor_details_preserve_fields_and_binary_metadata():
     assert forwarded.wait_for_ready is True
     assert forwarded.compression == grpc.Compression.Gzip
     assert forwarded.metadata == (("trace-bin", b"\x00\xff"), ("authorization", "Bearer secret"))
+    with step("s-1"):
+        assert _CallHeaders(None)._details(details).metadata == (("trace-bin", b"\x00\xff"), ("tap-step", "s-1"))
 
 
 @pytest.mark.parametrize("attributes", [False, True])

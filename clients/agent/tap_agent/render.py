@@ -124,3 +124,27 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         if len(listed) < len(removed):
             lines.append(f"- … and {len(removed) - len(listed)} more")
     return "\n".join(lines) if lines else "(no change)"
+
+
+def log(entries, limit: int) -> str:
+    """Device log entries for an agent, one per line: a logcat line as ``HH:MM:SS.mmm P Tag:
+    message`` (the device's clock, UTC), anything else as the SDK renders it. Keeps the newest
+    ``limit`` and ends with the cursor to read on from."""
+    import datetime
+
+    shown = list(entries)[-limit:]
+    lines = []
+    if entries.dropped:
+        lines.append(f"({entries.dropped} older entries are no longer kept by the server)")
+    if len(entries) > len(shown):
+        lines.append(f"({len(entries) - len(shown)} earlier entries not shown; raise --limit or narrow the read)")
+    for entry in shown:
+        if entry.line is None:
+            lines.append(str(entry))
+            continue
+        line = entry.line
+        at = datetime.datetime.fromtimestamp(line.device_time, datetime.timezone.utc)
+        letter = line.priority.letter if line.priority else "?"
+        lines.append(f"{at:%H:%M:%S}.{at.microsecond // 1000:03d} {letter} {line.tag}: {line.message}")
+    lines.append(f"cursor {shown[-1].cursor}" if shown else "no entries")
+    return "\n".join(lines)

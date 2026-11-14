@@ -19,6 +19,8 @@ from ._gen import (  # noqa: F401
     client_connection_pb2,
     client_connection_pb2_grpc,
     command_pb2,
+    device_log_pb2,
+    device_log_pb2_grpc,
     device_pb2,
     device_pb2_grpc,
     event_log_pb2,

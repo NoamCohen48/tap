@@ -8,6 +8,17 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Device logs: the server reads `logcat` for every attached device from the moment it is
+  attached and serves it through `DeviceLogService` (`ReadLog`, `MarkLog`, `RedactLog`): the
+  app's lines in order with the actions Tap ran (the driver logs each action and wait when it
+  starts and finishes) and the markers a test wrote, filtered by package, priority, tag or a
+  regular expression, read from a marker, a cursor, the newest N or the newest action, or
+  followed live. Secrets are replaced on read (auth headers, tokens, sensitive typed text, your
+  own patterns). A client that sends a `tap-step` header gets its step id on the actions and
+  calls it caused. Python: `device.logs.read(...)` / `follow` / `mark` / `redact`,
+  `with tap_e2e.step() as id:`; `tap-agent log`. Each app line names the packages installed
+  under its uid. `attach_device(capture_logs=False)` turns the capture off. See the [device logs guide](docs/guide/logs.md).
+
 - Read per-device operation support with `device.capabilities()` in Kotlin/Python,
   `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
   explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining

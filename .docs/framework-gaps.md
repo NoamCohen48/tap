@@ -132,12 +132,15 @@ Reporting-off retains the old artifact layout. Each worker/launcher has its own 
 
 Missing:
 
-- Logcat is read at failure time from the device's ring buffers since the attachment
-  (`DeviceLogs`, part of every failure capture; `DeviceEvidenceTest`, Python and Kotlin capture
-  tests, checked on emulator-5554 with `am crash`), not streamed: on a busy device the oldest
-  lines of a long test can be gone. `dumpsys window/activity` and crash/ANR *evidence* are in
-  the same capture, and a command failing after the crash or ANR says so with `AUT_CRASHED` /
-  `AUT_ANR`. A redacted protocol event log is not there.
+- The device log is captured for the whole attachment (`DeviceLogService`, `.docs/app-logs.md`:
+  streamed logcat with Tap's actions, markers and redaction; `LogcatTest`, `DeviceLogTest`,
+  `DeviceLogServiceTest`, `LogRedactorTest`, the Kotlin and Python client suites) and is what
+  `DeviceLogs` and every failure capture hold, so a long test no longer loses its oldest lines
+  to the device's ring buffers (the daemon keeps the newest 16 MiB). Not yet checked on the
+  device matrix: the order of the driver's action lines among an app's own. `dumpsys
+  window/activity` and crash/ANR *evidence* are in the same capture, and a command failing
+  after the crash or ANR says so with `AUT_CRASHED` / `AUT_ANR`. Parsing the log into typed
+  records (HTTP exchanges an app logs) is not there (`feature-todo.md`). A redacted protocol event log is not there.
 - Per-command JSONL events (v1 records runner lifecycle, device assignments and evidence only),
   cross-worker aggregation and automatic indexing of manually saved artifacts. JUnit XML is
   whatever the build tool writes; no HTML report or Flowdeck adapter.

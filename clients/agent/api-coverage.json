@@ -13,6 +13,9 @@
       "SetAnimations": ["condition"], "SetDarkMode": ["condition"], "SetFontScale": ["condition"], "SetDensity": ["condition"], "SetNetwork": ["condition"], "SetSystemLocales": ["condition"], "SetLocation": ["set_location"], "SetStayAwake": ["condition"], "SetAccessibilityDisplay": ["condition"],
       "GetForegroundActivity": ["foreground_activity"], "PushFile": ["push_file"], "PullFile": ["pull_file"], "AddMedia": ["add_media"]
     },
+    "tap.v1.DeviceLogService": {
+      "ReadLog": ["log"], "MarkLog": ["log"], "RedactLog": ["log"]
+    },
     "tap.v1.AppService": {
       "Install": ["app"], "Uninstall": ["app"], "IsInstalled": ["app"], "ForceStop": ["app"], "ClearData": ["app"], "GrantPermission": ["app"], "RevokePermission": ["app"], "IsPermissionGranted": ["app"], "SetLocales": ["app"], "GetLocales": ["app"], "Launch": ["app"], "ColdLaunch": ["app"], "Foreground": ["app"], "OpenLink": ["app"], "Process": ["app"], "IsRunning": ["app"]
     },

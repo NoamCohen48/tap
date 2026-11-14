@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import hashlib
+import queue
 import threading
 from collections.abc import Callable, Generator
 from concurrent import futures
@@ -16,6 +17,7 @@ from tap_e2e._gen import (
     app_data_pb2_grpc,
     app_pb2_grpc,
     client_connection_pb2_grpc,
+    device_log_pb2_grpc,
     device_pb2_grpc,
 )
 from tap_e2e._gen.engine_version import API_COMPATIBILITY
@@ -155,6 +157,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def __init__(self) -> None:
         self.responder: Callable[[pb.Command], pb.CommandResult | None] | None = None
         self.commands: list[pb.Command] = []
+        self.steps: list[str | None] = []
         self.detaches: list[str] = []
         self.detach_error: grpc.StatusCode | None = None
         # Serials whose no-wait attach fails as held by another session; (serial, lease ms) log.
@@ -257,6 +260,7 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def Execute(self, request, context):
         self._own("execute", request, context)
         self.commands.append(request.command)
+        self.steps.append(dict(context.invocation_metadata()).get("tap-step"))
         result = pb.CommandResult(done=pb.Done())
         if self.responder is not None:
             result = self.responder(request.command) or result
@@ -536,6 +540,63 @@ class FakeAppData(app_data_pb2_grpc.AppDataServiceServicer):
         return pb.DeleteFileResponse()
 
 
+class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
+    """Serves ``entries`` as they are (the filters are the server's); records every request.
+    A follower gets the entries, then whatever ``live`` yields, until it cancels."""
+
+    def __init__(self) -> None:
+        self.entries: list[pb.LogEntry] = []
+        self.dropped = 0
+        self.requests: list[object] = []
+        self.live: queue.Queue[pb.LogEntry | None] = queue.Queue()
+        self.capture_off = False
+        self.cancelled = threading.Event()
+
+    def _check(self, request, context) -> None:
+        self.requests.append(request)
+        if self.capture_off:
+            fail(
+                context,
+                grpc.StatusCode.FAILED_PRECONDITION,
+                pb.FAILURE_REASON_DAEMON_PRECONDITION,
+                "log capture is off for this attachment",
+            )
+
+    def ReadLog(self, request, context):
+        self._check(request, context)
+        if request.WhichOneof("from") == "marker" and not any(
+            e.marker == request.marker for e in self.entries if e.WhichOneof("kind") == "marker"
+        ):
+            fail(
+                context,
+                grpc.StatusCode.NOT_FOUND,
+                pb.FAILURE_REASON_UNKNOWN_LOG_MARKER,
+                f"no marker {request.marker}",
+            )
+        yield pb.ReadLogResponse(entries=self.entries[:1], dropped=self.dropped)
+        yield pb.ReadLogResponse(entries=self.entries[1:])
+        if not request.follow:
+            return
+        context.add_callback(self.cancelled.set)
+        while context.is_active():
+            try:
+                entry = self.live.get(timeout=0.05)
+            except queue.Empty:
+                continue
+            if entry is None:  # the device was detached: the stream ends
+                return
+            yield pb.ReadLogResponse(entries=[entry])
+
+    def MarkLog(self, request, context):
+        self._check(request, context)
+        self.entries.append(pb.LogEntry(cursor=len(self.entries) + 1, marker=request.name))
+        return pb.MarkLogResponse(cursor=len(self.entries))
+
+    def RedactLog(self, request, context):
+        self._check(request, context)
+        return pb.RedactLogResponse()
+
+
 class _TokenCheck(grpc.ServerInterceptor):
     """Rejects calls without ``authorization: Bearer TOKEN`` when ``required`` is set."""
 
@@ -571,6 +632,7 @@ class Fake:
         self.devices = FakeDevices()
         self.apps = FakeApps()
         self.app_data = FakeAppData()
+        self.device_log = FakeDeviceLog()
         self.connections.devices = self.devices
         self.devices.log = self.connections
         self.apps.log = self.connections
@@ -584,6 +646,7 @@ class Fake:
         device_pb2_grpc.add_DeviceServiceServicer_to_server(self.devices, self.server)
         app_pb2_grpc.add_AppServiceServicer_to_server(self.apps, self.server)
         app_data_pb2_grpc.add_AppDataServiceServicer_to_server(self.app_data, self.server)
+        device_log_pb2_grpc.add_DeviceLogServiceServicer_to_server(self.device_log, self.server)
         self.port = self.server.add_insecure_port("127.0.0.1:0")
         self.address = f"127.0.0.1:{self.port}"
         self.server.start()
