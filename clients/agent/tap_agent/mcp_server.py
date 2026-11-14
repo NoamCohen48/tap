@@ -171,53 +171,45 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         operation, grants permission or changes settings. Support does not guarantee success."""
         return await call(session, lambda a: a.capabilities(device or None, as_json=True))
 
-    @mcp.tool(name="logs", annotations=WRITES_FILES)
-    async def logs(kind: Literal["device", "driver", "hierarchy"] = "device", path: str = "", session: Session = "", device: Device = "") -> CallToolResult:
-        """Save SDK device/driver logs or diagnostic hierarchy privately, never inline or overwrite."""
-        return await call(session, lambda a: a.logs(kind, device or None, path or None))
-
     @mcp.tool(name="log")
     async def log(
-        action: Literal["read", "mark", "redact"] = "read",
-        value: Annotated[str, Field(description="mark: the marker's name; redact: a regular expression whose matches are hidden from now on.")] = "",
-        since: Annotated[str, Field(description="Read from the newest marker with this name.")] = "",
+        action: Literal["read", "mark", "redact", "driver", "evidence"] = "read",
+        value: Annotated[str, Field(description="mark: the marker's name; redact: a regular expression whose matches are hidden in the whole log, lines already captured included.")] = "",
+        since: Annotated[str, Field(description="Read from a marker: its name (the newest with it) or @CURSOR, as `mark` prints it.")] = "",
         after: Annotated[int | None, Field(ge=0, description="Read what came after this cursor (the last line of an earlier read).")] = None,
         tail: Annotated[int | None, Field(ge=1, le=100_000, description="Read the newest N entries that pass the filters.")] = None,
         last_action: Annotated[bool, Field(description="Read from the start of the newest Tap action.")] = False,
+        step: Annotated[str, Field(description="Read only one step, by its number or id: from its first action to its last.")] = "",
+        until: Annotated[str, Field(description="End the read at a marker (a name or @CURSOR) instead of now.")] = "",
         packages: Annotated[list[str], Field(description="Only these apps' lines.")] = [],
         priority: Annotated[Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None, Field(description="Lines at least this severe.")] = None,
         tags: Annotated[list[str], Field(description="Only lines with one of these tags.")] = [],
         grep: Annotated[str, Field(description="Only lines whose message matches this regular expression.")] = "",
         actions: Annotated[bool, Field(description="False leaves Tap's own actions out.")] = True,
-        limit: Annotated[int, Field(ge=1, le=5000, description="Print at most this many entries, the newest.")] = LOG_LIMIT,
+        limit: Annotated[int, Field(ge=1, le=5000, description="At most this many entries: from a start the first ones (read on with `after` the last cursor), otherwise the newest.")] = LOG_LIMIT,
+        as_json: Annotated[bool, Field(description="Return the entries as JSON data (line, action, marker or gap per entry) instead of rendered lines.")] = False,
+        path: Annotated[str, Field(description="driver / evidence: write to this new private file instead of one under the agent directory.")] = "",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """The device log since the attach: the app's logcat lines in order with Tap's own
-        actions (`── tap  text="Pay"`, `── tap  → ok  243 ms`) and markers, secrets redacted.
-        Read it after an action to see what the app logged (`last_action`, or `mark` a name before
-        a step and read `since` it); narrow with `packages`, `priority`, `tags`, `grep`. The last
-        line gives the cursor to pass as `after` for what comes next."""
+        """The session's history on a device: the app's logcat lines since the attach, in order
+        with the steps you ran (`── step 12 tap  [id]`), Tap's own actions (`── tap  text="Pay"`,
+        `── tap  → ok  243 ms`) and markers, secrets redacted. Read it after an action to see
+        what the app logged (`last_action`, one `step`, or `mark` a name and read `since` it,
+        `until` a second marker to close the range); narrow with `packages`, `priority`, `tags`,
+        `grep`; `as_json` returns the entries as data to filter or compute on. A read from a start
+        returns its first `limit` entries and says how many more follow; the last line gives the
+        cursor to pass as `after` for what comes next. Times are the host's clock. `mark` also marks the step history, so `export` can
+        cut at it. `driver` saves the Tap driver's own diagnostic log and `evidence` the device's
+        failure evidence (log, crashes, ANRs, activity and window state) to a private file."""
         return await call(
             session,
             lambda a: a.log(
                 action, value or None, device or None, since=since or None, after=after, tail=tail,
                 last_action=last_action, packages=packages, priority=priority, tags=tags, grep=grep or None,
-                actions=actions, limit=limit,
+                actions=actions, limit=limit, step=step or None, until=until or None, as_json=as_json, out=path or None,
             ),
         )
-
-    @mcp.tool(name="record")
-    async def record(
-        action: Literal["start", "stop", "list", "clean"] = "list",
-        name: Annotated[str, Field(description="Start: new unique name. Stop/export can select a name; clean requires a name or explicit all_records.")] = "",
-        all_records: Annotated[bool, Field(description="Clean only: explicitly delete all stopped recordings.")] = False,
-        session: Session = "",
-    ) -> CallToolResult:
-        """Control private named action-and-wait recordings, not video or raw history. Start
-        pins the live held connection. Stop retains data; export works after release/offline.
-        An unfinished step is explicit and is never replayed. CLI/MCP share TAP_AGENT_DIR."""
-        return await call(session, lambda a: a.record(action, name or None, all_records=all_records))
 
     @mcp.tool(name="media_record")
     async def media_record(
@@ -747,27 +739,42 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras, timeout=timeout_seconds)
         )
 
-    @mcp.tool(name="history", annotations=WRITES_FILES)
+    @mcp.tool(name="history")
     async def history(
-        path: Annotated[str, Field(description="Write raw history to a new private file instead.")] = "",
-        after_seq: Annotated[StrictInt, Field(ge=0, le=9223372036854775807, description="Only events with larger sequence numbers.")] = 0,
+        action: Literal["list", "clean"] = "list",
+        name: Annotated[str, Field(description="Clean: the history to delete.")] = "",
+        all_histories: Annotated[bool, Field(description="Clean only: delete every stopped history.")] = False,
         session: Session = "",
     ) -> CallToolResult:
-        """The session's event log as JSON: every device call it made (commands and app changes),
-        in order, with outcomes and the selectors refs stood for. Export before `release`: the
-        log ends with the session. Converting it into a test is up to the user."""
-        return await call(session, lambda a: a.history(path or None, after_seq=after_seq))
+        """List or clean the saved step histories. Every session records its actions and waits
+        by itself, from its first one until `release`; nothing has to be started. A live
+        session's history cannot be cleaned. CLI/MCP share TAP_AGENT_DIR."""
+        return await call(session, lambda a: a.history(action, name or None, all_histories=all_histories))
 
     @mcp.tool(name="export", annotations=WRITES_FILES)
     async def export(
-        name: Annotated[str, Field(description="Named step recording; omit for this session's active recording, otherwise latest archive.")] = "",
+        name: Annotated[str, Field(description="A history's name (`history`); omit for this session's live history, otherwise its latest stopped one.")] = "",
         path: Annotated[str, Field(description="Write JSON to a new 0600 file instead of returning it.")] = "",
+        since: Annotated[str, Field(description="Only the steps after a marker (`log mark`): its name (the newest with it) or @CURSOR.")] = "",
+        until: Annotated[str, Field(description="Only the steps before a marker: its name or @CURSOR.")] = "",
+        logs: Annotated[bool, Field(description="Live session only: add each device's log for the same range.")] = False,
+        calls: Annotated[bool, Field(description="Live session only: add the server's record of every device call.")] = False,
+        packages: Annotated[list[str], Field(description="With logs: only these apps' lines.")] = [],
+        priority: Annotated[Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None, Field(description="With logs: lines at least this severe.")] = None,
+        tags: Annotated[list[str], Field(description="With logs: only lines with one of these tags.")] = [],
+        grep: Annotated[str, Field(description="With logs: only lines whose message matches this regular expression.")] = "",
         session: Session = "",
     ) -> CallToolResult:
-        """Export tap-agent-recording/1: high-level actions/waits, resolved selectors, devices
-        and outcomes. No daemon is required and export does not stop an active recording.
-        Unknown/unfinished outcomes remain explicit; sensitive inputs are redacted. Not replay."""
-        return await call(session, lambda a: a.export(name or None, path or None))
+        """Export tap-agent-recording/2: the session's actions and waits with their parameters,
+        resolved selectors, devices, outcomes and markers. Each step has an `id`; with `logs` the
+        device log's actions carry the same id as `step`, and with `calls` so does every server
+        call, so a step is matched to what it did. A stopped history exports without a daemon;
+        `logs` / `calls` need the live session. Unknown/unfinished outcomes remain explicit;
+        sensitive inputs are redacted. Not replay."""
+        return await call(session, lambda a: a.export(
+            name or None, path or None, since=since or None, until=until or None, logs=logs, calls=calls,
+            packages=packages, priority=priority, tags=tags, grep=grep or None,
+        ))
 
     return mcp
 

@@ -493,7 +493,7 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     assert capsys.readouterr().out.startswith("---\nname: tap-android")
 
 
-def test_history_is_the_session_log_as_json(fake, agent, tmp_path):
+def test_an_export_has_the_servers_record_of_each_call(fake, agent, tmp_path):
     import json
 
     agent.attach("emulator-5554")
@@ -503,16 +503,18 @@ def test_history_is_the_session_log_as_json(fake, agent, tmp_path):
     fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_FOUND))
     with pytest.raises(AgentError):
         agent.tap("text=Nope")
-    document = json.loads(agent.history())
-    assert document["format"] == "tap-events/1" and document["session"] == "agent" and document["dropped"] == 0
-    cold, tapped, missing = document["events"]
+    document = json.loads(agent.export(calls=True))
+    assert document["format"] == "tap-agent-recording/2" and document["session"] == "agent" and document["calls"]["dropped"] == 0
+    cold, tapped, missing = document["calls"]["events"]
     assert cold["app"] == {"operation": "cold_launch", "package_name": "com.example"} and cold["ok"]
     # The ref is logged as the selector it named.
     assert tapped["command"]["tap"]["selector"] == {"node": {"resource": {"name": "login"}}}
     assert missing["error"] == {"code": "ERR_NOT_FOUND"} and not missing["ok"]
+    # Each call names the step that made it; an app call the fake daemon logs carries none.
+    assert [tapped["step"], missing["step"]] == [step["id"] for step in document["steps"][1:]]
     out = tmp_path / "log" / "session.json"
-    assert agent.history(out) == f"wrote 3 events (1 failed) to {out}"
-    assert json.loads(out.read_text())["events"] == document["events"]
+    assert agent.export(out=out, calls=True) == f"exported step history {document['name']!r} (3 steps) to {out}"
+    assert json.loads(out.read_text())["calls"]["events"] == document["calls"]["events"]
 
 def test_condition_reads_back_and_app_locale(fake, agent):
     agent.attach("emulator-5554")
@@ -600,7 +602,7 @@ EXPECTED_TOOLS = {
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count",
-    "detach", "server_info", "device_info", "capabilities", "logs", "log", "media_record", "scroll_until", "record", "history",
+    "detach", "server_info", "device_info", "capabilities", "log", "media_record", "scroll_until", "history",
     "unquarantine",
 }
 
@@ -665,7 +667,7 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         result = await client.call_tool("app", {"action": "open-link", "package": "com.example", "argument": "example://x"})
         assert not result.is_error and result.content[0].text.startswith("opened example://x")
         result = await client.call_tool("history", {})
-        assert not result.is_error and '"format": "tap-events/1"' in result.content[0].text
+        assert not result.is_error and "live" in result.content[0].text and "session 'agent'" in result.content[0].text
 
 
 def test_launch_extras_are_typed_and_checked(fake, agent, capsys):

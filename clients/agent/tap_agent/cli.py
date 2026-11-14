@@ -108,29 +108,25 @@ def parser() -> argparse.ArgumentParser:
     p = verb("capabilities", "read SDK operation support and prerequisites; no device changes", on_device)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured capability entries")
 
-    p = verb("logs", "save device/driver logs or diagnostic hierarchy privately", on_device)
-    p.add_argument("kind", choices=("device", "driver", "hierarchy"), nargs="?", default="device")
-    p.add_argument("-o", "--out", help="new local output file; never overwrite")
-
-    p = verb("log", "read the device log since the attach (app lines, Tap's actions, markers), or write a marker", on_device)
-    p.add_argument("action", choices=LOG_ACTIONS, nargs="?", default="read")
-    p.add_argument("value", nargs="?", help="mark: the marker's name; redact: a regular expression whose matches are hidden from now on")
+    p = verb("log", "the session's history on a device: app log lines with the steps run, Tap's actions and markers; or write a marker", on_device)
+    p.add_argument("action", choices=LOG_ACTIONS, nargs="?", default="read", help="read (default); mark NAME; redact REGEX; driver / evidence: save the driver's own log / the device's failure evidence to a file")
+    p.add_argument("value", nargs="?", help="mark: the marker's name; redact: a regular expression whose matches are hidden in the whole log")
     start = p.add_mutually_exclusive_group()
-    start.add_argument("--since", metavar="MARKER", help="from the newest marker with this name")
+    start.add_argument("--since", metavar="MARKER", help="from a marker: its name (the newest with it) or @CURSOR (as `log mark` prints it)")
     start.add_argument("--after", type=int, metavar="CURSOR", help="what came after this cursor (printed by an earlier read)")
     start.add_argument("--tail", type=int, metavar="N", help="the newest N entries that pass the filters")
     start.add_argument("--last-action", action="store_true", help="from the start of the newest Tap action")
+    start.add_argument("--step", metavar="STEP", help="only one step: its number or id, from its first action to its last")
+    p.add_argument("--until", metavar="MARKER", help="stop at a marker (a name or @CURSOR) instead of now")
     p.add_argument("--package", dest="packages", action="append", default=[], metavar="PACKAGE", help="only this app's lines (repeatable)")
     p.add_argument("--priority", help="lines at least this severe: verbose, debug, info, warn, error, fatal")
     p.add_argument("--tag", dest="tags", action="append", default=[], metavar="TAG", help="only lines with this tag (repeatable)")
     p.add_argument("--grep", metavar="REGEX", help="only lines whose message matches")
     p.add_argument("--no-actions", dest="actions", action="store_false", help="leave Tap's own actions out")
-    p.add_argument("--limit", type=int, default=LOG_LIMIT, help=f"print at most this many entries, the newest (default {LOG_LIMIT})")
+    p.add_argument("--limit", type=int, default=LOG_LIMIT, help=f"at most this many entries, 1 to 5000 (default {LOG_LIMIT}): from a start the first ones (read on with --after), otherwise the newest")
+    p.add_argument("--json", dest="as_json", action="store_true", help="the entries as JSON data instead of lines")
 
-    p = verb("record", "start/stop/list/clean named action-and-wait recordings", common)
-    p.add_argument("action", choices=("start", "stop", "list", "clean"), nargs="?", default="list")
-    p.add_argument("name", nargs="?", help="recording name; required for start, optional for stop")
-    p.add_argument("--all", dest="all_records", action="store_true", help="clean only: explicitly delete all stopped recordings")
+    p.add_argument("-o", "--out", help="driver / evidence: new local output file; never overwrite")
 
     p = verb("media-record", "explicit bounded video/audio recording; save bytes privately on stop", on_device)
     p.add_argument("action", choices=("start", "stop"))
@@ -328,13 +324,22 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("local", nargs="?", help="read/write: local file; export-db/import-db: local bundle directory")
     p.add_argument("--overwrite", action="store_true", help="write/import-db: explicitly replace existing remote data")
 
-    p = verb("history", "raw session event history as JSON; export before release", common)
-    p.add_argument("-o", "--out", help="write to a new private file instead")
-    p.add_argument("--after-seq", type=int, default=0, help="only events with larger sequence numbers")
+    p = verb("history", "list or clean the saved step histories (every session records its steps by itself)", common)
+    p.add_argument("action", choices=("list", "clean"), nargs="?", default="list")
+    p.add_argument("name", nargs="?", help="clean: the history to delete")
+    p.add_argument("--all", dest="all_histories", action="store_true", help="clean only: delete every stopped history")
 
-    p = verb("export", "export a named action-and-wait recording, even after release", common)
-    p.add_argument("name", nargs="?", help="default: this session's active recording, otherwise its latest archive")
+    p = verb("export", "export a session's step history as JSON, even after release", common)
+    p.add_argument("name", nargs="?", help="default: this session's live history, otherwise its latest stopped one")
     p.add_argument("-o", "--out", help="write to a new 0600 file instead of stdout")
+    p.add_argument("--since", metavar="MARKER", help="only the steps after a marker (`log mark`): its name (the newest with it) or @CURSOR")
+    p.add_argument("--until", metavar="MARKER", help="only the steps before a marker: its name or @CURSOR")
+    p.add_argument("--logs", action="store_true", help="live session only: add each device's log for the same range")
+    p.add_argument("--package", dest="packages", action="append", default=[], metavar="PACKAGE", help="with --logs: only this app's lines (repeatable)")
+    p.add_argument("--priority", help="with --logs: lines at least this severe: verbose, debug, info, warn, error, fatal")
+    p.add_argument("--tag", dest="tags", action="append", default=[], metavar="TAG", help="with --logs: only lines with this tag (repeatable)")
+    p.add_argument("--grep", metavar="REGEX", help="with --logs: only lines whose message matches")
+    p.add_argument("--calls", action="store_true", help="live session only: add the server's record of every device call")
 
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
     verb("skill", "print the agent skill (SKILL.md)")
@@ -366,16 +371,12 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.device_info(device)
     if v == "capabilities":
         return agent.capabilities(device, as_json=args.as_json)
-    if v == "logs":
-        return agent.logs(args.kind, device, args.out)
     if v == "log":
         return agent.log(
             args.action, args.value, device, since=args.since, after=args.after, tail=args.tail,
             last_action=args.last_action, packages=args.packages, priority=args.priority, tags=args.tags,
-            grep=args.grep, actions=args.actions, limit=args.limit,
+            grep=args.grep, actions=args.actions, limit=args.limit, step=args.step, until=args.until, as_json=args.as_json, out=args.out,
         )
-    if v == "record":
-        return agent.record(args.action, args.name, all_records=args.all_records)
     if v == "media-record":
         return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
     if v == "snapshot":
@@ -451,9 +452,12 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "capture":
         return agent.capture(device, args.out)
     if v == "history":
-        return agent.history(args.out, after_seq=args.after_seq)
+        return agent.history(args.action, args.name, all_histories=args.all_histories)
     if v == "export":
-        return agent.export(args.name, args.out)
+        return agent.export(
+            args.name, args.out, since=args.since, until=args.until, logs=args.logs, calls=args.calls,
+            packages=args.packages, priority=args.priority, tags=args.tags, grep=args.grep,
+        )
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":

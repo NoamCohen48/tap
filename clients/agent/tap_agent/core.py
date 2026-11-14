@@ -2,8 +2,8 @@
 
 Every method returns the short text to show. Device/session state lives in the daemon:
 a session is a held connection named after it (``TapClient.connect(name, hold=...)``),
-so any process — the next CLI call, an MCP server — resumes it by name. Named high-level step
-recordings are client-owned durable intent under the private agent directory, not raw history.
+so any process — the next CLI call, an MCP server — resumes it by name. Each session's step
+history (``records``) is client-owned durable intent under the private agent directory.
 """
 
 from __future__ import annotations
@@ -52,8 +52,6 @@ from .step_capture import CURRENT, instrument, sending
 from .targets import Target, UsageError, format_duration, parse_condition, parse_int32, parse_key, parse_target
 
 DEFAULT_SESSION = "agent"
-# Raw history keeps the existing event format; named step recordings have their own format.
-HISTORY_FORMAT = "tap-events/1"
 DEFAULT_IDLE = 15 * 60.0
 DEFAULT_WAIT = 10.0
 MAX_COMMAND_TIMEOUT = 120.0
@@ -155,7 +153,7 @@ def _integer(value: int, name: str, low: int, high: int) -> int:
 
 NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
 
-LOG_ACTIONS = ("read", "mark", "redact")
+LOG_ACTIONS = ("read", "mark", "redact", "driver", "evidence")
 
 LOG_LIMIT = 200
 """Most log entries one ``log`` call prints by default."""
@@ -188,6 +186,33 @@ def _hint(error: TapError) -> str:
         if error.reason is FailureReason.REF_NOT_ADDRESSABLE:
             return f"{message}\nthis node has no selector; target a nearby node or write a selector"
     return message
+
+
+def _marker_point(value: object, option: str) -> str | int:
+    """A marker given as its name (the newest marker with it) or as ``@CURSOR`` (exactly that
+    entry, as ``log mark`` prints it)."""
+    if not isinstance(value, str) or not value:
+        raise AgentError(f"{option} is a marker's name or @CURSOR", EXIT_USAGE)
+    if value.startswith("@"):
+        if not value[1:].isdigit() or int(value[1:]) < 1:
+            raise AgentError(f"{option} {value!r}: @CURSOR takes a cursor number, as `log mark` prints it (e.g. @634)", EXIT_USAGE)
+        return int(value[1:])
+    return value
+
+
+def _until(entries: list, point: str | int, markers: list[dict]) -> list:
+    """[entries] up to the ``until`` point, that entry included: a cursor, or the newest marker
+    with that name among them. A name the session marked before the read's start gets an error
+    that says so (``markers``: the session's markers on this device)."""
+    if isinstance(point, int):
+        return [entry for entry in entries if entry.cursor <= point]
+    end = max((index for index, entry in enumerate(entries) if entry.marker == point), default=None)
+    if end is not None:
+        return entries[: end + 1]
+    earlier = [marker["cursor"] for marker in markers if marker["name"] == point]
+    if earlier and (not entries or earlier[-1] < entries[0].cursor):
+        raise AgentError(f"the --until marker {point!r} (cursor {earlier[-1]}) is before where the read starts; a marker name means its newest marker", EXIT_USAGE)
+    raise AgentError(f"no marker {point!r} in the part of the log read; write it with `log mark {point}`", EXIT_USAGE)
 
 
 @instrument
@@ -443,7 +468,7 @@ class Agent:
                 if active is not None and active["connection_id"] == entry.id:
                     self.records.stop(active["name"], self.session, reason="released")
             except RecordError:
-                text += "\nWARNING: session released but recording could not be stopped; use record stop and inspect its outcome"
+                text += "\nWARNING: session released but its step history could not be closed; its export will say it is incomplete"
             return text
 
         return self._run(step)
@@ -544,99 +569,163 @@ class Agent:
 
         return self._run(step)
 
-    def history(self, out: str | os.PathLike[str] | None = None, *, after_seq: int = 0) -> str:
-        """The session's event log as JSON (``HISTORY_FORMAT``): every device call it made, in
-        order, with its outcome. Turning it into a test, in whatever language, is the user's job.
-        With ``out``, writes the file and says so; otherwise returns the JSON."""
+    def history(self, action: str = "list", name: str | None = None, *, all_histories: bool = False) -> str:
+        """The saved step histories: ``list`` them, or ``clean`` one by name (``all_histories``:
+        every stopped one). Local, no daemon.
 
-        if isinstance(after_seq, bool) or not isinstance(after_seq, int) or not 0 <= after_seq < 2**63:
-            raise AgentError("after_seq must be an integer in 0..9223372036854775807", EXIT_USAGE)
-
-        def step() -> str:
-            log = self._connection().event_log(after_seq)
-            document = {
-                "format": HISTORY_FORMAT,
-                "session": self.session,
-                "exported_at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z"),
-                "dropped": log.dropped,
-                "events": [event.to_dict() for event in log.events],
-            }
-            text = json.dumps(document, indent=2, ensure_ascii=False)
-            if out is None:
-                return text
-            path = pathlib.Path(out)
-            save_private(path, (text + "\n").encode("utf-8"))
-            failed = sum(1 for e in log.events if not e.ok)
-            note = f" ({failed} failed)" if failed else ""
-            dropped = f"; {log.dropped} older events were dropped" if log.dropped else ""
-            return f"wrote {len(log.events)} events{note} to {path}{dropped}"
-
-        return self._run(step)
-
-    def record(self, action: str = "list", name: str | None = None, *, all_records: bool = False) -> str:
-        """Start/stop/list/clean private named high-level recordings, not media or raw history.
-
-        Start needs a live held session; other controls are local. Names are unique, stop retains
-        data, and clean requires stopped records. A recording is pinned to its connection ID.
-        """
-        if not isinstance(all_records, bool) or (name is not None and not isinstance(name, str)):
-            raise AgentError("record needs a string name and boolean --all flag", EXIT_USAGE)
+        A session's history starts by itself with its first action or wait and stops when the
+        session is released; ``export`` writes one out. The store keeps the newest stopped
+        histories and removes older ones when a new history starts."""
+        if not isinstance(all_histories, bool) or (name is not None and not isinstance(name, str)):
+            raise AgentError("history needs a string name and boolean --all flag", EXIT_USAGE)
         name = name or None
-        if action not in ("start", "stop", "list", "clean"):
-            raise AgentError("record action must be start, stop, list or clean", EXIT_USAGE)
-        if all_records and action != "clean":
-            raise AgentError("--all is only for record clean", EXIT_USAGE)
-        if action == "start" and not name:
-            raise AgentError("record start needs a name", EXIT_USAGE)
-        if action == "list" and name is not None:
-            raise AgentError("record list takes no name", EXIT_USAGE)
+        if action not in ("list", "clean"):
+            raise AgentError("history action must be list or clean", EXIT_USAGE)
+        if action == "list" and (name is not None or all_histories):
+            raise AgentError("history list takes no name and no --all", EXIT_USAGE)
+
         def step() -> str:
-            if action == "start":
-                assert name is not None
-                entry = self._connection()
-                metadata = self.records.start(name, self.session, entry.id)
-                return f"recording steps as {metadata['name']!r}"
-            if action == "stop":
-                metadata = self.records.stop(name, self.session)
-                return f"stopped step recording {metadata['name']!r} (retained; export it by name)"
             if action == "clean":
-                count = self.records.clean(name, self.session, all_records=all_records)
-                return f"cleaned {count} step recording{'s' if count != 1 else ''}"
+                count = self.records.clean(name, self.session, all_records=all_histories)
+                return f"cleaned {count} step histor{'ies' if count != 1 else 'y'}"
+            asked = self._end_ended_histories()
             rows = self.records.list()
-            return "\n".join(f"{row['name']}  {row['state']}  {row['steps']} steps  session {row['session']!r}" for row in rows) or "no step recordings"
+            markers = self.records.marker_names()
+            lines = []
+            for row in rows:
+                times = f"started {render.local_time(row['started_at'])}"
+                if row["state"] == "recording":
+                    state = "live" if asked else "live? (the server could not be asked)"
+                else:
+                    state = f"stopped ({row['stop_reason'] or 'stopped'})"
+                    times += f", stopped {render.local_time(row['stopped_at'])}"
+                names = markers.get(row["id"], [])
+                marked = f"  markers {', '.join(names)}" if names else ""
+                lines.append(f"{row['name']}  {state}  {row['steps']} step{'' if row['steps'] == 1 else 's'}  {times}{marked}  session {row['session']!r}")
+            return "\n".join(lines) or "no step histories"
         return self._run(step)
 
-    def export(self, name: str | None = None, out: str | os.PathLike[str] | None = None) -> str:
-        """Export a named high-level recording without a daemon, to JSON stdout or a new 0600 file.
+    def _end_ended_histories(self) -> bool:
+        """Stops each live step history whose held connection the server no longer has (an idle
+        timeout, a daemon restart), so it is never shown or exported as live. False when the
+        server could not be asked; a stopped history needs no server."""
+        live = [row for row in self.records.list() if row["state"] == "recording"]
+        if not live:
+            return True
+        try:
+            current = {entry.id for entry in self.client.connections()}
+        except (AgentError, TapError, OSError):
+            return False
+        for row in live:
+            if row["connection_id"] not in current:
+                with contextlib.suppress(RecordError):
+                    self.records.stop(row["name"], row["session"], reason="connection ended")
+        return True
 
-        With no name, choose this session's active recording, otherwise its latest archive.
-        Export does not stop capture. Incomplete/unfinished outcomes are explicit in the JSON.
-        """
+    def export(
+        self,
+        name: str | None = None,
+        out: str | os.PathLike[str] | None = None,
+        *,
+        since: str | None = None,
+        until: str | None = None,
+        logs: bool = False,
+        calls: bool = False,
+        packages: Sequence[str] = (),
+        priority: str | None = None,
+        tags: Sequence[str] = (),
+        grep: str | None = None,
+    ) -> str:
+        """Export a session's step history as JSON, to stdout or a new 0600 file.
+
+        With no name: this session's live history, otherwise its latest stopped one; a stopped
+        history exports without a daemon. Each step has its parameters (typed ``sensitive`` text
+        is a placeholder), its outcome and its ``id``. ``since`` / ``until`` cut the export to
+        the steps between two markers (``log mark``), each its name (the newest marker with it)
+        or ``@CURSOR``.
+
+        Only for the live history, while its devices are attached: ``logs`` adds each device's
+        log for the same range (``log``: app lines, Tap's actions carrying the ``step`` id of
+        the step that caused them, markers; secrets redacted), narrowed like ``log`` by
+        ``packages``, ``priority``, ``tags`` and ``grep`` (logcat lines only), and ``calls`` adds
+        the server's own record of every device call the session made (``calls``, each with its
+        ``step``). Unfinished outcomes are explicit in the JSON (``complete``)."""
+        since_point = _marker_point(since, "since") if since is not None else None
+        until_point = _marker_point(until, "until") if until is not None else None
+        filters = {"packages": list(packages), "min_priority": priority, "tags": list(tags), "grep": grep}
+        if (packages or priority or tags or grep) and not logs:
+            raise AgentError("--package, --priority, --tag and --grep narrow the log of --logs", EXIT_USAGE)
+        if priority is not None:
+            try:
+                filters["min_priority"] = LogPriority.of(priority).name.lower()
+            except ValueError as error:
+                raise AgentError(str(error), EXIT_USAGE) from None
+
         def step() -> str:
-            document = self.records.export(name, self.session)
+            if name is None:
+                self._end_ended_histories()
+            document = self.records.export(name, self.session, since=since_point, until=until_point)
+            if logs or calls:
+                entry = self._held()
+                if document["state"] != "recording" or entry is None or entry.id != document["connection_id"]:
+                    why = "it was released" if document.get("stop_reason") == "released" else f"its session ended ({document.get('stop_reason') or 'released'})"
+                    raise AgentError(f"the device log and the server's call record of this history are gone: {why}; export it without --logs/--calls", EXIT_USAGE)
+                connection = TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold)
+                if calls:
+                    events = connection.event_log(0)
+                    wanted = {item["id"] for item in document["steps"]}
+                    cut = since is not None or until is not None
+                    document["calls"] = {"dropped": events.dropped, "events": [event.to_dict() for event in events.events if not cut or event.step in wanted]}
+                if logs:
+                    document["log"] = {device.serial: self._exported_log(device, since_point, until_point, filters) for device in connection.attached_devices()}
             text = json_text(document)
             if out is None:
                 return text
             path = save_private(pathlib.Path(out), (text + "\n").encode("utf-8"))
-            return f"exported step recording {document['name']!r} to {path}"
+            return f"exported step history {document['name']!r} ({len(document['steps'])} steps) to {path}"
         return self._run(step)
 
-    def logs(self, kind: str = "device", device: str | None = None, out: str | None = None) -> str:
-        """Save bounded SDK device/driver logs or diagnostic hierarchy to a new private file."""
-        if kind not in ("device", "driver", "hierarchy"):
-            raise AgentError("logs kind must be device, driver or hierarchy", EXIT_USAGE)
-        def step() -> str:
-            d = self._device(device)
-            suffix = "json" if kind == "device" else "xml" if kind == "hierarchy" else "txt"
-            path = pathlib.Path(out) if out else self.out_dir / f"{kind}-{d.serial}-{uuid.uuid4().hex}.{suffix}"
-            if os.path.lexists(path):
-                raise AgentError("local output already exists; choose a new path", EXIT_USAGE)
-            if kind == "device":
-                content = json_text(d.device_logs()).encode("utf-8")
-            else:
-                content = (d.driver_log() if kind == "driver" else d.dump_hierarchy()).bytes
-            return str(save_private(path, content))
-        return self._run(step)
+    @staticmethod
+    def _exported_log(device: Device, since: str | int | None, until: str | int | None, filters: dict) -> dict:
+        """One device's log for an export: from the ``since`` marker (else everything kept) up
+        to the ``until`` marker, each a name or a cursor, narrowed by ``filters`` (``log``'s).
+        A marker this device's log does not hold leaves that side open."""
+        begin = since - 1 if isinstance(since, int) else since
+        try:
+            entries = device.logs.read(since=begin, **filters)
+        except ServerError as error:
+            if error.reason is FailureReason.DAEMON_PRECONDITION:
+                return {"unavailable": "log capture is off for this device"}
+            if error.reason is not FailureReason.UNKNOWN_LOG_MARKER:
+                raise
+            entries = device.logs.read(**filters)
+        kept = list(entries)
+        if isinstance(until, int):
+            kept = [entry for entry in kept if entry.cursor <= until]
+        elif until is not None:
+            end = max((index for index, entry in enumerate(kept) if entry.marker == until), default=None)
+            kept = kept if end is None else kept[: end + 1]
+        narrowed = {key: value for key, value in filters.items() if value}
+        return {"dropped": entries.dropped, **({"filters": narrowed} if narrowed else {}), "entries": [Agent._log_entry(entry) for entry in kept]}
+
+    @staticmethod
+    def _log_entry(entry) -> dict:
+        """A device log entry as JSON data: its cursor and host time, and one of ``line``,
+        ``action``, ``marker`` or ``gap``."""
+        item: dict = {"cursor": entry.cursor, "at": datetime.datetime.fromtimestamp(entry.at, datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")}
+        if entry.line is not None:
+            line = entry.line
+            item["line"] = {
+                "priority": line.priority.letter if line.priority else "?", "tag": line.tag, "message": line.message,
+                "packages": list(line.packages), "uid": line.uid, "pid": line.pid, "tid": line.tid, "device_time": line.device_time,
+            }
+        elif entry.action is not None:
+            item["action"] = {key: value for key, value in vars(entry.action).items() if value is not None}
+        elif entry.marker is not None:
+            item["marker"] = entry.marker
+        else:
+            item["gap"] = entry.gap
+        return item
 
     def log(
         self,
@@ -648,33 +737,69 @@ class Agent:
         after: int | None = None,
         tail: int | None = None,
         last_action: bool = False,
+        step: str | None = None,
+        until: str | None = None,
         packages: Sequence[str] = (),
         priority: str | None = None,
         tags: Sequence[str] = (),
         grep: str | None = None,
         actions: bool = True,
         limit: int = LOG_LIMIT,
+        as_json: bool = False,
+        out: str | os.PathLike[str] | None = None,
     ) -> str:
-        """The device log since the attach: logcat lines with Tap's actions and the markers
-        between them. ``read`` prints entries (default: the newest ``limit``), ``mark`` writes
-        the marker ``value``, ``redact`` hides matches of the regular expression ``value``.
+        """The session's history on one device: the app's logcat lines since the attach, in
+        order with the steps this session ran, Tap's actions and the markers between them.
 
-        A read starts at one of: ``since`` a marker's name, ``after`` a cursor (the last line of
-        an earlier read), ``tail`` the newest N, ``last_action`` the start of the newest action.
-        ``packages``, ``priority`` (a minimum), ``tags`` and ``grep`` keep matching logcat lines;
-        markers and actions always show (``actions=False`` hides the actions). At most ``limit``
-        entries are printed, the newest ones. Secrets are redacted by the server.
+        ``read`` prints entries (default: the newest ``limit``). ``mark`` writes the marker
+        ``value`` into the device log and into the session's step history, so both can be read
+        or exported from it. ``redact`` hides matches of the regular expression ``value``.
+        ``driver`` saves the Tap driver's own diagnostic log and ``evidence`` the device's
+        failure evidence (log, crashes and ANRs, activity and window state) to a new private
+        file (``out``, or one under the agent directory) and print its path.
+
+        A read starts at one of: ``since`` a marker (its name: the newest marker with it; or
+        ``@CURSOR``: the entry at that cursor, as ``mark`` prints it), ``after`` a cursor (what
+        came after it, e.g. the last line of an earlier read), ``tail`` the newest N,
+        ``last_action`` the start of the newest action; or it is one ``step`` (its number or id,
+        as a ``── step`` line or an export shows them): from that step's first action to its
+        last. ``until`` ends the read at a marker (a name or ``@CURSOR``, the marker included)
+        instead of now; with no start it reads from the first entry kept. ``packages``,
+        ``priority`` (a minimum), ``tags`` and ``grep`` keep matching logcat lines; steps, markers
+        and actions always show (``actions=False`` hides the actions).
+
+        At most ``limit`` entries are returned. A read with a start keeps the first ones from
+        that start and says how many more follow (read on with ``after`` the last cursor); one
+        without keeps the newest. Times are the server host's (local time), the clock of the
+        steps; the device's own clock can differ. Secrets are redacted by the server.
+
+        ``as_json`` returns the same entries as data instead of lines: ``entries`` (each with
+        its ``cursor``, ``at`` and one of ``line``, ``action``, ``marker``, ``gap``), ``steps``
+        (the session's steps the actions name, by step id), ``dropped`` (entries the server no
+        longer has), ``omitted`` (earlier entries left out), ``more`` (later entries left out)
+        and the ``cursor`` of the last entry, to read on from with ``after``.
         """
         if action not in LOG_ACTIONS:
             raise AgentError(f"log action must be one of {', '.join(LOG_ACTIONS)}", EXIT_USAGE)
         reading = action == "read"
-        filtered = since is not None or after is not None or tail is not None or last_action or packages or priority or tags or grep or not actions
+        saving = action in ("driver", "evidence")
+        filtered = since is not None or after is not None or tail is not None or last_action or step is not None or until is not None or packages or priority or tags or grep or not actions or as_json
+        if not isinstance(as_json, bool):
+            raise AgentError("--json is a flag", EXIT_USAGE)
+        if until is not None and step is not None:
+            raise AgentError("--until ends a read at a marker; a --step read already ends at the step's last action", EXIT_USAGE)
+        since_point = _marker_point(since, "since") if since is not None else None
+        until_point = _marker_point(until, "until") if until is not None else None
         if reading and value is not None:
-            raise AgentError("log read takes no value; start it with --since, --after, --tail or --last-action", EXIT_USAGE)
-        if not reading and (not value or filtered):
+            raise AgentError("log read takes no value; start it with --since, --after, --tail, --last-action or --step", EXIT_USAGE)
+        if saving and (value is not None or filtered):
+            raise AgentError(f"log {action} takes only --out", EXIT_USAGE)
+        if out is not None and not saving:
+            raise AgentError("--out is only for log driver and log evidence", EXIT_USAGE)
+        if action in ("mark", "redact") and (not value or filtered):
             raise AgentError(f"log {action} takes {'a marker name' if action == 'mark' else 'a regular expression'} and no read options", EXIT_USAGE)
-        if sum((since is not None, after is not None, tail is not None, bool(last_action))) > 1:
-            raise AgentError("pass only one of since, after, tail and last_action", EXIT_USAGE)
+        if sum((since is not None, after is not None, tail is not None, bool(last_action), step is not None)) > 1:
+            raise AgentError("pass only one of since, after, tail, last_action and step", EXIT_USAGE)
         _integer(limit, "limit", 1, 5000)
         if tail is not None:
             _integer(tail, "tail", 1, 100_000)
@@ -686,22 +811,69 @@ class Agent:
             except ValueError as error:
                 raise AgentError(str(error), EXIT_USAGE) from None
 
-        def step() -> str:
-            logs = self._device(device).logs
+        def run() -> str:
+            d = self._device(device)
+            if saving:
+                suffix = "txt" if action == "driver" else "json"
+                path = pathlib.Path(out) if out else self.out_dir / f"{action}-{d.serial}-{uuid.uuid4().hex}.{suffix}"
+                if os.path.lexists(path):
+                    raise AgentError("local output already exists; choose a new path", EXIT_USAGE)
+                content = d.driver_log().bytes if action == "driver" else json_text(d.device_logs()).encode("utf-8")
+                return str(save_private(path, content))
+            logs = d.logs
             if action == "mark":
-                return f"marked {value!r} at cursor {logs.mark(value)}"
+                # Both records get it: the device log (to read from) and the step history (to export from).
+                history = self.records.ensure(self.session, d.owner_connection.id)
+                earlier = [marker["cursor"] for marker in self.records.markers(self.session, d.serial) if marker["name"] == value]
+                with self.records.lease(history["id"]):
+                    cursor = logs.mark(value)
+                    self.records.mark(history, value, d.serial, cursor)
+                text = f"marked {value!r} at cursor {cursor}; read from it with --since {value} or --since @{cursor}"
+                if earlier:
+                    text += f"\n(this name was already marked at cursor {earlier[-1]}: --since {value} now means this one; use --since @{earlier[-1]} for that one)"
+                return text
             if action == "redact":
                 logs.redact(value)
-                return "redacting matches in everything read from now on"
-            start: dict = {"since": since if since is not None else after, "tail": tail, "since_last_action": last_action}
-            if all(not part for part in (since, tail, last_action)) and after is None:
+                return "redacting matches in the whole log, lines already captured included, until the device is detached"
+            steps = self.records.steps(self.session)
+            wanted = None
+            if step is not None:
+                wanted = next((identifier for identifier, row in steps.items() if step in (identifier, str(row["seq"]))), None)
+                if wanted is None:
+                    raise AgentError(f"no step {step!r} in this session's history; `log` shows each step's number", EXIT_USAGE)
+            # A cursor point is the entry at it: a read from @634 includes 634.
+            begin = since_point - 1 if isinstance(since_point, int) else since_point if since_point is not None else after
+            started = begin is not None or wanted is not None or bool(last_action)
+            if isinstance(until_point, int) and isinstance(begin, int) and until_point <= begin:
+                raise AgentError(f"--until @{until_point} is before where the read starts", EXIT_USAGE)
+            start: dict = {"since": begin, "tail": tail, "since_last_action": last_action}
+            if not started and tail is None and until is None:
                 start = {"tail": limit}
             entries = logs.read(
-                **start, packages=list(packages), min_priority=priority, tags=list(tags), grep=grep, actions=actions
+                **start, packages=list(packages), min_priority=priority, tags=list(tags), grep=grep, actions=actions, step=wanted
             )
-            return render.log(entries, limit)
+            kept = list(entries)
+            if until_point is not None:
+                kept = _until(kept, until_point, self.records.markers(self.session, d.serial))
+            if started:
+                shown, omitted, more = kept[:limit], 0, max(0, len(kept) - limit)
+            else:
+                shown, omitted, more = kept[-limit:], max(0, len(kept) - limit), 0
+            if not as_json:
+                return render.log(shown, steps, dropped=entries.dropped, omitted=omitted, more=more)
+            named = {entry.action.step for entry in shown if entry.action is not None and entry.action.step in steps}
+            skew = render.clock_skew(shown)
+            return json_text({
+                "dropped": entries.dropped,
+                "omitted": omitted,
+                "more": more,
+                "device_clock_offset_s": None if skew is None else round(skew, 3),
+                "steps": {identifier: steps[identifier] for identifier in steps if identifier in named},
+                "entries": [self._log_entry(entry) for entry in shown],
+                "cursor": shown[-1].cursor if shown else None,
+            })
 
-        return self._run(step)
+        return self._run(run)
 
     def recording(self, action: str, device: str | None = None, *, video: bool = True, audio_source: str | None = None, max_seconds: int | None = None, out: str | None = None) -> str:
         """Explicit bounded recording. Save verified stop bytes privately; never replay start/stop."""

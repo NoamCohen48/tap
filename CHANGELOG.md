@@ -77,6 +77,21 @@ name the components affected. Earlier releases used independent version lines. T
 - Kotlin: `device.logs.read(LogStart, LogFilter)`, `follow(...)` (a `Flow`), `mark(name)` and
   `redact(patterns)` read the device log; `withStep { id -> … }` runs calls as one step and
   `LogFilter(step = id)` reads that step's part of the log.
+- `tap-agent` records every session's steps by itself and joins them with the device log.
+  `record start|stop` is gone: actions and explicit waits are recorded from the first one until
+  `release`, and `export [NAME] [-o FILE]` writes that history (`tap-agent-recording/2`, each
+  step with an `id`). `log mark NAME` writes a marker to the device log and the history;
+  `export --since NAME --until OTHER` cuts the export between markers, `--logs` adds the device
+  log and `--calls` the server's record of each call (the former `history` output), both
+  matched to the steps by id. `log` names the session's steps, `log --step N` prints one
+  step's part, `log --until NAME` ends a read at a marker and `log --json` returns the entries
+  as data. A read from a start returns its first entries and says how many more follow (read on
+  with `--after`); `@CURSOR` names one marker exactly; times are the host's. `export --logs`
+  takes `log`'s filters, a failed step keeps its Tap error code (`outcome.error`), and a
+  history whose session ended without a release is shown and exported as stopped. `history [list|clean]` replaces `record list|clean`; `logs driver` is
+  `log driver`, `logs device` is `log evidence`, `logs hierarchy` is dropped (`capture` saves
+  the dump). An `unknown` or interrupted step no longer blocks later input, and a full history
+  is followed by a new one. MCP: the `record` and `logs` tools are removed.
 
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
   `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:

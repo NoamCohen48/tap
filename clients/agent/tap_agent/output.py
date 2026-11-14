@@ -49,6 +49,9 @@ def save_private(path: Path, data: bytes) -> Path:
     """Create a new mode-0600 file, refusing existing outputs including symlinks. The file
     appears complete or not at all: the bytes go to a hidden temporary file in the same directory,
     are flushed to disk, and are then hard-linked to ``path``, which fails if anything is there."""
+    exists = FileExistsError(f"local output already exists; choose a new path: {path}")
+    if os.path.lexists(path):
+        raise exists
     path.parent.mkdir(parents=True, exist_ok=True)
     temporary = path.with_name(f".{path.name}.{secrets.token_hex(8)}.partial")
     fd = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -57,7 +60,10 @@ def save_private(path: Path, data: bytes) -> Path:
             stream.write(data)
             stream.flush()
             os.fsync(stream.fileno())
-        os.link(temporary, path, follow_symlinks=False)
+        try:
+            os.link(temporary, path, follow_symlinks=False)
+        except FileExistsError:
+            raise exists from None  # created after the check above
     finally:
         temporary.unlink(missing_ok=True)
     directory = os.open(path.parent, os.O_RDONLY)

@@ -126,25 +126,78 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
     return "\n".join(lines) if lines else "(no change)"
 
 
-def log(entries, limit: int) -> str:
-    """Device log entries for an agent, one per line: a logcat line as ``HH:MM:SS.mmm P Tag:
-    message`` (the device's clock, UTC), anything else as the SDK renders it. Keeps the newest
-    ``limit`` and ends with the cursor to read on from."""
+def local_time(iso: str | None) -> str:
+    """A stored UTC timestamp (``2026-11-14T15:47:21.000Z``) as the host's local
+    ``YYYY-MM-DD HH:MM``; ``-`` for none."""
     import datetime
 
-    shown = list(entries)[-limit:]
+    if not iso:
+        return "-"
+    moment = datetime.datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone()
+    return f"{moment:%Y-%m-%d %H:%M}"
+
+
+def log_time(at: float) -> str:
+    """``HH:MM:SS.mmm`` in the host's local time zone."""
+    import datetime
+
+    moment = datetime.datetime.fromtimestamp(at)
+    return f"{moment:%H:%M:%S}.{moment.microsecond // 1000:03d}"
+
+
+def clock_skew(entries) -> float | None:
+    """How far the device's clock is ahead of the host's (seconds, negative: behind), from the
+    log lines' two times; None without lines."""
+    gaps = sorted(entry.line.device_time - entry.at for entry in entries if entry.line is not None and entry.at)
+    return gaps[len(gaps) // 2] if gaps else None
+
+
+def _span(seconds: float) -> str:
+    seconds = abs(seconds)
+    if seconds >= 2 * 86400:
+        return f"{seconds / 86400:.0f} days"
+    if seconds >= 2 * 3600:
+        return f"{seconds / 3600:.0f} hours"
+    if seconds >= 120:
+        return f"{seconds / 60:.0f} minutes"
+    return f"{seconds:.0f} seconds"
+
+
+def log(entries, steps: dict | None = None, *, dropped: int = 0, omitted: int = 0, more: int = 0) -> str:
+    """Device log entries for an agent, one per line, each led by the time the server got it
+    (``HH:MM:SS.mmm``, the host's local time: the clock of the steps' ``started_at``): a logcat
+    line as ``P Tag: message``, a marker, gap or Tap action as ``── …``. Where the actions of one
+    of the session's ``steps`` (by step id: ``seq``, ``action``) begin, a ``── step N <verb>
+    [id]`` line names the step. Notes at the top: ``dropped`` entries the server no longer has,
+    ``omitted`` earlier entries this read left out, a device clock that disagrees with the host's;
+    at the end ``more`` later entries left out and the cursor to read on from."""
     lines = []
-    if entries.dropped:
-        lines.append(f"({entries.dropped} older entries are no longer kept by the server)")
-    if len(entries) > len(shown):
-        lines.append(f"({len(entries) - len(shown)} earlier entries not shown; raise --limit or narrow the read)")
-    for entry in shown:
+    if dropped:
+        lines.append(f"({dropped} older entries are no longer kept by the server)")
+    if omitted:
+        lines.append(f"({omitted} earlier entries not shown; raise --limit or narrow the read)")
+    skew = clock_skew(entries)
+    if skew is not None and abs(skew) >= 60:
+        lines.append(f"(the device's clock is {_span(skew)} {'ahead of' if skew > 0 else 'behind'} the host's; times are the host's)")
+    current = None
+    for entry in entries:
+        at = log_time(entry.at)
         if entry.line is None:
-            lines.append(str(entry))
+            step = entry.action.step if entry.action is not None else None
+            if step != current and step is not None and steps and step in steps:
+                lines.append(f"── step {steps[step]['seq']} {steps[step]['action']}  [{step}]")
+            if entry.action is not None:
+                current = step
+            lines.append(f"{at} {entry}")
             continue
         line = entry.line
-        at = datetime.datetime.fromtimestamp(line.device_time, datetime.timezone.utc)
         letter = line.priority.letter if line.priority else "?"
-        lines.append(f"{at:%H:%M:%S}.{at.microsecond // 1000:03d} {letter} {line.tag}: {line.message}")
-    lines.append(f"cursor {shown[-1].cursor}" if shown else "no entries")
+        lines.append(f"{at} {letter} {line.tag}: {line.message}")
+    if not entries:
+        lines.append("no entries")
+    elif more:
+        lines.append(f"({more} more entries after this; read on with --after {entries[-1].cursor})")
+        lines.append(f"cursor {entries[-1].cursor}")
+    else:
+        lines.append(f"cursor {entries[-1].cursor}")
     return "\n".join(lines)

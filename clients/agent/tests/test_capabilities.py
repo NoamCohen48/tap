@@ -24,7 +24,6 @@ def test_cli_text_and_json_share_sdk_and_do_not_record_steps(fake, agent):
     agent.attach("emulator-5554")
     _report(fake)
     commands = list(fake.devices.commands)
-    agent.record("start", "discovery")
     parser = cli.parser()
     text = cli.run(parser.parse_args(["capabilities"]), agent)
     assert "APP_SET_LOCALES  UNSUPPORTED  Requires API 33" in text
@@ -33,8 +32,7 @@ def test_cli_text_and_json_share_sdk_and_do_not_record_steps(fake, agent):
     assert structured["entries"][0]["required_api"] == 33
     assert fake.devices.commands == commands
     assert len(fake.devices.capability_requests) == 2
-    agent.record("stop")
-    assert json.loads(agent.export())["steps"] == []
+    assert not agent.records.list()
 
 
 @pytest.mark.anyio

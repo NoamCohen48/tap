@@ -177,10 +177,18 @@ not an app-state assertion. None of this uses synchronization/awaitIdle.
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
 `capture` saves screenshot, hierarchy, device info and driver log together. Files go under
 `.tap/agent/` unless `-o` says otherwise. `log` prints the device log since the attach: the app's logcat lines with Tap's own actions
-(`── tap  text="Pay"`) and markers between them, newest 200 by default, secrets redacted. After an
-action, `log --last-action --package PKG --priority warn` shows what the app logged because of
-it; `log mark NAME` then `log --since NAME` brackets a longer step; the last line (`cursor N`)
-feeds `log --after N`. `logs device|driver|hierarchy` saves SDK diagnostics to
+(`── tap  text="Pay"`) and markers between them, secrets redacted, at most 200 entries (`--limit`
+up to 5000): from a start the first ones, then `(N more entries …; read on with --after C)`;
+without a start the newest. Times are the host's. A phone logs hundreds of lines a second: add
+`--package PKG`. After an action, `log --last-action --package PKG --priority warn` shows what
+the app logged because of it; `log mark NAME` then `log --since NAME` brackets a longer stretch
+(a name means its newest marker; `mark` prints the cursor, and `--since @CURSOR` names exactly
+that marker); the last line (`cursor N`) feeds `log --after N`; `--until OTHER` (or `@CURSOR`)
+ends the read at a second marker instead of now, and
+`--json` returns the same entries as data (line / action / marker per entry) when you need to
+filter or compute on them rather than read them. Your own steps are named in it (`── step 3 fill  [id]`) and `log --step 3`
+prints just that step's part. `log driver` and `log evidence` save the Tap driver's log and the
+device's failure evidence (log, crashes/ANRs, activity and window state) to
 new private files (0600), never inline or overwritten. Treat accessibility data and logs as
 potentially sensitive. `snapshot --candidates` returns structured SDK data instead of rendered
 lines, including selector candidates; use the default view.
@@ -194,33 +202,35 @@ capture is discarded. Failed start/stop is never replayed. Stop retains a privat
 under `.tap/agent/` before an optional custom copy: if that copy fails, use the artifact named
 in the error, do not repeat stop. No automatic app stop, launch or restore.
 
-## Named steps, export and history
+## Step history and export
 
-`record start NAME` begins a named action-and-explicit-wait recording; `record stop [NAME]`
-freezes it, `record list` lists archives, `record clean NAME` deletes a stopped one. Only
-`record clean --all` deletes all stopped archives; active/in-flight records must be stopped first.
-Names are unique. `export [NAME] [-o NEW_FILE]` returns `tap-agent-recording/1` to stdout or a new
-0600 file, even after release/offline. Omitted name chooses this session's active/latest archive.
-Export does not stop recording. Release stops the current connection's active recording.
+Nothing to start: every action and explicit wait of a session is recorded as a step from the
+first one, and the history stops at `release`. `export [-o NEW_FILE]` returns it as
+`tap-agent-recording/2` on stdout or in a new 0600 file, also after release/offline; it does not
+stop anything. `log mark NAME` puts a marker in the device log and in the history, so
+`export --since NAME [--until OTHER]` (or `@CURSOR`) exports only the steps between markers.
+While the session is live, `export --logs` adds each device's log for that range (narrow it with
+`--package` / `--priority` / `--tag` / `--grep`: unfiltered it is mostly other processes) and
+`export --calls` the server's record of every device call; each log action and call carries the
+`id` of the step that caused it. A failed step's `outcome.error` is its Tap code (`NOT_FOUND`,
+`WAIT_TIMEOUT`, `SESSION_UNUSABLE`). `history` lists saved histories with their state, stop
+reason, times and markers (the newest 20 stopped ones are kept), `export NAME` exports an older
+one, `history clean NAME` / `history clean --all` delete stopped ones.
 
 Storage is private under `$TAP_AGENT_DIR/records` (default `.tap/agent/records`); CLI/MCP must
-share that directory. One active recording per session name, pinned to its held connection ID;
-a new connection cannot silently continue it. Steps retain actual device/resolved SDK selectors,
+share that directory. A history belongs to one held connection: a new connection of the same
+session name starts the next history. Steps retain actual device/resolved SDK selectors,
 not transient refs or internal polls/snapshots. Sensitive text is redacted before storage;
 clipboard writes always are. Do not put secrets in later waits/selectors/extras or unmarked inputs.
 Output/exception messages are not saved. A failed action's status says what the device may have
 seen: `rejected_before_input` (nothing sent), `failed` (one command sent, and its error code proves
 it changed nothing) or `unknown` (the input may have happened: never repeat it without checking the
-screen). `unknown` blocks further recorded input until you stop the recording.
+screen). Later steps are still recorded after an `unknown` or interrupted one.
 
-Interrupted steps remain unfinished; inspect/stop their archive before further recorded input,
-never replay blindly. Limits: 10,000 steps, 1 MiB/step, 32 MiB/recording; no silent eviction.
-A post-input storage error preserves the action result with a warning not to repeat it.
-`complete: true` means a final capture with known outcomes, not a passing app/test assertion.
-
-`history [-o NEW_FILE] [--after-seq N]` is the old export: raw `tap-events/1` SDK calls/outcomes,
-including helper waits. It is bounded to the server's 2,000-event ring and ends at release.
-Both formats are language-neutral data, not automatic replay or generated test code.
+Limits: 10,000 steps, 1 MiB/step, 32 MiB/history; a full history is stopped and the next one
+starts. A post-input storage error preserves the action result with a warning not to repeat it.
+`complete: true` means a stopped history with known outcomes, not a passing app/test assertion.
+The export is language-neutral data, not automatic replay or generated test code.
 
 ## Several devices or sessions
 
