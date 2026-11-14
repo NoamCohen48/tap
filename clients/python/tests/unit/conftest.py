@@ -156,6 +156,8 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
 
     def __init__(self) -> None:
         self.responder: Callable[[pb.Command], pb.CommandResult | None] | None = None
+        # Execute is refused like the daemon refuses it: (status code, FailureReason, message).
+        self.execute_failure: tuple[grpc.StatusCode, int, str] | None = None
         self.commands: list[pb.Command] = []
         self.steps: list[str | None] = []
         self.detaches: list[str] = []
@@ -259,6 +261,8 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
 
     def Execute(self, request, context):
         self._own("execute", request, context)
+        if self.execute_failure is not None:
+            fail(context, *self.execute_failure)
         self.commands.append(request.command)
         self.steps.append(dict(context.invocation_metadata()).get("tap-step"))
         result = pb.CommandResult(done=pb.Done())
@@ -267,7 +271,8 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         if self.log is not None and request.command.WhichOneof("op") not in ("device_info", "dump_hierarchy"):
             error = {"error": result.error} if result.HasField("error") else {}
             serial = request.attached_device_id.removeprefix("attached-")
-            self.log.record(request.client_connection_id, serial, command=request.command, **error)
+            step = {"step": self.steps[-1]} if self.steps[-1] else {}
+            self.log.record(request.client_connection_id, serial, command=request.command, **error, **step)
         return pb.ExecuteResponse(result=result)
 
     def Screenshot(self, request, context):
@@ -573,8 +578,10 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
                 pb.FAILURE_REASON_UNKNOWN_LOG_MARKER,
                 f"no marker {request.marker}",
             )
-        yield pb.ReadLogResponse(entries=self.entries[:1], dropped=self.dropped)
-        yield pb.ReadLogResponse(entries=self.entries[1:])
+        # Only `after_cursor` is honoured; every other start replays all entries.
+        entries = [e for e in self.entries if e.cursor > request.after_cursor] if request.WhichOneof("from") == "after_cursor" else self.entries
+        yield pb.ReadLogResponse(entries=entries[:1], dropped=self.dropped)
+        yield pb.ReadLogResponse(entries=entries[1:])
         if not request.follow:
             return
         context.add_callback(self.cancelled.set)

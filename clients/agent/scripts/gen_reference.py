@@ -39,7 +39,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
         "`screenshot`, which an agent has to look at.",
-        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "logs", "log", "media-record"],
+        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "log", "media-record"],
     ),
     (
         "Acting on elements",
@@ -99,10 +99,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     ),
     (
         "Turning a session into a test",
-        "Named recordings capture high-level actions and explicit waits, survive release, and "
-        "export as JSON; history is the separate bounded raw SDK event trail. See "
-        "[Sessions to tests](export.md).",
-        ["record", "export", "history"],
+        "Every session records its actions and explicit waits by itself; the history survives "
+        "release and exports as JSON, cut between markers and, while the session lives, with the "
+        "device log and the server's calls. See [Sessions to tests](export.md).",
+        ["history", "export"],
     ),
     (
         "Agent setup",

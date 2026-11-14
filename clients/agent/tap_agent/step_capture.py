@@ -1,4 +1,7 @@
-"""Record public agent intent once, not its SDK implementation calls or polling."""
+"""Record public agent intent once, not its SDK implementation calls or polling.
+
+Every action and wait of a held session is recorded into the session's history
+(``records.RecordStore``) and run as one ``tap_e2e.step``, whose id is stored with it."""
 from __future__ import annotations
 
 import contextlib
@@ -7,6 +10,7 @@ import functools
 import inspect
 import os
 import time
+import uuid
 from collections.abc import Callable, Iterator
 from typing import TYPE_CHECKING, Any, TypeVar
 from warnings import warn
@@ -20,6 +24,7 @@ from tap_e2e import (
     TapError,
     WaitTimeoutError,
 )
+from tap_e2e import step as tap_step
 
 from .output import json_value
 from .records import RecordError, RecordStore
@@ -32,7 +37,7 @@ if TYPE_CHECKING:
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
 WAITS = frozenset({"wait", "settle", "toast"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
-EXCLUDED = frozenset({"close", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "screenshot", "capture", "logs", "log", "recording", "pull", "activity", "record", "history", "export"})
+EXCLUDED = frozenset({"close", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "screenshot", "capture", "log", "recording", "pull", "activity", "history", "export"})
 
 
 def _word(value: Any) -> Any:
@@ -130,6 +135,8 @@ _NO_INPUT_REASONS = frozenset({
     FailureReason.UNKNOWN_ATTACHED_DEVICE, FailureReason.NOT_OWNER, FailureReason.DEVICE_BUSY,
     FailureReason.DEVICE_QUARANTINED, FailureReason.DRIVER_BUILD_MISMATCH, FailureReason.DAEMON_PRECONDITION,
     FailureReason.UNKNOWN_REF, FailureReason.REF_NOT_ADDRESSABLE, FailureReason.UNSUPPORTED_API,
+    # Checked before every call once the driver connection is lost (DeviceSession.checkUsable).
+    FailureReason.SESSION_UNUSABLE,
 })
 
 
@@ -140,6 +147,21 @@ def _tap_error(error: BaseException | None) -> TapError | None:
             return error
         error = error.__cause__
     return None
+
+
+def error_code(error: BaseException) -> str:
+    """What a step's failure was, for its history: the driver's error code (``NOT_FOUND``,
+    ``AMBIGUOUS``), ``WAIT_TIMEOUT``, the server's failure reason (``SESSION_UNUSABLE``) or gRPC
+    status, else the error's class name (``AgentError`` for a refusal of the agent's own). Never
+    the message, which can hold typed text."""
+    cause = _tap_error(error)
+    if isinstance(cause, CommandError):
+        return getattr(cause.code, "name", str(cause.code))
+    if isinstance(cause, WaitTimeoutError):
+        return "WAIT_TIMEOUT"
+    if isinstance(cause, ServerError):
+        return cause.reason.name if cause.reason is not FailureReason.UNSPECIFIED else cause.code
+    return type(cause or error).__name__
 
 
 def _sent_nothing(error: BaseException) -> bool:
@@ -159,7 +181,7 @@ def outcome(kind: str, failure: BaseException | None, capture: Capture) -> str:
     """A recorded step's status. ``failed`` promises that the device was not changed, so an
     action is ``failed`` only when it sent one plain command and the error code proves that
     command had no effect; with nothing sent it was ``rejected_before_input``; any other failure
-    of an action is ``unknown`` and blocks further recorded input until the recording stops."""
+    of an action is ``unknown``: the input may have happened, so it must not be repeated blindly."""
     if failure is None:
         return "succeeded"
     if not isinstance(failure, Exception):
@@ -203,17 +225,17 @@ def _wrap(method: Callable[..., str]) -> Callable[..., str]:
         kind = category(name, parameters)
         if kind is None:
             return method(agent, *args, **kwargs)
-        recording = agent._run(lambda: agent.records.active(agent.session))
-        if recording is None:
-            return method(agent, *args, **kwargs)
+        # Every step of a held session is recorded: its history starts with its first step.
+        held = agent._run(agent._held)
+        if held is None:
+            return method(agent, *args, **kwargs)  # no session: the method reports that itself
+        recording = agent._run(lambda: agent.records.ensure(agent.session, held.id))
+        step_id = uuid.uuid4().hex[:16]
         lease = agent.records.lease(recording["id"])
         with agent._errors():
             lease.__enter__()
         try:
             with agent._errors():
-                connection = agent._held()
-                if connection is None or connection.id != recording["connection_id"]:
-                    raise RecordError("recording belongs to an ended/different held connection; stop it and start a new named recording; no input was sent")
                 sensitive = bool(parameters.get("sensitive")) or (name == "clipboard")
                 saved = _value(parameters)
                 # Never retain transient refs or raw selector strings. _element captures the
@@ -223,7 +245,7 @@ def _wrap(method: Callable[..., str]) -> Callable[..., str]:
                         saved[slot] = {"selector_ref": slot}
                 if sensitive and "text" in saved:
                     saved["text"] = {"redacted": True}
-                sequence = agent.records.begin(recording, name.replace("_", "-"), saved, kind=kind)
+                sequence = agent.records.begin(recording, name.replace("_", "-"), saved, kind=kind, step_id=step_id)
         except BaseException:
             lease.__exit__(None, None, None)
             raise
@@ -233,7 +255,9 @@ def _wrap(method: Callable[..., str]) -> Callable[..., str]:
         failure: BaseException | None = None
         result = ""
         try:
-            result = method(agent, *args, **kwargs)
+            # The step's calls carry its id, so the server writes it on what they do in the device log.
+            with tap_step(step_id):
+                result = method(agent, *args, **kwargs)
         except BaseException as error:
             failure = error
         finally:
@@ -246,14 +270,14 @@ def _wrap(method: Callable[..., str]) -> Callable[..., str]:
                 status = "post_settle_timeout"
         warnings = []
         try:
-            agent.records.finish(recording["id"], sequence, status, max(0, round((time.monotonic() - started) * 1000)), type(failure).__name__ if failure is not None else None)
+            agent.records.finish(recording["id"], sequence, status, max(0, round((time.monotonic() - started) * 1000)), error_code(failure) if failure is not None else None)
         except RecordError:
-            warnings.append("recording outcome could not be saved; input may already have executed; do not repeat it; inspect/stop the incomplete recording")
+            warnings.append("the step's outcome could not be saved to the session history; input may already have executed; do not repeat it")
         finally:
             try:
                 lease.__exit__(None, None, None)
             except RecordError:
-                warnings.append("recording lease cleanup failed; do not repeat device input")
+                warnings.append("history lease cleanup failed; do not repeat device input")
         warning = "\n".join(f"WARNING: {text}" for text in warnings)
         if failure is not None:
             if warning and len(failure.args) == 1 and isinstance(failure.args[0], str):

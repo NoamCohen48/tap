@@ -83,9 +83,40 @@ markers; Appium exposes `logcat` log types and broadcasts them):
 - Python: `device.logs.read(since=…, tail=…, packages=…, min_priority=…, tags=…, grep=…)`,
   `follow(...)`, `mark(name)`, `redact(*patterns)`; `with tap_e2e.step() as id:` and
   `read(step=id)`.
-- `tap-agent log [read|mark|redact]` and the MCP tool `log`: compact lines, newest 200 by
-  default, ending with the cursor to continue from.
+- `tap-agent log [read|mark|redact|driver|evidence]` and the MCP tool `log`: compact lines,
+  newest 200 by default, ending with the cursor to continue from; see the next section.
 - `DeviceLogs.logcat` (and so `logcat.txt` in failure artifacts) is the captured log as text.
+
+## tap-agent: one history
+
+Owner approved (2026-11-14): the agent's step recording and the device log are one history.
+
+- **Always on.** There is no `record start|stop`. `step_capture` calls `records.ensure(session,
+  connection id)` before each action or wait: the history starts with the first step, belongs to
+  that held connection and stops at `release`. A different connection id (timeout, daemon
+  restart) stops the old one ("connection ended") and starts the next; a full one (10 000 steps
+  / 32 MiB) rotates ("full"). The newest 20 stopped histories are kept.
+- **Step id.** Each step gets a 16-hex id, stored with the step and sent as `tap-step` on every
+  call the step makes (`tap_e2e.step`), so `LogAction.step` and `LoggedEvent.step` point back at
+  it. `log` prints `── step N <verb>  [id]` headers and `log --step N|id` reads one step.
+- **Closed ranges and data.** `log --until NAME` cuts the read at the newest marker with that
+  name (client-side; with no start it reads everything kept), and `log --json` returns the
+  entries in the shape `export --logs` uses, plus the steps they name.
+- **Markers on both.** `log mark NAME` calls `MarkLog` and stores the marker in the history
+  (after which step, device, cursor). `export --since/--until` cuts the steps by markers.
+- **Two stores, merged when read.** The steps stay in the agent's SQLite store (they survive
+  release and need no daemon); the log lines stay in the daemon (16 MiB, redacted on read, gone
+  at detach). `export --logs` / `--calls` merge the device log and the event log into the export
+  while the session lives; after release only the steps remain.
+- **Verbs.** `record` and `logs` are removed. `history` lists/cleans saved histories; the old raw
+  event history is `export --calls`; `logs driver` → `log driver`; `logs device` → `log
+  evidence` (it also holds crashes, ANRs and activity/window state, so the device log does not
+  replace it); `logs hierarchy` is dropped (`capture` saves the dump, `snapshot` reads the screen).
+- **No blocking.** An `unknown` or interrupted step used to refuse further recorded input until
+  the recording was stopped. With no stop command that would dead-end a session, so later steps
+  are recorded and the export says `complete: false`.
+- Format `tap-agent-recording/2` (step `id`, `markers`, optional `range`, `log`, `calls`); the
+  catalog migrates a version 1 store in place.
 
 ## Limits and what is deferred
 
