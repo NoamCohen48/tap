@@ -20,6 +20,12 @@ class DeviceState(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     DEVICE_OFFLINE: _ClassVar[DeviceState]
     DEVICE_UNAUTHORIZED: _ClassVar[DeviceState]
 
+class DriverStartPolicy(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+    __slots__ = ()
+    DRIVER_START_POLICY_UNSPECIFIED: _ClassVar[DriverStartPolicy]
+    DRIVER_START_AUTO: _ClassVar[DriverStartPolicy]
+    DRIVER_START_COLD: _ClassVar[DriverStartPolicy]
+
 class SelectorKind(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
     SELECTOR_KIND_UNSPECIFIED: _ClassVar[SelectorKind]
@@ -40,6 +46,9 @@ DEVICE_LEASED: DeviceState
 DEVICE_QUARANTINED: DeviceState
 DEVICE_OFFLINE: DeviceState
 DEVICE_UNAUTHORIZED: DeviceState
+DRIVER_START_POLICY_UNSPECIFIED: DriverStartPolicy
+DRIVER_START_AUTO: DriverStartPolicy
+DRIVER_START_COLD: DriverStartPolicy
 SELECTOR_KIND_UNSPECIFIED: SelectorKind
 SELECTOR_KIND_PLAIN: SelectorKind
 SELECTOR_KIND_COMBINED: SelectorKind
@@ -109,7 +118,7 @@ class ListDevicesResponse(_message.Message):
     def __init__(self, devices: _Optional[_Iterable[_Union[DeviceEntry, _Mapping]]] = ...) -> None: ...
 
 class AttachRequest(_message.Message):
-    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms", "inspect_quarantined", "capture_logs")
+    __slots__ = ("client_connection_id", "serial", "skip_driver_install", "default_timeout_ms", "lease_timeout_ms", "inspect_quarantined", "capture_logs", "driver_start")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     SKIP_DRIVER_INSTALL_FIELD_NUMBER: _ClassVar[int]
@@ -117,6 +126,7 @@ class AttachRequest(_message.Message):
     LEASE_TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     INSPECT_QUARANTINED_FIELD_NUMBER: _ClassVar[int]
     CAPTURE_LOGS_FIELD_NUMBER: _ClassVar[int]
+    DRIVER_START_FIELD_NUMBER: _ClassVar[int]
     client_connection_id: str
     serial: str
     skip_driver_install: bool
@@ -124,21 +134,24 @@ class AttachRequest(_message.Message):
     lease_timeout_ms: int
     inspect_quarantined: bool
     capture_logs: bool
-    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ..., inspect_quarantined: _Optional[bool] = ..., capture_logs: _Optional[bool] = ...) -> None: ...
+    driver_start: DriverStartPolicy
+    def __init__(self, client_connection_id: _Optional[str] = ..., serial: _Optional[str] = ..., skip_driver_install: _Optional[bool] = ..., default_timeout_ms: _Optional[int] = ..., lease_timeout_ms: _Optional[int] = ..., inspect_quarantined: _Optional[bool] = ..., capture_logs: _Optional[bool] = ..., driver_start: _Optional[_Union[DriverStartPolicy, str]] = ...) -> None: ...
 
 class AttachResponse(_message.Message):
-    __slots__ = ("attached_device_id", "serial", "generation", "device_info", "quarantine_reason")
+    __slots__ = ("attached_device_id", "serial", "generation", "device_info", "quarantine_reason", "driver_reused")
     ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
     SERIAL_FIELD_NUMBER: _ClassVar[int]
     GENERATION_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     QUARANTINE_REASON_FIELD_NUMBER: _ClassVar[int]
+    DRIVER_REUSED_FIELD_NUMBER: _ClassVar[int]
     attached_device_id: str
     serial: str
     generation: int
     device_info: _command_pb2.DeviceInfo
     quarantine_reason: str
-    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., generation: _Optional[int] = ..., device_info: _Optional[_Union[_command_pb2.DeviceInfo, _Mapping]] = ..., quarantine_reason: _Optional[str] = ...) -> None: ...
+    driver_reused: bool
+    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., generation: _Optional[int] = ..., device_info: _Optional[_Union[_command_pb2.DeviceInfo, _Mapping]] = ..., quarantine_reason: _Optional[str] = ..., driver_reused: _Optional[bool] = ...) -> None: ...
 
 class DetachRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id")

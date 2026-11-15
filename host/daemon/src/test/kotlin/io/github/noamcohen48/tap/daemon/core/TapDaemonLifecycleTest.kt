@@ -214,13 +214,13 @@ class TapDaemonLifecycleTest {
             var unreadable = false
             val adb =
                 object : Adb("fake-adb") {
-                    override suspend fun installedApkSha256(
+                    override suspend fun installedApksSha256(
                         serial: String,
-                        packageName: String,
+                        packages: List<String>,
                         timeoutMs: Long,
-                    ): List<String> {
+                    ): Map<String, List<String>> {
                         if (unreadable) throw AdbCommandException(serial, listOf("shell", "sha256sum"), 127, "sha256sum: not found")
-                        return installed[packageName].orEmpty()
+                        return packages.associateWith { installed[it].orEmpty() }
                     }
                 }
             val installs = mutableListOf<Boolean>()
@@ -228,13 +228,17 @@ class TapDaemonLifecycleTest {
                 object : DeviceSessionOpener {
                     override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession {
                         installs += config.installDriver()
-                        if (installs.last()) installed = mapOf(DRIVER_PACKAGE to listOf(driverSha256), DRIVER_TEST_PACKAGE to listOf(testSha256))
+                        if (installs.last()) {
+                            installed =
+                                mapOf(DRIVER_PACKAGE to listOf(driverSha256), DRIVER_TEST_PACKAGE to listOf(testSha256))
+                        }
                         return FakeDevice(config.serial)
                     }
                 }
             val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = driver, log = {}), opener)
             val owner = daemon.connectClient("owner")
             val options = testOptions().copy(skipDriverInstall = false)
+
             suspend fun attachAndDetach() = daemon.detachDevice(daemon.attachDevice(owner.id, "serial-1", options).id, owner.id)
 
             attachAndDetach() // nothing installed
@@ -252,31 +256,41 @@ class TapDaemonLifecycleTest {
     fun `digest cancellation and runner safety failures abort attach without reinstalling`() =
         runBlocking {
             val dir = Files.createTempDirectory("tap-daemon-driver-failure")
-            val driver = DriverApks.override(
-                Files.write(dir.resolve("driver.apk"), byteArrayOf(1)),
-                Files.write(dir.resolve("driver-test.apk"), byteArrayOf(2)),
-            )
-            val failures = listOf(
-                kotlinx.coroutines.CancellationException("cancelled"),
-                AdbReapUncertainException("unreaped digest command", listOf("shell", "sha256sum"), "serial-1"),
-                io.github.noamcohen48.tap.host.AdbRunnerGatedException("blocked", "serial-1", "serial-1", listOf("shell", "sha256sum")),
-            )
+            val driver =
+                DriverApks.override(
+                    Files.write(dir.resolve("driver.apk"), byteArrayOf(1)),
+                    Files.write(dir.resolve("driver-test.apk"), byteArrayOf(2)),
+                )
+            val failures =
+                listOf(
+                    kotlinx.coroutines.CancellationException("cancelled"),
+                    AdbReapUncertainException("unreaped digest command", listOf("shell", "sha256sum"), "serial-1"),
+                    io.github.noamcohen48.tap.host
+                        .AdbRunnerGatedException("blocked", "serial-1", "serial-1", listOf("shell", "sha256sum")),
+                )
             for (failure in failures) {
-                val adb = object : Adb("fake-adb") {
-                    override suspend fun installedApkSha256(serial: String, packageName: String, timeoutMs: Long): List<String> = throw failure
-                }
-                var installed = false
-                val opener = object : DeviceSessionOpener {
-                    override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession {
-                        installed = config.installDriver()
-                        return FakeDevice(config.serial)
+                val adb =
+                    object : Adb("fake-adb") {
+                        override suspend fun installedApksSha256(
+                            serial: String,
+                            packages: List<String>,
+                            timeoutMs: Long,
+                        ): Map<String, List<String>> = throw failure
                     }
-                }
+                var installed = false
+                val opener =
+                    object : DeviceSessionOpener {
+                        override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession {
+                            installed = config.installDriver()
+                            return FakeDevice(config.serial)
+                        }
+                    }
                 val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = driver, log = {}), opener)
                 val owner = daemon.connectClient("owner")
-                val caught = assertFailsWith<Exception> {
-                    daemon.attachDevice(owner.id, "serial-1", testOptions().copy(skipDriverInstall = false))
-                }
+                val caught =
+                    assertFailsWith<Exception> {
+                        daemon.attachDevice(owner.id, "serial-1", testOptions().copy(skipDriverInstall = false))
+                    }
                 assertTrue(caught === failure, "the original safety failure must reach DeviceSession.open")
                 assertFalse(installed)
                 assertTrue(daemon.attachedDeviceIds().isEmpty())
@@ -316,7 +330,11 @@ class TapDaemonLifecycleTest {
                 }
             val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = null, log = {}), FakeOpener())
             Files.createDirectories(dir.resolve("sessions"))
-            val encoded = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString("corrupt1".toByteArray())
+            val encoded =
+                java.util.Base64
+                    .getUrlEncoder()
+                    .withoutPadding()
+                    .encodeToString("corrupt1".toByteArray())
             Files.writeString(dir.resolve("sessions").resolve("$encoded.json"), "{not json")
             val (corrupt, offline, unauthorized) = daemon.devices().map { it.status }
             assertTrue(corrupt is DeviceStatus.Quarantined && corrupt.reason.startsWith("journal unreadable"), "got $corrupt")
@@ -334,15 +352,27 @@ class TapDaemonLifecycleTest {
                         listOf(AdbDevice("retry1", AdbDeviceState.ONLINE, "device"), AdbDevice("stuck1", AdbDeviceState.ONLINE, "device"))
                 }
             val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = null, log = {}), FakeOpener())
-            fun quarantine(serial: String, retryable: Boolean) =
-                io.github.noamcohen48.tap.host.SessionJournalStore(dir.resolve("sessions"), serial).write(
-                    io.github.noamcohen48.tap.host.SessionJournal(
-                        state = io.github.noamcohen48.tap.host.JournalState.QUARANTINED, serial = serial, bootId = "b", sessionId = "s",
-                        generation = 1, devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT, quarantineReason = "why",
-                        savedState = listOf(io.github.noamcohen48.tap.host.SavedState(io.github.noamcohen48.tap.host.StateKey.FONT_SCALE, "1.1")),
-                        restoreRetryable = retryable,
-                    ),
-                )
+
+            fun quarantine(
+                serial: String,
+                retryable: Boolean,
+            ) = io.github.noamcohen48.tap.host.SessionJournalStore(dir.resolve("sessions"), serial).write(
+                io.github.noamcohen48.tap.host.SessionJournal(
+                    state = io.github.noamcohen48.tap.host.JournalState.QUARANTINED,
+                    serial = serial,
+                    bootId = "b",
+                    sessionId = "s",
+                    generation = 1,
+                    devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT,
+                    quarantineReason = "why",
+                    savedState =
+                        listOf(
+                            io.github.noamcohen48.tap.host
+                                .SavedState(io.github.noamcohen48.tap.host.StateKey.FONT_SCALE, "1.1"),
+                        ),
+                    restoreRetryable = retryable,
+                ),
+            )
             quarantine("retry1", retryable = true)
             quarantine("stuck1", retryable = false)
             assertEquals(
@@ -368,7 +398,8 @@ class TapDaemonLifecycleTest {
             val dir = Files.createTempDirectory("tap-daemon-inspect")
             val adb =
                 object : Adb("fake-adb") {
-                    override suspend fun deviceStates(timeoutMs: Long): List<AdbDevice> = listOf(AdbDevice("phone", AdbDeviceState.ONLINE, "device"))
+                    override suspend fun deviceStates(timeoutMs: Long): List<AdbDevice> =
+                        listOf(AdbDevice("phone", AdbDeviceState.ONLINE, "device"))
                 }
             val opener = FakeOpener()
             val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = dir, driver = null, log = {}), opener)
@@ -377,12 +408,19 @@ class TapDaemonLifecycleTest {
             assertTrue(opener.configs.single().inspectQuarantined)
 
             // What an inspecting DeviceSession journals while it holds the lock.
-            val store = io.github.noamcohen48.tap.host.SessionJournalStore(dir.resolve("sessions"), "phone")
+            val store =
+                io.github.noamcohen48.tap.host
+                    .SessionJournalStore(dir.resolve("sessions"), "phone")
             store.acquireLease(0).use {
                 store.write(
                     io.github.noamcohen48.tap.host.SessionJournal(
-                        state = io.github.noamcohen48.tap.host.JournalState.READY, serial = "phone", bootId = "b", sessionId = "s",
-                        generation = 2, devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT, inspectedQuarantine = "why",
+                        state = io.github.noamcohen48.tap.host.JournalState.READY,
+                        serial = "phone",
+                        bootId = "b",
+                        sessionId = "s",
+                        generation = 2,
+                        devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT,
+                        inspectedQuarantine = "why",
                     ),
                 )
                 assertEquals(
@@ -417,7 +455,8 @@ class TapDaemonLifecycleTest {
                         }
                     }
                 }
-            val daemon = TapDaemon(DaemonConfig(adb = adb, stateDir = Files.createTempDirectory("tap-props"), driver = null, log = {}), FakeOpener())
+            val daemon =
+                TapDaemon(DaemonConfig(adb = adb, stateDir = Files.createTempDirectory("tap-props"), driver = null, log = {}), FakeOpener())
             val (emu, phone, offline) = daemon.devices()
             assertEquals(DeviceProperties(34, "Google", "sdk_gphone64_x86_64", emulator = true), emu.properties)
             // An unreadable device is still listed, without properties, and is read again next time.
@@ -966,9 +1005,15 @@ class TapDaemonLifecycleTest {
                     val session = daemon.attachDevice(connection.id, "forward-serial", testOptions())
                     val serverName = InProcessServerBuilder.generateName()
                     val grpcServer =
-                        InProcessServerBuilder.forName(serverName).directExecutor().addService(DeviceService(daemon)).build().start()
+                        InProcessServerBuilder
+                            .forName(serverName)
+                            .directExecutor()
+                            .addService(DeviceService(daemon))
+                            .build()
+                            .start()
                     val channel = InProcessChannelBuilder.forName(serverName).directExecutor().build()
                     val stub = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
+
                     fun execute(command: Command) =
                         ExecuteRequest
                             .newBuilder()
@@ -989,7 +1034,10 @@ class TapDaemonLifecycleTest {
                         val request = Request.parseFrom(frame.payload)
                         assertEquals(command, request.command)
                         assertEquals(4_000L, request.timeoutMs)
-                        assertFalse(request.command.scroll.selector.node.resource.hasPackageName())
+                        assertFalse(
+                            request.command.scroll.selector.node.resource
+                                .hasPackageName(),
+                        )
                         assertFalse(request.command.scroll.hasDistancePercent())
 
                         val driverResult =
@@ -1138,7 +1186,10 @@ class TapDaemonLifecycleTest {
                     ),
                 )
                 assertFailsWith<io.github.noamcohen48.tap.host.DeviceQuarantinedException> {
-                    captured.submit(io.github.noamcohen48.tap.protocol.Requests.health())
+                    captured.submit(
+                        io.github.noamcohen48.tap.protocol.Requests
+                            .health(),
+                    )
                 }
                 // Nothing reached the driver: the next frame poll times out.
                 val noFrame =
@@ -1149,7 +1200,12 @@ class TapDaemonLifecycleTest {
                         true
                     }
                 assertTrue(noFrame, "poisoned submit emitted a frame")
-                assertFailsWith<io.github.noamcohen48.tap.host.DeviceQuarantinedException> { daemon.attachedDevice(session.id, connection.id) }
+                assertFailsWith<io.github.noamcohen48.tap.host.DeviceQuarantinedException> {
+                    daemon.attachedDevice(
+                        session.id,
+                        connection.id,
+                    )
+                }
                 // Poison never throws from close: cleanup runs, the journal records the quarantine
                 // and the lease releases, but the detach reports the quarantine instead of clean.
                 val detail = daemon.detachDevice(session.id, connection.id)

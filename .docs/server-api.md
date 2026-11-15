@@ -83,7 +83,7 @@ pytest / script  --gRPC (loopback, bearer token)-->  tap serve  --ADB + TAP1--> 
 JUnit (Kotlin)   --gRPC (loopback, bearer token)-->  (same server, same devices)
 ```
 
-- `tap serve [--port N] [--state-dir DIR] [--adb PATH] [--driver-apk APK --driver-test-apk APK]`
+- `tap serve [--port N] [--state-dir DIR] [--adb PATH] [--driver-apk APK --driver-test-apk APK] [--driver-idle-timeout-ms N]`
   - Takes an exclusive lock on `<state-dir>/daemon.lock`. If another server holds it, `serve`
     exits 3. One server per state dir.
   - Binds `127.0.0.1` only.
@@ -133,8 +133,8 @@ JUnit (Kotlin)   --gRPC (loopback, bearer token)-->  (same server, same devices)
     attachment when either differs, is missing, is split, or cannot be read. There is no
     per-daemon "already installed" cache. The check runs under the per-serial lock
     (`DeviceSessionConfig.installDriver`), so it sees the device the session then uses.
-  - The device digests come from `pm path` + `sha256sum` in one shell per package (two ADB
-    round trips for an unchanged pair, `Adb.installedApkSha256`); where
+  - The device digests come from `pm path` + `sha256sum` for both packages in one serial-specific
+    shell (`Adb.installedApksSha256`), with independent status/framing for each package; where
     `sha256sum` is missing or fails (older Android), each APK is pulled and hashed on the
     host. Both `isInstalled` and the digest check accept a blank exit-1 `pm path` as absence;
     any other nonzero listing status is an error that triggers the install. The reason is logged
@@ -145,11 +145,26 @@ JUnit (Kotlin)   --gRPC (loopback, bearer token)-->  (same server, same devices)
     snapshot restored with an older driver, another daemon's build) reports the same
     `versionName` and handshake build id.
   - Clients never send host paths: there is no per-attach APK override.
+- **Bounded driver reuse (opt-in):** `--driver-idle-timeout-ms N` is 0 by default (off), or
+  1000..300000 ms. Restart the daemon to change it: `start` never changes an already-running
+  server's configuration. AUTO attachments may reuse only this daemon's verified clean runtime;
+  COLD attachments start fresh and stop on detach, independently of APK checks. Inspection,
+  startup overrides, poison, unresolved work, failed restore and synchronization sessions do
+  not park. Every attachment still gets a fresh generation/secret and holds the serial lock
+  only until its complete restoration. The idle process has no automation connection or input
+  pipeline and exits on an absolute deadline. Host eviction and shutdown honor the serial
+  lock and exact process/forward identity. `runtimeIdle` in a CLOSED empty journal identifies
+  this state; credentials are never persisted. A changed rotation baseline forces cold startup.
+  See `fast-attach.md`, `pool-and-leases.md` and protocol 5.2's authenticated PARK handshake.
+  `tap doctor` does not call a verified clean idle process/forward an abandoned session.
 - `adb` is resolved from `--adb`, `TAP_ADB`, or `PATH`. Every ADB call is serial-specific.
 - **Builds:**
   - `:host:daemon:installDist` produces the JVM distribution (`host/daemon/build/install/tap/bin/tap`).
   - `:host:daemon:nativeCompile` produces the GraalVM native image
-    (`host/daemon/build/native/nativeCompile/tap`).
+    (`host/daemon/build/native/nativeCompile/tap`). `--install-exit-handlers` makes SIGTERM
+    (`tap stop`) run the same bounded restoration/cache-cleanup hook as the JVM. Native CI and
+    release smoke assert that stop removes the owned descriptor; device validation also checks
+    idle processes/forwards, rather than accepting process exit alone.
   - Reachability metadata lives under `host/daemon/src/main/resources/META-INF/native-image/`.
 
 ## 3. API (`contracts/proto/`, package `tap.v1`)
@@ -205,7 +220,7 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
 |---|---|
 | `ListDevices()` → `repeated DeviceEntry` | Every device ADB lists. Its `state` is one of: <br>• `DEVICE_FREE` <br>• `DEVICE_LEASED`, with `client_connection_id` when the holder is this daemon <br>• `DEVICE_QUARANTINED`, with `quarantine_reason`, and `retry_on_attach` when the only problem is saved device settings that did not read back (attach writes them again first); an unreadable journal is quarantined with reason `journal unreadable: …`, which for an open session's journal with fields this engine does not know (another Tap engine wrote it) says `written by another Tap engine (fields …)`; a closed one with such fields reads as usual <br>• `DEVICE_UNAUTHORIZED` <br>• `DEVICE_OFFLINE`, which also covers any other non-`device` ADB state <br>An online device also has `properties` (`api_level`, `manufacturer`, `model`, `emulator`), from one `adb shell getprop` read the first time the daemon lists the serial and kept while it stays online (a serial that drops off the online list is read again when it returns); a device that does not answer is listed without them and read again on the next call |
 | `Unquarantine(serial)` → `{was_quarantined, quarantine_reason, cleaned, remaining}` | Puts a `DEVICE_QUARANTINED` device back in service, for a person who has checked it (or an agent acting for one); needs no client connection. Under the per-serial lock, taken without waiting (another holder: `FAILED_PRECONDITION` / `DEVICE_BUSY`), it reads the boot id (an unreachable device fails here, unchanged), retries the cleanup (driver force-stop and verify, removal of every forward to the reserved device ports, the journal's saved state written back), then writes a CLOSED journal whatever the retry managed: `remaining` lists what it could not put right. An unreadable journal, or an open one another Tap engine wrote, is preserved as `.corrupt-<ms>.json` first. A device that is not quarantined is left alone (`was_quarantined=false`). `tap unquarantine --serial S` runs the same in-process. |
-| `Attach(client_connection_id, serial, skip_driver_install?, default_timeout_ms?, lease_timeout_ms?, inspect_quarantined?, capture_logs?)` → `{attached_device_id, serial, generation, device_info, quarantine_reason?}` | A quarantined device is refused (`DEVICE_QUARANTINED`) unless it is `retry_on_attach` and its restore now reads back, or `inspect_quarantined` is set: then recovery stops its driver and drops its forward, and the attachment works as usual (screenshots, snapshots, commands, settings), starting with the quarantine's unrestored saved state so detach puts back the values from before it. The journal records `inspectedQuarantine` while it runs (ListDevices: `DEVICE_QUARANTINED`, `under_inspection`, the holder's `client_connection_id`), `quarantine_reason` in the response says why, and detach (or recovery after a crash) writes QUARANTINED again with that reason; a new cleanup failure is quarantined with both. Only `Unquarantine` lifts it. A retryable quarantine whose retry still fails attaches as an ordinary session over the same saved state; a quarantine waiting for a reboot reset is still refused. | Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It then installs the driver if needed, starts it with retry and returns `DEVICE_INFO`. An attached device names no app: app calls carry their `package_name`, and selectors their package predicate. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
+| `Attach(client_connection_id, serial, skip_driver_install?, default_timeout_ms?, lease_timeout_ms?, inspect_quarantined?, capture_logs?, driver_start)` → `{attached_device_id, serial, generation, device_info, quarantine_reason?, driver_reused?}` | A quarantined device is refused (`DEVICE_QUARANTINED`) unless it is `retry_on_attach` and its restore now reads back, or `inspect_quarantined` is set: then recovery stops its driver and drops its forward, and the attachment works as usual (screenshots, snapshots, commands, settings), starting with the quarantine's unrestored saved state so detach puts back the values from before it. The journal records `inspectedQuarantine` while it runs (ListDevices: `DEVICE_QUARANTINED`, `under_inspection`, the holder's `client_connection_id`), `quarantine_reason` in the response says why, and detach (or recovery after a crash) writes QUARANTINED again with that reason; a new cleanup failure is quarantined with both. Only `Unquarantine` lifts it. A retryable quarantine whose retry still fails attaches as an ordinary session over the same saved state; a quarantine waiting for a reboot reset is still refused. Takes the per-serial lock. If it is held, the call fails `FAILED_PRECONDITION` at once, or waits up to `lease_timeout_ms` and then fails `DEADLINE_EXCEEDED`. It checks/installs the driver if needed, starts it or verifies and reuses a clean runtime, and returns `DEVICE_INFO`. `driver_start` is UNSPECIFIED/AUTO (daemon default, reuse only when enabled) or COLD (fresh process, stopped on detach); unknown enum values are INVALID_ARGUMENT. `driver_reused` is explicitly true/false for a new attachment; absent on older servers and on client-side resumed handles. An attached device names no app: app calls carry their `package_name`, and selectors their package predicate. If that first query fails, it detaches before returning. `default_timeout_ms` (absent = 10 s) applies when a `Command.timeout_ms` is absent. |
 | `Execute(…, command)` → `{result: CommandResult}` | One protocol request. **Driver failures are data**: `outcome = error {code, detail?, message?, match_count?, last_state?, condition_holds[], narrowing?}`. Transport loss after transmission is also data: `TRANSPORT_LOST`, or `INDETERMINATE` for a transmitted mutation. Nothing is ever replayed. Cancelling the gRPC call forwards a protocol `CANCEL`; the driver honours it only before the mutation gate. A failure a watched app's death explains becomes `AUT_CRASHED` / `AUT_ANR` with the death in `error.app_death`, and a wait (`wait_visible`, `wait_gone`, `wait_app_visible`, `wait_screen_stable`, `wait_state`, `wait_permission_prompt`, `await_toast`, `await_notification`) is ended by a watched death logged while it runs (`CANCEL`, then detail `CANCELLED`); see `ListAppDeaths`. A command whose selector names a package (an exact `PROPERTY_PACKAGE_NAME` match at the top level or in its `all_of`), or a `wait_app_visible` / `wait_screen_stable`, watches that package from then on. |
 | `ListAppDeaths(…, after_sequence, package_name?, sequence_only?, settle_ms?, wait_ms?)` → `{deaths[], last_sequence}` | The crashes and ANRs Android logged since the attachment opened (`AppDeath`: sequence, kind, package, process, pid, device time, exception class, message, stack trace, `watched`, `handled`), oldest first, the newest 256 kept. The daemon follows `logcat -v epoch -b events -b crash` (`am_crash`, `am_anr`, `AndroidRuntime`, `DEBUG`, `libc`) for the attachment's lifetime, so this reads its record, not the device; while that child is down (it restarts from its last line, backing off to 30 s) the call first reads the same lines once, within 2 s. A package is watched from an app call that starts it (`launch`, `cold_launch`, `foreground`, `open_link`) or the first command whose selector names it; watching catches up on the log first, so earlier deaths are not `watched`. `sequence_only` returns only `last_sequence`, for a client marking "from here". `settle_ms` (0 to 5000) first waits until that long after the attachment's latest input ended (a mutating `Execute` or an app call), because Android logs a crash 10–200 ms after the input that caused it; no wait when that has passed or nothing is watched. `wait_ms` (0 to 600000) first waits, when no death after `after_sequence` is recorded yet, until one is (of any app) or the attachment ends (the call then fails as for an unknown device); a waiting call does not count as use of a held connection, so a background waiter (`tap-agent deaths --wait`) never keeps an idle session alive. Readable after the driver is lost. Not logged in the event log. |
 | `AcknowledgeAppDeaths(…, sequences[])` → `{}` | Marks those deaths `handled`: a client took them (a block that caught or expected them, an end-of-test check), so they explain no later failure and end no wait, like one an error already carried. Unknown sequences are ignored. Readable after the driver is lost. |
@@ -260,6 +275,11 @@ wire types:
 - A gesture (`Tap`, `LongTap`, `Swipe`, `Scroll`) whose touch point lies in a window above the
   target's fails `ERR_NOT_INTERACTABLE` / `OBSCURED` before any input. That needs a partly
   covered target: one covered completely is reported not visible, hence `ERR_NOT_FOUND`.
+- Protocol 5.2 / API additions (2026-11-14, additive): capability-gated runtime parking on the
+  internal wire, `DriverStartPolicy` / `AttachRequest.driver_start` and optional
+  `AttachResponse.driver_reused`. No new leases, runtime handles, automatic daemon startup,
+  session resume or mutation retry. Both SDKs expose cold policy independently of installation;
+  tap-agent's CLI/MCP forward it and refuse to replace an already-attached held session.
 - Protocol 5.1 (2026-10-09, additive): `ERR_STALE_BEFORE_INPUT` (28): a command's resolved node went stale before
   any input. It promises no mutation and is retryable; the same staleness after input started is
   `ERR_STALE_DURING_COMMAND` / `TARGET_GONE`. Before it, both were `ERR_INTERNAL`.

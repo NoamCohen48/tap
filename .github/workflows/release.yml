@@ -126,6 +126,9 @@ jobs:
           "$tap" start
           trap '"$tap" stop' EXIT
           python .github/scripts/daemon_smoke.py
+          "$tap" stop
+          test ! -e "${TAP_STATE_DIR:-$HOME/.tap}/daemon.json"
+          trap - EXIT
           mkdir -p build/assets
           cp "$tap" "build/assets/tap-$VERSION-$LABEL"
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4

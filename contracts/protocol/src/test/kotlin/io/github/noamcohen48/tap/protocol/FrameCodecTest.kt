@@ -66,9 +66,12 @@ class FrameCodecTest {
             FrameCodec.write(ByteArrayOutputStream(), Frame(FrameType.RESPONSE, 1, ByteArray(MAX_CONTROL_PAYLOAD + 1)))
         }
         // A header announcing MAX_CONTROL_PAYLOAD + 1 bytes is refused before any payload is read.
-        val oversized = encode(Frame(FrameType.RESPONSE, 1, byteArrayOf())).also { header ->
-            java.nio.ByteBuffer.wrap(header).putInt(16, MAX_CONTROL_PAYLOAD + 1)
-        }
+        val oversized =
+            encode(Frame(FrameType.RESPONSE, 1, byteArrayOf())).also { header ->
+                java.nio.ByteBuffer
+                    .wrap(header)
+                    .putInt(16, MAX_CONTROL_PAYLOAD + 1)
+            }
         assertFailsWith<ProtocolException> { FrameCodec.read(ByteArrayInputStream(oversized)) }
     }
 
@@ -93,10 +96,12 @@ class FrameCodecTest {
 
     @Test
     fun frameTypesHaveStableWireValues() {
-        assertEquals((1..13).map(Int::toByte), FrameType.entries.map(FrameType::wireValue))
+        assertEquals((1..15).map(Int::toByte), FrameType.entries.map(FrameType::wireValue))
         assertEquals(FrameType.BLOB_END, FrameType.fromWireValue(13))
         assertFailsWith<ProtocolException> { FrameType.fromWireValue(0) }
-        assertFailsWith<ProtocolException> { FrameType.fromWireValue(14) }
+        assertEquals(FrameType.PARK_RUNTIME, FrameType.fromWireValue(14))
+        assertEquals(FrameType.RUNTIME_PARKED, FrameType.fromWireValue(15))
+        assertFailsWith<ProtocolException> { FrameType.fromWireValue(16) }
     }
 
     private fun encode(frame: Frame): ByteArray = ByteArrayOutputStream().also { FrameCodec.write(it, frame) }.toByteArray()

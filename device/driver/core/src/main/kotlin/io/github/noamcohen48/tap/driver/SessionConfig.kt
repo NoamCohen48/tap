@@ -14,6 +14,7 @@ internal class SessionConfig(
     val port: Int,
     val uninterruptibleGraceMs: Long,
     val heartbeatTimeoutMs: Long,
+    val reusable: Boolean = false,
 ) {
     companion object {
         /** [argument] looks up one instrumentation argument (`Bundle::getString`). */
@@ -32,6 +33,7 @@ internal class SessionConfig(
                 port = required("tapPort").toInt(),
                 uninterruptibleGraceMs = uninterruptibleGraceMs,
                 heartbeatTimeoutMs = heartbeatTimeoutMs,
+                reusable = argument("tapReusable") == "true",
             )
         }
 

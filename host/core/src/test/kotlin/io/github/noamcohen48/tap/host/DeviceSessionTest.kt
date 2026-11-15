@@ -11,10 +11,10 @@ import io.github.noamcohen48.tap.protocol.FrameType
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.wire.v1.Request
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.cancel
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -270,7 +270,11 @@ class DeviceSessionTest {
                     ),
                 )
             val silent = FakeProcess(exitDelayMs = FakeProcess.NEVER, blockingStdout = true, stdoutEndsOnDestroy = true)
-            val ready = FakeProcess(stdout = "TAP_READY session=session-1 generation=1 port=$DEVICE_PORT instance=i-1\n", exitDelayMs = FakeProcess.NEVER)
+            val ready =
+                FakeProcess(
+                    stdout = "TAP_READY session=session-1 generation=1 port=$DEVICE_PORT instance=i-1\n",
+                    exitDelayMs = FakeProcess.NEVER,
+                )
             val children = ArrayDeque(listOf(silent, ready))
             val ports = mutableListOf<Int>()
             val log = mutableListOf<String>()
@@ -367,6 +371,69 @@ class DeviceSessionTest {
             } finally {
                 stubborn.releaseStdout()
                 stubborn.forceExit()
+            }
+        }
+
+    @Test
+    fun `lifecycle diagnostics cover open and cleanup without changing ownership when logging fails`() =
+        runBlocking {
+            val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+            val fake = FakeDriverServer("session-timings", 1, secret, acceptAnySession = true)
+            try {
+                val adb = openAdb(fake.port)
+                val processes = mutableListOf<FakeProcess>()
+                val logs = mutableListOf<String>()
+                val config =
+                    sessionConfig(adb, fake, processes).copy(lifecycleLog = {
+                        logs += it
+                        error("broken log sink")
+                    })
+                val opening = async(Dispatchers.IO) { DeviceSession.open(config) }
+                val health = withTimeout(5_000) { fake.nextFrame() }
+                fake.respond(health.requestId, Responses.done(1))
+                val session = withTimeout(5_000) { opening.await() }
+                session.close()
+                val stages = logs.map { it.substringAfter("stage=").substringBefore(' ') }.toSet()
+                assertTrue(
+                    stages.containsAll(
+                        setOf(
+                            "attach_lock",
+                            "attach_boot",
+                            "attach_recovery",
+                            "attach_screen",
+                            "attach_instrumentation",
+                            "attach_forward",
+                            "attach_pid",
+                            "attach_process_identity",
+                            "attach_authentication",
+                            "attach_health",
+                            "attach_total",
+                            "detach_drain",
+                            "detach_listener",
+                            "detach_client",
+                            "detach_restore",
+                            "detach_forward",
+                            "detach_instrumentation",
+                            "detach_rotation",
+                        ),
+                    ),
+                    logs.toString(),
+                )
+                assertTrue(logs.filter { it.startsWith("lifecycle ") }.all { "outcome=ok" in it }, logs.toString())
+                assertTrue(logs.any { "driver startup serial=$serial mode=cold" == it })
+                assertFalse(
+                    logs.any {
+                        java.util.Base64
+                            .getUrlEncoder()
+                            .withoutPadding()
+                            .encodeToString(fake.secret) in it
+                    },
+                )
+                assertEquals(JournalState.CLOSED, journalStore().read()?.state)
+                journalStore().acquireLease(0).close()
+                assertTrue(adb.calls.any { "forward --remove tcp:${fake.port}" in it })
+            } finally {
+                fake.close()
             }
         }
 
@@ -698,6 +765,54 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `failed reusable startup restores its rotation baseline or quarantines it`() =
+        runBlocking {
+            for (failRestore in listOf(false, true)) {
+                val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+                val fake = FakeDriverServer("failed-open", 1, secret, acceptAnySession = true)
+                val adb = openAdb(fake.port)
+                val state = FakeDeviceState(mapOf(StateKey.ACCELEROMETER_ROTATION to "0", StateKey.USER_ROTATION to "1"))
+                if (failRestore) state.stuck += StateKey.USER_ROTATION
+                val priorResponder = adb.responder
+                adb.responder = { requestSerial, command ->
+                    if (command == "shell am force-stop $DRIVER_PACKAGE" && adb.calls.any { it.contains("forward tcp:0") }) {
+                        // UiAutomation can restore physical rotation 0 instead of saved user rotation 1.
+                        state.values[StateKey.USER_ROTATION] = "0"
+                    }
+                    state.answer(command) ?: priorResponder?.invoke(requestSerial, command)
+                }
+                val root = tempDir.resolve("failed-open-$failRestore")
+                val store = SessionJournalStore(root, serial)
+                val cache = DriverRuntimeCache(adb, root, 60_000)
+                val processes = mutableListOf<FakeProcess>()
+                try {
+                    val config = sessionConfig(adb, fake, processes).copy(journalRoot = root, runtimeCache = cache)
+                    val opening = async(Dispatchers.IO) { runCatching { DeviceSession.open(config) } }
+                    val health = withTimeout(5_000) { fake.nextFrame() }
+                    fake.respond(health.requestId, Responses.failure(ErrorCode.ERR_INTERNAL, message = "health failed"))
+                    val result = withTimeout(15_000) { opening.await() }
+                    assertTrue(result.exceptionOrNull() is RemoteCommandException)
+                    val record = checkNotNull(store.read())
+                    if (failRestore) {
+                        assertEquals(JournalState.QUARANTINED, record.state)
+                        assertEquals(StateKey.ROTATION.toSet(), record.savedState.map { it.key }.toSet())
+                        assertEquals("0", state.values[StateKey.USER_ROTATION])
+                    } else {
+                        assertEquals(JournalState.CLOSED, record.state)
+                        assertTrue(record.savedState.isEmpty())
+                        assertEquals("1", state.values[StateKey.USER_ROTATION])
+                    }
+                    assertFalse(record.runtimeIdle)
+                    assertTrue(processes.all { !it.isAlive })
+                    store.acquireLease(0).close()
+                } finally {
+                    cache.close()
+                    fake.close()
+                }
+            }
+        }
+
+    @Test
     fun `rotation mutation captures once and close restores the initial lock`() =
         runBlocking {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
@@ -871,8 +986,13 @@ class DeviceSessionTest {
             val state = FakeDeviceState(mapOf(StateKey.FONT_SCALE to "1.3"))
             journalStore().write(
                 SessionJournal(
-                    state = JournalState.QUARANTINED, serial = serial, bootId = "boot-1", sessionId = "old", generation = 5,
-                    devicePort = DEVICE_PORT, quarantineReason = "SESSION_CLEANUP_UNCERTAIN: driver survived",
+                    state = JournalState.QUARANTINED,
+                    serial = serial,
+                    bootId = "boot-1",
+                    sessionId = "old",
+                    generation = 5,
+                    devicePort = DEVICE_PORT,
+                    quarantineReason = "SESSION_CLEANUP_UNCERTAIN: driver survived",
                     savedState = listOf(SavedState(StateKey.FONT_SCALE, "1.1")),
                 ),
             )
@@ -882,11 +1002,13 @@ class DeviceSessionTest {
                 val adb = openAdb(fake.port)
                 val priorResponder = adb.responder
                 adb.responder = { requestSerial, command ->
-                    state.answer(command) ?: (if (command == "forward --list") ok("") else null) ?: priorResponder?.invoke(requestSerial, command)
+                    state.answer(command) ?: (if (command == "forward --list") ok("") else null)
+                        ?: priorResponder?.invoke(requestSerial, command)
                 }
                 assertFailsWith<DeviceQuarantinedException> { DeviceSession.open(sessionConfig(adb, fake, mutableListOf())) }
 
-                val opening = async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf()).copy(inspectQuarantined = true)) }
+                val opening =
+                    async(Dispatchers.IO) { DeviceSession.open(sessionConfig(adb, fake, mutableListOf()).copy(inspectQuarantined = true)) }
                 val health = withTimeout(5_000) { fake.nextFrame() }
                 fake.respond(health.requestId, Responses.done(1))
                 val session = withTimeout(5_000) { opening.await() }

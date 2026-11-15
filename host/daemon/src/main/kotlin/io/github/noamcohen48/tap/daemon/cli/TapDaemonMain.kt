@@ -7,10 +7,10 @@ import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.DriverApks
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.daemon.grpc.AppDataService
-import io.github.noamcohen48.tap.daemon.grpc.DeviceLogService
 import io.github.noamcohen48.tap.daemon.grpc.AppService
 import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
+import io.github.noamcohen48.tap.daemon.grpc.DeviceLogService
 import io.github.noamcohen48.tap.daemon.grpc.DeviceService
 import io.github.noamcohen48.tap.daemon.grpc.StepInterceptor
 import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
@@ -127,6 +127,12 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
             throw UsageException("--port must be an integer in 0..65535, got '$value'")
         }
     }
+    options["--driver-idle-timeout-ms"]?.let { value ->
+        val timeout = value.toLongOrNull()
+        if (timeout == null || (timeout != 0L && timeout !in 1_000L..300_000L)) {
+            throw UsageException("--driver-idle-timeout-ms must be 0 (off) or 1000..300000")
+        }
+    }
     if (command == "unquarantine" && "--serial" !in options) {
         throw UsageException("`tap unquarantine` needs --serial SERIAL")
     }
@@ -139,7 +145,7 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
 private fun usage(): Nothing {
     System.err.println(
         """
-        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK]
+        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK] [--driver-idle-timeout-ms N]
                            (background; reuses a running daemon)
                tap serve   (same options as start; foreground)
                tap status  [--state-dir DIR]
@@ -154,7 +160,8 @@ private fun usage(): Nothing {
     exitProcess(2)
 }
 
-private val SERVE_OPTIONS = setOf("--port", "--state-dir", "--adb", "--scrcpy", "--scrcpy-server", "--driver-apk", "--driver-test-apk")
+private val SERVE_OPTIONS =
+    setOf("--port", "--state-dir", "--adb", "--scrcpy", "--scrcpy-server", "--driver-apk", "--driver-test-apk", "--driver-idle-timeout-ms")
 private val COMMAND_OPTIONS =
     mapOf(
         "start" to SERVE_OPTIONS,
@@ -224,7 +231,18 @@ private fun serve(
     val scrcpy = options["--scrcpy"] ?: System.getenv("TAP_SCRCPY") ?: "scrcpy"
     // The scrcpy 4.1 server JAR WatchVideo pushes; without it the daemon serves no video.
     val scrcpyServer = (options["--scrcpy-server"] ?: System.getenv("TAP_SCRCPY_SERVER"))?.let { Path.of(it).toAbsolutePath() }
-    val daemon = TapDaemon(DaemonConfig(adb, stateDir, driver = driver, log = log, scrcpy = scrcpy, scrcpyServer = scrcpyServer))
+    val daemon =
+        TapDaemon(
+            DaemonConfig(
+                adb,
+                stateDir,
+                driver = driver,
+                log = log,
+                scrcpy = scrcpy,
+                scrcpyServer = scrcpyServer,
+                driverIdleTimeoutMs = options["--driver-idle-timeout-ms"]?.toLong() ?: 0,
+            ),
+        )
     val server: Server =
         NettyServerBuilder
             .forAddress(InetSocketAddress("127.0.0.1", port))
@@ -331,8 +349,7 @@ private const val START_TIMEOUT_MS = 30_000L
 private enum class Probe { OK, REJECTED, DOWN }
 
 /** The descriptor in [stateDir], if the daemon it names answers `Info` with its token. */
-private fun liveDaemon(stateDir: Path): DaemonDescriptor? =
-    DaemonDescriptor.read(stateDir)?.takeIf { probe(it) == Probe.OK }
+private fun liveDaemon(stateDir: Path): DaemonDescriptor? = DaemonDescriptor.read(stateDir)?.takeIf { probe(it) == Probe.OK }
 
 /**
  * `Info` against the descriptor's port with its token. [Probe.REJECTED] means something else
@@ -396,10 +413,12 @@ internal fun status(
             out("running 127.0.0.1:${descriptor.port} pid=${descriptor.pid} version=${descriptor.daemonVersion} adb=${descriptor.adb}")
             0
         }
+
         Probe.REJECTED -> {
             out("stale descriptor: port ${descriptor.port} is served by something else")
             1
         }
+
         Probe.DOWN -> {
             out("not responding: daemon pid ${descriptor.pid} at 127.0.0.1:${descriptor.port} does not answer")
             1

@@ -95,6 +95,40 @@ access control. Device choice is the client's (`tap.serials` / `tap_serials`, De
 isolating two groups of devices on one machine is done with two daemons using different `--state-dir`s.
 The daemon offers every device ADB lists.
 
+## Decision 5 — a bounded idle runtime is not a lease (November 2026)
+
+Approved with the fast-attach work (`fast-attach.md`). The daemon may opt into keeping clean
+instrumentation alive between independent attachments (`--driver-idle-timeout-ms`, off by
+default). This does not restore the removed pool lease or extend a test's ownership.
+
+- Each attachment still acquires the same serial file lock, advances the durable generation,
+  authenticates with fresh one-use credentials and owns all saved state until restoration.
+- A clean terminal wire handshake joins the command lanes and mock-location emitter, destroys
+  UiAutomation, drops listener/shell identity, and invalidates the old credentials. No commands
+  can run while idle. Host restoration finishes before releasing the serial lock.
+- The resulting journal is `CLOSED`, `runtimeIdle=true`, with empty saved state and the exact
+  runtime PID/start token/instance/boot/port identity. It contains no next-session secret. The
+  cache is daemon-local memory; another process cannot adopt it and follows cold recovery.
+- An idle runtime holds **no device lock** and the device is FREE. Bad handshakes cannot extend
+  its absolute 1–300 second deadline. Exiting idle instrumentation cannot restore an earlier
+  rotation snapshot because automation was already destroyed before the lock was released.
+- Attach and host eviction take the serial lock before reading/modifying the journal or
+  touching the device. Eviction checks the old entry against the live journal and process
+  start token; it cannot kill a newer generation or a reused PID. An active foreign owner
+  makes eviction defer, not force its way in. Cleanup removes only the exact owned forward.
+- Cold policy, changed APKs/boot/identity/forward/rotation baseline, inspection, startup overrides,
+  synchronization use, poison, incomplete work or failed restore refuse reuse. A warm setup
+  failure before exposure may cold-open once; no client input has run and no mutation is replayed.
+- Shutdown stops accepting cache entries first and starts idle eviction alongside active-session
+  cleanup, within the existing shutdown budget. The driver deadline remains a backstop after a
+  host crash. A known-clean identified idle runtime is not an abandoned session in `tap doctor`.
+
+This deliberately changes process lifetime, not session lifetime or ownership. It uses a
+narrow instrumentation-only disconnect bridge, exercised on API 29/API 34; failure takes the
+verified cold cleanup path. Read-only sessions do not introduce settings writes when the
+unchanged baseline is read back; typed rotation changes retain full stable restoration. A
+baseline change forces a new process rather than reusing Android's cached rotation snapshot.
+
 ## Why the lock and the journal at all — compared with Appium and Maestro
 
 Asked in September 2026: why not just kill and reinstall the driver when a connection opens,

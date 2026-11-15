@@ -7,36 +7,31 @@ import io.github.noamcohen48.tap.api.v1.AddMediaRequest
 import io.github.noamcohen48.tap.api.v1.AddMediaResponse
 import io.github.noamcohen48.tap.api.v1.AttachRequest
 import io.github.noamcohen48.tap.api.v1.AttachResponse
-import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
-import io.github.noamcohen48.tap.api.v1.StartRecordingResponse
-import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
-import io.github.noamcohen48.tap.api.v1.StopRecordingResponse
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
 import io.github.noamcohen48.tap.api.v1.DetachResponse
 import io.github.noamcohen48.tap.api.v1.DeviceCall
-import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest
-import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse
-import io.github.noamcohen48.tap.api.v1.DeviceProperties
-import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
 import io.github.noamcohen48.tap.api.v1.DeviceLogsResponse
+import io.github.noamcohen48.tap.api.v1.DeviceProperties
+import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.DeviceState
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogResponse
-import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
 import io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest
 import io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
+import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest
+import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
-import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
-import io.github.noamcohen48.tap.api.v1.UnquarantineResponse
 import io.github.noamcohen48.tap.api.v1.PullFileRequest
 import io.github.noamcohen48.tap.api.v1.PullFileResponse
 import io.github.noamcohen48.tap.api.v1.PushFileRequest
@@ -47,6 +42,8 @@ import io.github.noamcohen48.tap.api.v1.ScreenSnapshotRequest
 import io.github.noamcohen48.tap.api.v1.ScreenSnapshotResponse
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotResponse
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse
 import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
 import io.github.noamcohen48.tap.api.v1.SetAnimationsResponse
 import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
@@ -55,34 +52,36 @@ import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityResponse
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetFontScaleResponse
-import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
-import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
-import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
-import io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
-import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
-import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayResponse
 import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationResponse
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesResponse
+import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StartRecordingResponse
+import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopRecordingResponse
+import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
+import io.github.noamcohen48.tap.api.v1.UnquarantineResponse
 import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
-import io.github.noamcohen48.tap.daemon.core.DeviceEvidence
-import io.github.noamcohen48.tap.host.CapabilityFacts
-import io.github.noamcohen48.tap.host.DeviceCapabilities
-import io.github.noamcohen48.tap.host.DeviceFiles
-import io.github.noamcohen48.tap.host.DeviceConditions
-import io.github.noamcohen48.tap.host.canonicalLocales
 import io.github.noamcohen48.tap.daemon.core.DeviceEntry
+import io.github.noamcohen48.tap.daemon.core.DeviceEvidence
 import io.github.noamcohen48.tap.daemon.core.DeviceStatus
 import io.github.noamcohen48.tap.daemon.core.TapDaemon
 import io.github.noamcohen48.tap.daemon.snapshot.ScreenSnapshots
 import io.github.noamcohen48.tap.host.AdbDeviceState
-import io.github.noamcohen48.tap.host.RecordingException
+import io.github.noamcohen48.tap.host.CapabilityFacts
 import io.github.noamcohen48.tap.host.CommandTransportException
+import io.github.noamcohen48.tap.host.DeviceCapabilities
+import io.github.noamcohen48.tap.host.DeviceConditions
+import io.github.noamcohen48.tap.host.DeviceFiles
 import io.github.noamcohen48.tap.host.DriverClient
+import io.github.noamcohen48.tap.host.RecordingException
+import io.github.noamcohen48.tap.host.canonicalLocales
 import io.github.noamcohen48.tap.protocol.CommandValidation
 import io.github.noamcohen48.tap.protocol.Commands
 import io.github.noamcohen48.tap.protocol.OperationRequirements
@@ -98,13 +97,15 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.withContext
-import java.util.concurrent.TimeUnit
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption
 import java.security.MessageDigest
+import java.util.concurrent.TimeUnit
+import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 /** Diagnostic queries left out of the event log: they read the device, they do not test it. */
+
 /** Size of each chunk PullFile streams. */
 private const val PULL_CHUNK_BYTES = 256 * 1024
 
@@ -194,8 +195,13 @@ class DeviceService(
                 }.build()
         }
 
+    private suspend fun <T> attachmentReply(
+        serial: String,
+        block: suspend () -> T,
+    ): T = reply { daemon.measureAttachmentStage(serial, "daemon_attach_total", block) }
+
     override suspend fun attach(request: AttachRequest): AttachResponse =
-        reply {
+        attachmentReply(request.serial) {
             argument(request.serial.isNotBlank()) { "serial is required" }
             val attachedDevice =
                 daemon.attachDevice(
@@ -203,18 +209,46 @@ class DeviceService(
                     request.serial,
                     TapDaemon.AttachDeviceOptions(
                         skipDriverInstall = request.hasSkipDriverInstall() && request.skipDriverInstall,
-                        defaultTimeoutMs = if (request.hasDefaultTimeoutMs()) positive(request.defaultTimeoutMs, "default_timeout_ms") else Defaults.ACTION_TIMEOUT_MS,
-                        leaseTimeoutMs = if (request.hasLeaseTimeoutMs()) nonNegative(request.leaseTimeoutMs, "lease_timeout_ms") else 0L,
+                        defaultTimeoutMs =
+                            if (request.hasDefaultTimeoutMs()) {
+                                positive(
+                                    request.defaultTimeoutMs,
+                                    "default_timeout_ms",
+                                )
+                            } else {
+                                Defaults.ACTION_TIMEOUT_MS
+                            },
+                        leaseTimeoutMs =
+                            if (request.hasLeaseTimeoutMs()) {
+                                nonNegative(
+                                    request.leaseTimeoutMs,
+                                    "lease_timeout_ms",
+                                )
+                            } else {
+                                0L
+                            },
                         inspectQuarantined = request.hasInspectQuarantined() && request.inspectQuarantined,
                         captureLogs = !request.hasCaptureLogs() || request.captureLogs,
+                        driverStart =
+                            when (request.driverStart) {
+                                io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_POLICY_UNSPECIFIED,
+                                io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_AUTO,
+                                -> io.github.noamcohen48.tap.host.DriverStart.AUTO
+
+                                io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_COLD -> io.github.noamcohen48.tap.host.DriverStart.COLD
+
+                                else -> throw IllegalArgumentException("Unknown driver_start policy")
+                            },
                     ),
                 )
             // Attachment is registered by now; a failed first command must not leave it behind.
             val info =
                 try {
-                    attachedDevice.deviceSession.client
-                        .execute(Commands.deviceInfo(), timeoutMs = Defaults.ACTION_TIMEOUT_MS)
-                        .deviceInfo
+                    daemon.measureAttachmentStage(request.serial, "daemon_attach_initial_info") {
+                        attachedDevice.deviceSession.client
+                            .execute(Commands.deviceInfo(), timeoutMs = Defaults.ACTION_TIMEOUT_MS)
+                            .deviceInfo
+                    }
                 } catch (error: Exception) {
                     runCatching { daemon.detachDevice(attachedDevice.id, request.clientConnectionId) }
                     throw error
@@ -227,6 +261,7 @@ class DeviceService(
                 .setSerial(attachedDevice.deviceSession.serial)
                 .setGeneration(attachedDevice.deviceSession.generation)
                 .setDeviceInfo(info)
+                .setDriverReused(attachedDevice.deviceSession.driverReused)
                 .apply { attachedDevice.deviceSession.inspectedQuarantine?.let { quarantineReason = it } }
                 .build()
         }
@@ -235,12 +270,13 @@ class DeviceService(
         reply {
             val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             val client = attached.deviceSession.client
-            val facts = CapabilityFacts(
-                apiLevel = client.driverContract.androidApiLevel.takeIf { it > 0 },
-                serial = attached.deviceSession.serial,
-                negotiatedCapabilities = client.enabledCapabilities,
-                scrcpyAvailable = attached.recording.executableAvailable(),
-            )
+            val facts =
+                CapabilityFacts(
+                    apiLevel = client.driverContract.androidApiLevel.takeIf { it > 0 },
+                    serial = attached.deviceSession.serial,
+                    negotiatedCapabilities = client.enabledCapabilities,
+                    scrcpyAvailable = attached.recording.executableAvailable(),
+                )
             GetDeviceCapabilitiesResponse.newBuilder().addAllCapabilities(DeviceCapabilities.discover(facts)).build()
         }
 
@@ -377,7 +413,10 @@ class DeviceService(
         reply {
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             val timeoutMs = if (request.hasTimeoutMs()) positive(request.timeoutMs, "timeout_ms") else attachedDevice.defaultTimeoutMs
-            val xml = attachedDevice.deviceSession.client.execute(Commands.dumpHierarchy(), timeoutMs).text
+            val xml =
+                attachedDevice.deviceSession.client
+                    .execute(Commands.dumpHierarchy(), timeoutMs)
+                    .text
             val screen = withContext(Dispatchers.Default) { ScreenSnapshots.screen(xml, request.selectorCandidates) }
             attachedDevice.screen.record(screen)
         }
@@ -398,8 +437,13 @@ class DeviceService(
             argument(seconds in 1..max) { "max_seconds must be in 1..$max" }
             val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
             if (source != null) {
-                val api = attached.deviceSession.client.execute(Commands.deviceInfo(), Defaults.ACTION_TIMEOUT_MS).deviceInfo.apiLevel
-                if (api < OperationRequirements.RECORD_AUDIO_API || (source == "playback" && api < OperationRequirements.RECORD_PLAYBACK_API)) {
+                val api =
+                    attached.deviceSession.client
+                        .execute(Commands.deviceInfo(), Defaults.ACTION_TIMEOUT_MS)
+                        .deviceInfo.apiLevel
+                if (api < OperationRequirements.RECORD_AUDIO_API ||
+                    (source == "playback" && api < OperationRequirements.RECORD_PLAYBACK_API)
+                ) {
                     throw RecordingException("$source audio capture is unsupported on Android API $api")
                 }
             }
@@ -411,7 +455,12 @@ class DeviceService(
         reply {
             val media = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false).recording.stop()
             val hash = MessageDigest.getInstance("SHA-256").digest(media.bytes).joinToString("") { "%02x".format(it) }
-            StopRecordingResponse.newBuilder().setData(ByteString.copyFrom(media.bytes)).setFormat(media.format).setSha256(hash).build()
+            StopRecordingResponse
+                .newBuilder()
+                .setData(ByteString.copyFrom(media.bytes))
+                .setFormat(media.format)
+                .setSha256(hash)
+                .build()
         }
 
     override suspend fun driverLog(request: DriverLogRequest): DriverLogResponse =
@@ -548,7 +597,9 @@ class DeviceService(
             val altitude = if (request.hasAltitudeM()) request.altitudeM else null
             argument(request.latitude in -90.0..90.0) { "latitude must be -90 to 90, not ${request.latitude}" }
             argument(request.longitude in -180.0..180.0) { "longitude must be -180 to 180, not ${request.longitude}" }
-            argument(accuracy == null || (accuracy.isFinite() && accuracy > 0f)) { "accuracy_m must be a positive number of meters, not $accuracy" }
+            argument(
+                accuracy == null || (accuracy.isFinite() && accuracy > 0f),
+            ) { "accuracy_m must be a positive number of meters, not $accuracy" }
             argument(altitude == null || altitude.isFinite()) { "altitude_m must be finite, not $altitude" }
             val logged: DeviceCall.Builder.() -> Unit = {
                 latitude = request.latitude
@@ -575,7 +626,9 @@ class DeviceService(
             val contrast = if (request.hasHighContrastText()) request.highContrastText else null
             val inversion = if (request.hasColorInversion()) request.colorInversion else null
             val bold = if (request.hasBoldText()) request.boldText else null
-            argument(contrast != null || inversion != null || bold != null) { "set at least one of high_contrast_text, color_inversion or bold_text" }
+            argument(
+                contrast != null || inversion != null || bold != null,
+            ) { "set at least one of high_contrast_text, color_inversion or bold_text" }
             val logged: DeviceCall.Builder.() -> Unit = {
                 contrast?.let { highContrastText = it }
                 inversion?.let { colorInversion = it }
@@ -659,7 +712,10 @@ class DeviceService(
                     throw InvalidArgumentException(invalid.message ?: "file_name is invalid")
                 }
                 var path = ""
-                file(h.clientConnectionId, h.attachedDeviceId, "add_media", h.fileName, h.sizeBytes) { path = it.addMedia(upload, h.fileName) }
+                file(h.clientConnectionId, h.attachedDeviceId, "add_media", h.fileName, h.sizeBytes) {
+                    path =
+                        it.addMedia(upload, h.fileName)
+                }
                 AddMediaResponse.newBuilder().setDevicePath(path).build()
             }
         }
@@ -701,7 +757,9 @@ class DeviceService(
                         when {
                             h != null -> {
                                 argument(first == null) { "the header must be sent exactly once, first" }
-                                argument(size(h) in 0..DeviceFiles.MAX_FILE_BYTES) { "size_bytes must be in 0..${DeviceFiles.MAX_FILE_BYTES}" }
+                                argument(
+                                    size(h) in 0..DeviceFiles.MAX_FILE_BYTES,
+                                ) { "size_bytes must be in 0..${DeviceFiles.MAX_FILE_BYTES}" }
                                 first = h
                             }
 
@@ -712,7 +770,9 @@ class DeviceService(
                                 bytes.writeTo(out)
                             }
 
-                            else -> throw InvalidArgumentException("part must be set")
+                            else -> {
+                                throw InvalidArgumentException("part must be set")
+                            }
                         }
                     }
                 }
@@ -754,7 +814,12 @@ class DeviceService(
         block: suspend (DeviceConditions) -> Unit,
     ) {
         val attachedDevice: AttachedDevice = daemon.attachedDevice(attachedDeviceId, clientConnectionId)
-        val logged = DeviceCall.newBuilder().setOperation(operation).apply(call).build()
+        val logged =
+            DeviceCall
+                .newBuilder()
+                .setOperation(operation)
+                .apply(call)
+                .build()
         attachedDevice.recorded({ setDevice(logged) }) { block(attachedDevice.deviceSession.conditions) }
     }
 
@@ -793,7 +858,8 @@ class DeviceService(
 
                     // OTHER (e.g. `no permissions`, `recovery`) is reported as offline: present, not usable.
                     is DeviceStatus.Unavailable -> {
-                        state = if (status.state == AdbDeviceState.UNAUTHORIZED) DeviceState.DEVICE_UNAUTHORIZED else DeviceState.DEVICE_OFFLINE
+                        state =
+                            if (status.state == AdbDeviceState.UNAUTHORIZED) DeviceState.DEVICE_UNAUTHORIZED else DeviceState.DEVICE_OFFLINE
                     }
                 }
             }.build()

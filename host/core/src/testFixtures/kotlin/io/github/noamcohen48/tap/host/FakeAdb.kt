@@ -20,6 +20,23 @@ class FakeAdb(
     /** Stateful override consulted before [replies]; lets a test change answers over time. */
     var responder: ((serial: String, command: String) -> Adb.Result?)? = null
 
+    internal override suspend fun readRotationSettings(
+        serial: String,
+        keys: List<String>,
+    ) = keys.associateWith { readState(serial, it) }
+
+    internal override suspend fun runtimeObservation(
+        serial: String,
+        pid: Int,
+        rotationKeys: List<String>,
+    ) = RuntimeObservation(rotationKeys.map { SavedState(it, readState(serial, it)) }, processStat(serial, pid))
+
+    internal override suspend fun processObservation(
+        serial: String,
+        packageName: String,
+        expectedPid: Int,
+    ) = AttachmentProcessObservation(processIds(serial, packageName), processStat(serial, expectedPid))
+
     override suspend fun execResult(
         serial: String,
         vararg arguments: String,
@@ -31,6 +48,8 @@ class FakeAdb(
         responder?.invoke(serial, command)?.let { return it }
         // Every driver force-stop first looks for a bound notification listener: none, by default.
         if (command == "shell dumpsys notification" && command !in replies) return ok("")
+        // Unknown power state keeps the traditional wake path unless a test supplies evidence.
+        if (command == "shell dumpsys -t 1 power" && command !in replies) return ok("")
         return replies[command] ?: error("unexpected adb -s $serial $command")
     }
 }

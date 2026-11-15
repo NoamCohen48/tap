@@ -1057,6 +1057,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.wire.v1.ParkRuntime",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.wire.v1.ProtocolVersion",
     "allDeclaredFields": true
   },
@@ -1066,6 +1070,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.wire.v1.Response",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.wire.v1.RuntimeParked",
     "allDeclaredFields": true
   },
   {

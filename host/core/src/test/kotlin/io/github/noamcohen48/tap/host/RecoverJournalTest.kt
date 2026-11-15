@@ -162,7 +162,7 @@ class RecoverJournalTest {
     fun `an open journal of another engine is refused and left as it is`() =
         runBlocking {
             store.write(record(JournalState.ACTIVE))
-            val written = Files.readString(store.file).replaceFirst("{", "{\"runtimeIdle\":true,")
+            val written = Files.readString(store.file).replaceFirst("{", "{\"futureEngineField\":true,")
             Files.writeString(store.file, written)
             val adb = adb()
             assertFailsWith<ForeignJournalException> { recoverJournal(adb, serial, "boot-1", store) }

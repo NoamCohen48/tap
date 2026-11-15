@@ -2,7 +2,7 @@
 
 Date: 2026-10-01
 
-Status: application protocol `5.1`; Phase 1 contract is additive and not yet complete.
+Status: application protocol `5.2` (also negotiates `5.1`); Phase 1 contract is additive and not yet complete.
 
 The client↔daemon gRPC API additionally reports a separate compatibility epoch in
 `InfoResponse.api_compatibility`, generated from `contracts/proto/API_COMPATIBILITY`.
@@ -11,16 +11,16 @@ or server↔driver negotiation below. See `server-api.md` and `release-engineeri
 
 This document describes the implemented wire contract. Planned but unimplemented features
 (events, typed element handles, multi-gesture input) remain design work in
-`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.1 yet.
+`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.2 yet.
 
-Protocol 5.1 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
+Protocol 5.2 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
 `scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added
 `ElementSnapshot.showing_hint`, `WaitVisible.exactly_one`, `Error.match_count` and the
 wait-timeout details; 5.0 removed selector scopes and `ResourceId.aut_package` — package
 ownership is a `PROPERTY_PACKAGE_NAME` predicate and every lookup searches all windows — made
 gestures refuse a covered touch point (`NOT_INTERACTABLE` / `OBSCURED`), and moved the sync
 package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added `wait_state` with `Error.last_state` and `Error.condition_holds`, `Error.narrowing`, and the
-`STALE_BEFORE_INPUT` error code). The schema is the project's one schema,
+`STALE_BEFORE_INPUT` error code; 5.2 adds capability-gated clean instrumentation handoff). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
 same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
@@ -53,9 +53,11 @@ use a positive monotonically increasing ID. Both ends write each frame as one bu
 
 Implemented frame types are `HELLO` (1), `CHALLENGE` (2), `AUTH` (3), `AUTH_RESULT` (4),
 `REQUEST` (5), `RESPONSE` (6), `CLOSE` (7), `CANCEL` (8), `PING` (9), `PONG` (10),
-`BLOB_START` (11), `BLOB_CHUNK` (12), and `BLOB_END` (13). Unknown framing versions, frame
+`BLOB_START` (11), `BLOB_CHUNK` (12), `BLOB_END` (13), `PARK_RUNTIME` (14), and
+`RUNTIME_PARKED` (15). Unknown framing versions, frame
 types, flags, and invalid lengths fail the connection before payload decoding. After
-authentication only `REQUEST`, `CANCEL`, `PING`, and `CLOSE` are legal from the host; any other
+authentication only `REQUEST`, `CANCEL`, `PING`, `CLOSE`, and (when negotiated in 5.2)
+`PARK_RUNTIME` are legal from the host; any other
 type (including blob frames) fails the connection. `CANCEL` carries the target request ID
 (positive) and an empty payload; `PING`/`PONG` use request ID zero and an empty payload.
 
@@ -68,7 +70,8 @@ ID or a payload, a `PING` with a non-zero ID or a payload, or a duplicate/stale 
 frames never interleave; after `CLOSE` nothing else is written and the socket is closed. The
 host treats a driver `CLOSE` as transport loss with the reason as the cause: the client is
 poisoned, in-flight mutations fail `INDETERMINATE` and queries `TRANSPORT_LOST`. Blob frames are
-driver-to-host only and are described under [Artifacts](#artifacts).
+driver-to-host only and are described under [Artifacts](#artifacts). The one additional writer
+case is `RUNTIME_PARKED`: it is sent directly only after the pipeline writer has terminated.
 
 ## Payloads
 
@@ -83,6 +86,7 @@ driver-to-host only and are described under [Artifacts](#artifacts).
 | `BLOB_START` / `BLOB_END` | `BlobStart` / `BlobEnd` |
 | `BLOB_CHUNK` | raw (see [Artifacts](#artifacts)) |
 | `CLOSE` (driver) | UTF-8 reason |
+| `PARK_RUNTIME` / `RUNTIME_PARKED` | `ParkRuntime` / `RuntimeParked` (ID zero) |
 
 Encoding is standard proto3 binary. Unknown fields are ignored by both sides, as protobuf does.
 The handshake does not need a canonical encoding: the MAC covers the payload bytes exactly as
@@ -95,7 +99,7 @@ not parse is `INVALID_REQUEST` (below).
 
 The host sends `HELLO` with `host_build_id`, a 32-byte `host_nonce`, `session_generation`,
 `session_id`, and ascending `supported_versions`. The driver validates the
-instrumentation-provided identity and nonce, and returns `CHALLENGE` containing the items
+instrumentation-provided (or cleanly handed-off) identity and nonce, and returns `CHALLENGE` containing the items
 below. With no common application version it instead answers
 `AUTH_RESULT{ok=false, error="UNSUPPORTED"}` and closes, so the host can say why.
 
@@ -110,22 +114,25 @@ below. With no common application version it instead answers
 - sorted supported application-protocol versions.
 
 The host selects the highest exact common `major.minor` version and a sorted subset of offered
-capabilities. Protocol 5.1 currently enables:
+capabilities. Protocol 5.2 currently enables:
 
 ```text
 artifact.screenshot.v1
 diagnostic.hierarchy.v1
 input.key-events.v1
 product.probe.v1
+runtime.park.v1
 synchronization.v1
 ```
 
 The `Negotiation` contains `enabled_capabilities` and `selected_version`; the host serializes it
-once and sends those bytes in `Authentication.negotiation`.
+once and sends those bytes in `Authentication.negotiation`. `runtime.park.v1` is offered only
+when instrumentation was explicitly started reusable; both the capability and version 5.2
+must be negotiated to park.
 
 ## Authentication
 
-All nonces and the per-launch secret are 32 bytes; nonces and HMACs are raw `bytes` fields.
+All nonces and the per-session secret are 32 bytes; nonces and HMACs are raw `bytes` fields.
 The authenticated transcript is:
 
 ```text
@@ -147,6 +154,43 @@ three are the engine version the artifacts were built from). A driver of another
 connection with `DriverBuildMismatchException` (a handshake failure, never retried) and the
 session does not open; the remedy is reinstalling the driver APKs that ship with the host. The
 check runs only after authentication, so the reported build is known to come from the driver.
+
+## Clean runtime handoff
+
+The opt-in daemon runtime cache sends `PARK_RUNTIME` only on a healthy authenticated session
+with no pending commands. It uses ID zero and carries a different next session ID (1..128
+nonblank characters), exactly `generation + 1`, a different 32-byte random secret, and an idle
+timeout of 1000..300000 ms. These credentials are provisioned over the authenticated connection;
+there is no unauthenticated management endpoint or persistent management secret.
+
+The driver stops accepting commands, drains and joins its executor, writer and watchdog,
+stops/joins the mock-location emitter, drops adopted shell identity and accessibility listeners,
+destroys UiAutomation, and discards UiDevice/engine caches. Only then does it acknowledge
+`RUNTIME_PARKED`, echoing the next identity/generation without its secret, and close the old
+connection. The old client is permanently closed. Every new connection authenticates afresh;
+request IDs restart at one only under the new generation. Old generations/credentials are rejected.
+Sessions that used synchronization cannot park: its deferred provider-call behavior is unchanged.
+
+A reflected instrumentation-only `UiAutomation.destroy` bridge and AndroidX 2.4.0 singleton reset
+provide the otherwise missing disconnect API. No hidden-API checks are disabled. This path was
+exercised on API 29/API 34; an unsupported/reset-failing device falls back to verified cold
+cleanup. Failure, lost acknowledgement, poison, nonempty pending work, inspection or startup
+fault overrides never produce a reusable runtime. The host never retries a transmitted mutation.
+A warm attach failure before exposure may discard that whole session and cold-open once under
+a new generation; only authentication/health have run, never client input.
+
+Idle runtimes have no UiAutomation connection, command pipeline or device lock. Their absolute
+idle deadline is not renewed by bad handshakes, including trickled bytes. On expiry they exit
+without restoring an old rotation snapshot. The host retains the exact forward and identity in
+a `CLOSED` journal with `runtimeIdle=true`; next-session secrets remain in memory only. Attach
+and host eviction take the serial lock and recheck boot/PID/start token/instance/journal/forward
+identity. Another process cold-recovers the idle runtime; it cannot adopt it. A changed rotation
+baseline forces a new process so the platform's cached rotation snapshot cannot cross baselines.
+Typed rotation changes and frozen/unknown baselines use full stable read-back/restore. Only a
+complete, unchanged, explicitly unfrozen baseline with no rotation command uses readback alone:
+a frozen platform snapshot may differ from `USER_ROTATION` under an app orientation request.
+
+See `fast-attach.md` and `pool-and-leases.md` for ownership, fallback and device evidence.
 
 ## Requests
 
@@ -219,6 +263,12 @@ result type.
 | `screenshot` | `CaptureScreenshot` (host-internal) | – | `done`; PNG blob + `Response.artifact` metadata (capability `artifact.screenshot.v1`) |
 | `sync_bootstrap` | `SyncBootstrap` (host-internal) | `observed_pid`, `observed_start_token`, `package_name`, `authority` | `done` + `Response.sync` |
 | `sync_poll` | `SyncPoll` (host-internal) | `observed_pid`, `observed_start_token`, `expected_process_start_uuid`, `expected_session_identity`, `package_name`, `authority` | `done` + `Response.sync` |
+
+`device_info` is a snapshot, not a settle operation: rotation is read from the default platform
+display, and current package from one fresh active accessibility root. Neither uses
+UiAutomator's idle-waiting metadata wrappers. No active root/package means the optional package
+is absent; the temporary node is recycled even on read failure. Selector idle bounds and explicit
+rotation settling/restoration are unchanged.
 
 `direction` is the direction the content moves for scrolls and flings (DOWN reveals content below) and the finger for swipes.
 `distance_percent` (default 80) is the gesture length as a percentage of the element's size.
@@ -643,5 +693,5 @@ recorded in `framework-gaps.md` for the security review.
 
 ## Not Yet Implemented
 
-Protocol 5.1 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
+Protocol 5.2 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED` is defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

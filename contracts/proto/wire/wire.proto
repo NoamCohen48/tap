@@ -73,6 +73,24 @@ message AuthenticationResult {
   bytes transcript_hmac = 5; // HMAC-SHA256("TAP1-DRIVER-AUTH" 0x00 transcript) when ok
 }
 
+// ---- clean session handoff (runtime.park.v1, protocol 5.2) ---------------------------------------
+
+// PARK_RUNTIME, request ID 0, on an authenticated, drained session only. The old connection
+// permanently ends. The driver acknowledges only after its pipeline and per-session resources
+// are stopped and UiAutomation is destroyed. Only these fresh credentials can authenticate the
+// next connection; no commands are accepted while idle. Never log or persist next_secret.
+message ParkRuntime {
+  string next_session_id = 1;
+  int64 next_generation = 2; // exactly current generation + 1
+  bytes next_secret = 3; // 32 random bytes, provisioned over the authenticated connection
+  int64 idle_timeout_ms = 4; // 1000..300000; absolute idle deadline, not extended by bad handshakes
+}
+
+message RuntimeParked {
+  string next_session_id = 1;
+  int64 next_generation = 2;
+}
+
 // ---- host-internal operations --------------------------------------------------------------------
 
 // Liveness probe; the reply is the only observation.

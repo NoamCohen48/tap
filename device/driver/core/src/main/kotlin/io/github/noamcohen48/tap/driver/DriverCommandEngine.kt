@@ -25,37 +25,37 @@ import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
-import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
-import io.github.noamcohen48.tap.api.v1.OutsideTouch
-import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
-import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
-import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
 import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.SetClipboard
-import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
+import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.Toast
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
 import io.github.noamcohen48.tap.api.v1.WaitAppVisible
 import io.github.noamcohen48.tap.api.v1.WaitGone
-import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.api.v1.WaitPermissionPrompt
 import io.github.noamcohen48.tap.api.v1.WaitScreenStable
+import io.github.noamcohen48.tap.api.v1.WaitState
 import io.github.noamcohen48.tap.api.v1.WaitVisible
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
@@ -91,7 +91,16 @@ internal class DriverCommandEngine(
     private val compiler = SelectorCompiler()
     private val objects = UiObjectAccess(device)
     private val visibleBounds = VisibleBounds(instrumentation.context)
-    private val gestures = GestureCommands(instrumentation, device, objects, TouchReachability { instrumentation.uiAutomation }, visibleBounds, OutsidePanel(instrumentation.context) { instrumentation.uiAutomation }, faults)
+    private val gestures =
+        GestureCommands(
+            instrumentation,
+            device,
+            objects,
+            TouchReachability { instrumentation.uiAutomation },
+            visibleBounds,
+            OutsidePanel(instrumentation.context) { instrumentation.uiAutomation },
+            faults,
+        )
     private val textInput = TextInputCommands(instrumentation, objects)
     private val rotation = RotationCommands(instrumentation, device)
     private val screen = ScreenCommands(instrumentation)
@@ -104,9 +113,27 @@ internal class DriverCommandEngine(
     private val location = LocationCommands(instrumentation)
     private val toasts = ToastWatcher(instrumentation)
     private val notifications = NotificationCommands(instrumentation)
-    private val queries = QueryCommands(device, objects, visibleBounds, screen, keyboard, rotation, DeviceConditionsReader(instrumentation))
+    private val queries =
+        QueryCommands(
+            device,
+            objects,
+            visibleBounds,
+            screen,
+            keyboard,
+            rotation,
+            DeviceConditionsReader(instrumentation),
+            DeviceMetadataReader.from(instrumentation),
+        )
     private val screenStability = ScreenStability(instrumentation)
     private val artifacts = ArtifactCommands(instrumentation, device)
+
+    @Volatile private var syncUsed = false
+
+    /** Sync provider work is deferred: never reuse a process that may retain a provider call. */
+    fun closeForReuse() {
+        check(!syncUsed) { "Sessions using synchronization require a cold driver" }
+        location.close()
+    }
 
     /** Runs on the pipeline executor. Deadlines are measured from [CommandContext.acceptedAtMs]. */
     fun execute(
@@ -114,6 +141,7 @@ internal class DriverCommandEngine(
         request: Request,
         generation: Long,
     ): Response {
+        if (request.hasSyncBootstrap() || request.hasSyncPoll()) syncUsed = true
         // A selector that does not compile has nothing to explain.
         var compiledOk = false
         val response =
@@ -232,7 +260,8 @@ internal class DriverCommandEngine(
         override fun performAccessibilityAction(command: PerformAccessibilityAction) =
             accessibilityActions.perform(context, selectors[command.selector], command)
 
-        override fun setProgress(command: SetProgress) = accessibilityActions.setProgress(context, selectors[command.selector], command.value)
+        override fun setProgress(command: SetProgress) =
+            accessibilityActions.setProgress(context, selectors[command.selector], command.value)
 
         override fun setLocation(command: SetLocation) = location.set(context, command)
 
@@ -258,7 +287,8 @@ internal class DriverCommandEngine(
 
         override fun snapshot(command: Snapshot): ElementSnapshot = queries.snapshot(selectors[command.selector])
 
-        override fun waitVisible(command: WaitVisible) = waits.waitVisible(context, selectors[command.selector], exactlyOne = command.exactlyOne)
+        override fun waitVisible(command: WaitVisible) =
+            waits.waitVisible(context, selectors[command.selector], exactlyOne = command.exactlyOne)
 
         override fun waitGone(command: WaitGone) = waits.waitGone(context, selectors[command.selector])
 
@@ -276,7 +306,8 @@ internal class DriverCommandEngine(
 
         override fun hold(command: TimedPress) = gestures.hold(context, command, selectors[command.selector])
 
-        override fun tapOutsidePanel(command: TapOutsidePanel): OutsideTouch = gestures.tapOutsidePanel(context, command, selectors[command.selector])
+        override fun tapOutsidePanel(command: TapOutsidePanel): OutsideTouch =
+            gestures.tapOutsidePanel(context, command, selectors[command.selector])
 
         override fun setText(command: SetText) = textInput.setText(context, command, selectors[command.selector])
 

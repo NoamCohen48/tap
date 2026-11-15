@@ -1,5 +1,11 @@
 package io.github.noamcohen48.tap.host
 
+import kotlinx.coroutines.delay
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import java.nio.channels.FileChannel
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Files
@@ -7,13 +13,7 @@ import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.util.Base64
-import kotlinx.serialization.EncodeDefault
-import kotlinx.serialization.ExperimentalSerializationApi
-import kotlinx.serialization.Serializable
-import kotlinx.serialization.encodeToString
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
-import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalSerializationApi::class)
 @Serializable
@@ -55,6 +55,10 @@ data class SessionJournal(
      */
     @EncodeDefault(EncodeDefault.Mode.NEVER)
     val inspectedQuarantine: String? = null,
+    /** Clean session ended, UiAutomation destroyed; only the owning daemon may reuse the runtime.
+     * The device lock is free. Other processes stop it and remove its exact forward on attach. */
+    @EncodeDefault(EncodeDefault.Mode.NEVER)
+    val runtimeIdle: Boolean = false,
 )
 
 @Serializable
@@ -68,18 +72,35 @@ enum class JournalState {
 }
 
 /** The per-serial lock was still held by another session at the deadline. */
-class DeviceBusyException(val serial: String, val waitedMs: Long) :
-    TapHostException(if (waitedMs > 0) "Device $serial is in use by another session (waited ${waitedMs}ms)" else "Device $serial is in use by another session")
+class DeviceBusyException(
+    val serial: String,
+    val waitedMs: Long,
+) : TapHostException(
+        if (waitedMs >
+            0
+        ) {
+            "Device $serial is in use by another session (waited ${waitedMs}ms)"
+        } else {
+            "Device $serial is in use by another session"
+        },
+    )
 
 private const val LEASE_POLL_MS = 200L
 
-class SessionJournalStore(root: Path, private val serial: String) {
-    private val json = Json {
-        ignoreUnknownKeys = false
-        encodeDefaults = true
-    }
-    private val encodedSerial = Base64.getUrlEncoder().withoutPadding()
-        .encodeToString(serial.encodeToByteArray())
+class SessionJournalStore(
+    root: Path,
+    private val serial: String,
+) {
+    private val json =
+        Json {
+            ignoreUnknownKeys = false
+            encodeDefaults = true
+        }
+    private val encodedSerial =
+        Base64
+            .getUrlEncoder()
+            .withoutPadding()
+            .encodeToString(serial.encodeToByteArray())
     private val directory = root.toAbsolutePath()
     private val journalPath = directory.resolve("$encodedSerial.json")
 
@@ -98,14 +119,18 @@ class SessionJournalStore(root: Path, private val serial: String) {
      * if the holder dies. Throws [DeviceBusyException] when it is still held at the deadline.
      */
     suspend fun acquireLease(timeoutMs: Long = 0): AutoCloseable {
-        val deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(timeoutMs.coerceAtLeast(0))
+        val deadline =
+            System.nanoTime() +
+                java.util.concurrent.TimeUnit.MILLISECONDS
+                    .toNanos(timeoutMs.coerceAtLeast(0))
         while (true) {
             val channel = FileChannel.open(lockPath, StandardOpenOption.CREATE, StandardOpenOption.WRITE)
-            val lock = try {
-                channel.tryLock()
-            } catch (held: OverlappingFileLockException) {
-                null // another thread of this JVM holds it
-            }
+            val lock =
+                try {
+                    channel.tryLock()
+                } catch (held: OverlappingFileLockException) {
+                    null // another thread of this JVM holds it
+                }
             if (lock != null) {
                 recordHolder(channel, ProcessHandle.current().pid().toString())
                 var closed = false
@@ -121,7 +146,14 @@ class SessionJournalStore(root: Path, private val serial: String) {
             channel.close()
             val remaining = deadline - System.nanoTime()
             if (remaining <= 0) throw DeviceBusyException(serial, timeoutMs)
-            delay(minOf(LEASE_POLL_MS, java.util.concurrent.TimeUnit.NANOSECONDS.toMillis(remaining).coerceAtLeast(1)))
+            delay(
+                minOf(
+                    LEASE_POLL_MS,
+                    java.util.concurrent.TimeUnit.NANOSECONDS
+                        .toMillis(remaining)
+                        .coerceAtLeast(1),
+                ),
+            )
         }
     }
 
@@ -136,7 +168,10 @@ class SessionJournalStore(root: Path, private val serial: String) {
         return ProcessHandle.of(pid).map { it.isAlive }.orElse(false)
     }
 
-    private fun recordHolder(channel: FileChannel, holder: String) {
+    private fun recordHolder(
+        channel: FileChannel,
+        holder: String,
+    ) {
         channel.truncate(0)
         channel.write(java.nio.ByteBuffer.wrap(holder.encodeToByteArray()), 0)
     }
@@ -189,7 +224,7 @@ class SessionJournalStore(root: Path, private val serial: String) {
             }
             require(
                 previous == null || record.generation != previous.generation ||
-                    record.sessionId == previous.sessionId
+                    record.sessionId == previous.sessionId,
             ) { "Session identity changed without advancing generation ${record.generation}" }
         }
         writeAtomically(record)
@@ -212,24 +247,35 @@ class SessionJournalStore(root: Path, private val serial: String) {
         require(!record.resetRequired || !record.quarantineReason.isNullOrBlank())
         require(record.resetStartedBootId == null || record.resetRequired)
         require(record.resetStartedBootId == null || record.resetStartedBootId == record.bootId)
-        require(!record.restoreRetryable || (record.state == JournalState.QUARANTINED && record.savedState.isNotEmpty() && !record.resetRequired))
+        require(
+            !record.restoreRetryable ||
+                (record.state == JournalState.QUARANTINED && record.savedState.isNotEmpty() && !record.resetRequired),
+        )
         require(record.inspectedQuarantine == null || record.state != JournalState.QUARANTINED)
+        require(
+            !record.runtimeIdle || (
+                record.state == JournalState.CLOSED && record.savedState.isEmpty() &&
+                    record.hostPort != null && record.driverPid != null && record.driverStartToken != null &&
+                    record.driverInstanceId != null
+            ),
+        )
         record.savedState.forEach { StateKey.parse(it.key) }
     }
 
     private fun writeAtomically(record: SessionJournal) {
         val temporary = Files.createTempFile(directory, "$encodedSerial-", ".tmp")
         try {
-            FileChannel.open(
-                temporary,
-                StandardOpenOption.WRITE,
-                StandardOpenOption.TRUNCATE_EXISTING,
-            ).use { channel ->
-                val bytes = json.encodeToString(record).encodeToByteArray()
-                val buffer = java.nio.ByteBuffer.wrap(bytes)
-                while (buffer.hasRemaining()) channel.write(buffer)
-                channel.force(true)
-            }
+            FileChannel
+                .open(
+                    temporary,
+                    StandardOpenOption.WRITE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                ).use { channel ->
+                    val bytes = json.encodeToString(record).encodeToByteArray()
+                    val buffer = java.nio.ByteBuffer.wrap(bytes)
+                    while (buffer.hasRemaining()) channel.write(buffer)
+                    channel.force(true)
+                }
             Files.move(
                 temporary,
                 journalPath,

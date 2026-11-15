@@ -527,7 +527,9 @@ class DriverClient private constructor(
         }
     }
 
-    private class HeartbeatStopped(cause: Throwable) : RuntimeException(cause)
+    private class HeartbeatStopped(
+        cause: Throwable,
+    ) : RuntimeException(cause)
 
     /**
      * The opt-in side door for fault probes (explicit request IDs, raw payloads, simulated
@@ -574,6 +576,15 @@ class DriverClient private constructor(
             } catch (error: CommandTransportException) {
                 throw error.cause ?: error
             }
+    }
+
+    internal suspend fun parkForReuse(next: io.github.noamcohen48.tap.wire.v1.ParkRuntime) {
+        check(
+            io.github.noamcohen48.tap.protocol.RUNTIME_PARK_CAPABILITY in enabledCapabilities &&
+                negotiatedVersion.major == 5 && negotiatedVersion.minor >= 2,
+        ) { "Driver does not support clean runtime handoff" }
+        transport.park(next)
+        scope.cancel()
     }
 
     suspend fun close() =

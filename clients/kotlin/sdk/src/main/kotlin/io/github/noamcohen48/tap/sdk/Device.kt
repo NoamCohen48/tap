@@ -10,17 +10,17 @@ import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DetachRequest
-import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceInfoQuery
+import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
+import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DismissKeyguard
 import io.github.noamcohen48.tap.api.v1.DismissNotification
-import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
-import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest
+import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
 import io.github.noamcohen48.tap.api.v1.NotificationMatch
@@ -31,19 +31,18 @@ import io.github.noamcohen48.tap.api.v1.PullFileRequest
 import io.github.noamcohen48.tap.api.v1.PushFileHeader
 import io.github.noamcohen48.tap.api.v1.PushFileRequest
 import io.github.noamcohen48.tap.api.v1.ScreenshotRequest
+import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
 import io.github.noamcohen48.tap.api.v1.SetAnimationsRequest
 import io.github.noamcohen48.tap.api.v1.SetClipboard
 import io.github.noamcohen48.tap.api.v1.SetDarkModeRequest
 import io.github.noamcohen48.tap.api.v1.SetDensityRequest
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
-import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
-import io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
-import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
-import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationRequest
-import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
+import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetOrientation
+import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
+import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
 import io.github.noamcohen48.tap.api.v1.SystemPanel
@@ -86,6 +85,7 @@ import kotlin.coroutines.CoroutineContext
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
+import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 
 /** Largest file [Device.pushFile], [Device.pullFile] and [Device.addMedia] move (512 MiB). */
 const val MAX_FILE_BYTES = 512L shl 20
@@ -140,6 +140,15 @@ data class Timeouts(
     }
 }
 
+/** Whether an attachment may reuse clean instrumentation; every session is still fresh. */
+enum class DriverStart {
+    /** Reuse only when the daemon enables it and verifies a clean runtime; otherwise start cold. */
+    AUTO,
+
+    /** Start fresh instrumentation and stop it on detach, independently of APK installation. */
+    COLD,
+}
+
 /**
  * Device-attachment options. The driver is always the daemon's (bundled, or the APKs given to
  * `tap serve --driver-apk X --driver-test-apk Y`); [skipDriverInstall] only skips reinstalling it.
@@ -161,6 +170,8 @@ data class DeviceOptions(
      * server; failure artifacts then hold what the device's own ring buffers still have.
      */
     val captureLogs: Boolean = true,
+    /** Instrumentation startup policy, independent of [skipDriverInstall]. */
+    val driverStart: DriverStart = DriverStart.AUTO,
 )
 
 /**
@@ -200,6 +211,8 @@ class Device internal constructor(
      * and is; null otherwise.
      */
     val quarantineReason: String? = null,
+    /** Whether this new attachment reused instrumentation; null for older servers/resumed handles. */
+    val driverReused: Boolean? = null,
 ) {
     private val client get() = ownerConnection.client
     private val stateMutex = Mutex()
@@ -255,7 +268,15 @@ class Device internal constructor(
         return admitted("Device.executeOrThrow") {
             val sent = command(timeout ?: timeouts.action, build)
             val result = rpcExecute(sent)
-            if (result.hasError()) throw CommandException(result, "execute", serial, selector?.render(), commandSelectors(sent, selector?.proto))
+            if (result.hasError()) {
+                throw CommandException(
+                    result,
+                    "execute",
+                    serial,
+                    selector?.render(),
+                    commandSelectors(sent, selector?.proto),
+                )
+            }
             result
         }
     }
@@ -285,11 +306,15 @@ class Device internal constructor(
         ensureTapBound("Device.capabilities")
         return admitted("Device.capabilities") {
             mapped(serial) {
-                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).getDeviceCapabilities(
-                    GetDeviceCapabilitiesRequest.newBuilder()
-                        .setClientConnectionId(ownerConnection.id)
-                        .setAttachedDeviceId(attachedDeviceId).build(),
-                ).toModel()
+                client.devices
+                    .withDeadlineAfter(30, TimeUnit.SECONDS)
+                    .getDeviceCapabilities(
+                        GetDeviceCapabilitiesRequest
+                            .newBuilder()
+                            .setClientConnectionId(ownerConnection.id)
+                            .setAttachedDeviceId(attachedDeviceId)
+                            .build(),
+                    ).toModel()
             }
         }
     }
@@ -389,7 +414,11 @@ class Device internal constructor(
     ) {
         executeOrThrow(timeout) {
             choosePermission =
-                ChoosePermission.newBuilder().setChoice(choice.toProto()).apply { accuracy?.let { setAccuracy(it.toProto()) } }.build()
+                ChoosePermission
+                    .newBuilder()
+                    .setChoice(choice.toProto())
+                    .apply { accuracy?.let { setAccuracy(it.toProto()) } }
+                    .build()
         }
     }
 
@@ -428,8 +457,12 @@ class Device internal constructor(
     suspend fun setAnimations(enabled: Boolean) {
         condition("Device.setAnimations") {
             setAnimations(
-                SetAnimationsRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                    .setEnabled(enabled).build(),
+                SetAnimationsRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled)
+                    .build(),
             )
         }
     }
@@ -441,8 +474,12 @@ class Device internal constructor(
     suspend fun setDarkMode(enabled: Boolean) {
         condition("Device.setDarkMode") {
             setDarkMode(
-                SetDarkModeRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                    .setEnabled(enabled).build(),
+                SetDarkModeRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled)
+                    .build(),
             )
         }
     }
@@ -454,8 +491,12 @@ class Device internal constructor(
     suspend fun setFontScale(scale: Float) {
         condition("Device.setFontScale") {
             setFontScale(
-                SetFontScaleRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                    .setScale(scale).build(),
+                SetFontScaleRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
+                    .setScale(scale)
+                    .build(),
             )
         }
     }
@@ -468,8 +509,12 @@ class Device internal constructor(
     suspend fun setDensity(dpi: Int?) {
         condition("Device.setDensity") {
             setDensity(
-                SetDensityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                    .apply { if (dpi != null) setDpi(dpi) }.build(),
+                SetDensityRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
+                    .apply { if (dpi != null) setDpi(dpi) }
+                    .build(),
             )
         }
     }
@@ -492,7 +537,10 @@ class Device internal constructor(
         require(airplaneMode != null || wifi != null || mobileData != null) { "set at least one of airplaneMode, wifi or mobileData" }
         condition("Device.setNetwork") {
             setNetwork(
-                SetNetworkRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                SetNetworkRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
                     .apply {
                         airplaneMode?.let(::setAirplaneMode)
                         wifi?.let(::setWifi)
@@ -515,8 +563,12 @@ class Device internal constructor(
         require(locales.isNotEmpty()) { "set at least one locale" }
         condition("Device.setSystemLocales") {
             setSystemLocales(
-                SetSystemLocalesRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                    .addAllLocales(locales).build(),
+                SetSystemLocalesRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
+                    .addAllLocales(locales)
+                    .build(),
             )
         }
     }
@@ -538,12 +590,18 @@ class Device internal constructor(
     ) {
         require(latitude in -90.0..90.0) { "latitude must be -90 to 90, not $latitude" }
         require(longitude in -180.0..180.0) { "longitude must be -180 to 180, not $longitude" }
-        require(accuracyM == null || (accuracyM.isFinite() && accuracyM > 0f)) { "accuracyM must be a positive number of meters, not $accuracyM" }
+        require(
+            accuracyM == null || (accuracyM.isFinite() && accuracyM > 0f),
+        ) { "accuracyM must be a positive number of meters, not $accuracyM" }
         require(altitudeM == null || altitudeM.isFinite()) { "altitudeM must be finite, not $altitudeM" }
         condition("Device.setLocation") {
             setLocation(
-                SetLocationRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                    .setLatitude(latitude).setLongitude(longitude)
+                SetLocationRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
+                    .setLatitude(latitude)
+                    .setLongitude(longitude)
                     .apply {
                         accuracyM?.let(::setAccuracyM)
                         altitudeM?.let(::setAltitudeM)
@@ -560,7 +618,15 @@ class Device internal constructor(
      */
     suspend fun setStayAwake(enabled: Boolean) {
         condition("Device.setStayAwake") {
-            setStayAwake(SetStayAwakeRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).setEnabled(enabled).build())
+            setStayAwake(
+                SetStayAwakeRequest
+                    .newBuilder()
+                    .setClientConnectionId(
+                        ownerConnection.id,
+                    ).setAttachedDeviceId(attachedDeviceId)
+                    .setEnabled(enabled)
+                    .build(),
+            )
         }
     }
 
@@ -584,7 +650,10 @@ class Device internal constructor(
         }
         condition("Device.setAccessibilityDisplay") {
             setAccessibilityDisplay(
-                SetAccessibilityDisplayRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
+                SetAccessibilityDisplayRequest
+                    .newBuilder()
+                    .setClientConnectionId(ownerConnection.id)
+                    .setAttachedDeviceId(attachedDeviceId)
                     .apply {
                         highContrastText?.let(::setHighContrastText)
                         colorInversion?.let(::setColorInversion)
@@ -609,7 +678,12 @@ class Device internal constructor(
                     client.devices
                         .withDeadlineAfter(timeouts.lifecycle.inWholeMilliseconds + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
                         .getForegroundActivity(
-                            GetForegroundActivityRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).build(),
+                            GetForegroundActivityRequest
+                                .newBuilder()
+                                .setClientConnectionId(
+                                    ownerConnection.id,
+                                ).setAttachedDeviceId(attachedDeviceId)
+                                .build(),
                         )
                 }
             }
@@ -650,8 +724,13 @@ class Device internal constructor(
     ) {
         require(size <= MAX_FILE_BYTES) { "at most $MAX_FILE_BYTES bytes are pushed, not $size" }
         val header =
-            PushFileHeader.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                .setDevicePath(devicePath).setSizeBytes(size).build()
+            PushFileHeader
+                .newBuilder()
+                .setClientConnectionId(ownerConnection.id)
+                .setAttachedDeviceId(attachedDeviceId)
+                .setDevicePath(devicePath)
+                .setSizeBytes(size)
+                .build()
         fileCall("Device.pushFile") {
             pushFile(
                 uploadParts(
@@ -686,8 +765,12 @@ class Device internal constructor(
         out: OutputStream,
     ) {
         val request =
-            PullFileRequest.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                .setDevicePath(devicePath).build()
+            PullFileRequest
+                .newBuilder()
+                .setClientConnectionId(ownerConnection.id)
+                .setAttachedDeviceId(attachedDeviceId)
+                .setDevicePath(devicePath)
+                .build()
         fileCall("Device.pullFile") {
             var expected = -1L
             var received = 0L
@@ -730,8 +813,13 @@ class Device internal constructor(
     ): String {
         require(size <= MAX_FILE_BYTES) { "at most $MAX_FILE_BYTES bytes are added, not $size" }
         val header =
-            AddMediaHeader.newBuilder().setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                .setFileName(fileName).setSizeBytes(size).build()
+            AddMediaHeader
+                .newBuilder()
+                .setClientConnectionId(ownerConnection.id)
+                .setAttachedDeviceId(attachedDeviceId)
+                .setFileName(fileName)
+                .setSizeBytes(size)
+                .build()
         var path = ""
         fileCall("Device.addMedia") {
             path =
@@ -859,7 +947,8 @@ class Device internal constructor(
     /** The active notifications, newest first (group summaries left out), as [awaitNotification] reads them. */
     suspend fun notifications(timeout: Duration? = null): List<Notification> =
         executeOrThrow(timeout) { listNotifications = ListNotifications.getDefaultInstance() }
-            .notifications.notificationsList.map { it.toModel() }
+            .notifications.notificationsList
+            .map { it.toModel() }
 
     /**
      * Opens the one active notification that matches (as for [awaitNotification]) as a tap on it
@@ -880,7 +969,12 @@ class Device internal constructor(
     ) {
         executeOrThrow(timeout) {
             openNotification =
-                OpenNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).apply { action?.let(::setAction) }.build()
+                OpenNotification
+                    .newBuilder()
+                    .setMatch(
+                        notificationMatch(title, text, mode, packageName),
+                    ).apply { action?.let(::setAction) }
+                    .build()
         }
     }
 
@@ -896,7 +990,10 @@ class Device internal constructor(
         packageName: String? = null,
         timeout: Duration? = null,
     ) {
-        executeOrThrow(timeout) { dismissNotification = DismissNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).build() }
+        executeOrThrow(timeout) {
+            dismissNotification =
+                DismissNotification.newBuilder().setMatch(notificationMatch(title, text, mode, packageName)).build()
+        }
     }
 
     private fun notificationMatch(
@@ -946,7 +1043,11 @@ class Device internal constructor(
      * an unfinished one. Capture begins shortly after this returns, and a capture the device
      * refuses is reported by [stopRecording].
      */
-    suspend fun startRecording(video: Boolean = true, audioSource: String? = null, maxSeconds: Int = if (video) 30 else 60) {
+    suspend fun startRecording(
+        video: Boolean = true,
+        audioSource: String? = null,
+        maxSeconds: Int = if (video) 30 else 60,
+    ) {
         ensureTapBound("Device.startRecording")
         require(video || audioSource != null) { "Select video or an audio source" }
         require(audioSource == null || audioSource in setOf("output", "playback", "mic")) { "Unknown audio source: $audioSource" }
@@ -954,9 +1055,14 @@ class Device internal constructor(
         admitted("Device.startRecording") {
             mapped(serial) {
                 client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).startRecording(
-                    StartRecordingRequest.newBuilder()
-                        .setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId)
-                        .setVideo(video).setAudioSource(audioSource.orEmpty()).setMaxSeconds(maxSeconds).build(),
+                    StartRecordingRequest
+                        .newBuilder()
+                        .setClientConnectionId(ownerConnection.id)
+                        .setAttachedDeviceId(attachedDeviceId)
+                        .setVideo(video)
+                        .setAudioSource(audioSource.orEmpty())
+                        .setMaxSeconds(maxSeconds)
+                        .build(),
                 )
             }
         }
@@ -966,12 +1072,16 @@ class Device internal constructor(
     suspend fun stopRecording(): Recording {
         ensureTapBound("Device.stopRecording")
         return admitted("Device.stopRecording") {
-            val response = mapped(serial) {
-                client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).stopRecording(
-                    StopRecordingRequest.newBuilder()
-                        .setClientConnectionId(ownerConnection.id).setAttachedDeviceId(attachedDeviceId).build(),
-                )
-            }
+            val response =
+                mapped(serial) {
+                    client.devices.withDeadlineAfter(30, TimeUnit.SECONDS).stopRecording(
+                        StopRecordingRequest
+                            .newBuilder()
+                            .setClientConnectionId(ownerConnection.id)
+                            .setAttachedDeviceId(attachedDeviceId)
+                            .build(),
+                    )
+                }
             val bytes = response.data.toByteArray()
             val hash = MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
             if (hash != response.sha256) throw IllegalStateException("Recording checksum mismatch for $serial")
@@ -1029,8 +1139,7 @@ class Device internal constructor(
                             .setClientConnectionId(ownerConnection.id)
                             .setAttachedDeviceId(attachedDeviceId)
                             .build(),
-                    )
-                    .linesList
+                    ).linesList
                     .let(::DriverLog)
             }
         }
@@ -1473,8 +1582,8 @@ class Device internal constructor(
             .apply(build)
             .build()
 
-    private suspend fun rpcExecute(command: Command): CommandResult {
-        return mapped(serial) {
+    private suspend fun rpcExecute(command: Command): CommandResult =
+        mapped(serial) {
             client.devices
                 .withDeadlineAfter(command.timeoutMs + RPC_DEADLINE_SLACK_MS, TimeUnit.MILLISECONDS)
                 .execute(
@@ -1486,7 +1595,6 @@ class Device internal constructor(
                         .build(),
                 ).result
         }
-    }
 
     /** Best-effort diagnostics for a timeout message: null on failure, but never swallows cancellation. */
     private suspend fun <T> observeOrNull(block: suspend () -> T): T? =
@@ -1514,7 +1622,13 @@ class Device internal constructor(
                     .setClientConnectionId(connection.id)
                     .setSerial(serial)
                     .setDefaultTimeoutMs(timeouts.action.inWholeMilliseconds)
-                    .apply {
+                    .setDriverStart(
+                        if (options.driverStart == DriverStart.COLD) {
+                            io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_COLD
+                        } else {
+                            io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_AUTO
+                        },
+                    ).apply {
                         // Absent = fail at once when another session holds the device.
                         if (options.waitForDevice.isPositive()) setLeaseTimeoutMs(options.waitForDevice.inWholeMilliseconds)
                         if (options.skipDriverInstall) setSkipDriverInstall(true)
@@ -1536,6 +1650,7 @@ class Device internal constructor(
                 timeouts,
                 bounds,
                 quarantineReason = if (response.hasQuarantineReason()) response.quarantineReason else null,
+                driverReused = if (response.hasDriverReused()) response.driverReused else null,
             )
         }
     }
@@ -1545,7 +1660,11 @@ class Device internal constructor(
 internal fun sha256Hex(bytes: ByteArray): String =
     java.util.HexFormat
         .of()
-        .formatHex(java.security.MessageDigest.getInstance("SHA-256").digest(bytes))
+        .formatHex(
+            java.security.MessageDigest
+                .getInstance("SHA-256")
+                .digest(bytes),
+        )
 
 /**
  * Coroutine-context token marking the body of admitted [Device] operations: every device whose
@@ -1560,8 +1679,7 @@ internal class DeviceAdmission private constructor(
     companion object Key : CoroutineContext.Key<DeviceAdmission> {
         suspend fun holds(device: Device): Boolean = currentCoroutineContext()[Key]?.devices?.contains(device) == true
 
-        suspend fun including(device: Device): DeviceAdmission =
-            DeviceAdmission(currentCoroutineContext()[Key]?.devices.orEmpty() + device)
+        suspend fun including(device: Device): DeviceAdmission = DeviceAdmission(currentCoroutineContext()[Key]?.devices.orEmpty() + device)
     }
 
     override val key: CoroutineContext.Key<*> get() = Key

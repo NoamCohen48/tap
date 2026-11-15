@@ -1,8 +1,8 @@
 package io.github.noamcohen48.tap.host
 
+import kotlinx.coroutines.CancellationException
 import java.nio.file.Path
 import java.util.UUID
-import kotlinx.coroutines.CancellationException
 
 /**
  * `tap doctor` for one device: what a session that is no longer running left behind, and with
@@ -95,11 +95,26 @@ object DeviceDoctor {
         record?.inspectedQuarantine?.let { return Outcome.Quarantined(it) }
         val findings = mutableListOf<String>()
         if (record?.restoreRetryable == true) findings += "quarantined until its device settings read back (${record.quarantineReason})"
-        if (record != null && record.state != JournalState.CLOSED && record.state != JournalState.QUARANTINED) findings += "a session (generation ${record.generation}) ended without closing"
-        if (record != null && record.savedState.isNotEmpty()) findings += "device settings a session changed were not restored (${record.savedState.size})"
-        if (adb.processIds(serial, DRIVER_PACKAGE).isNotEmpty()) findings += "the driver is running with no session"
+        if (record != null && record.state != JournalState.CLOSED &&
+            record.state != JournalState.QUARANTINED
+        ) {
+            findings += "a session (generation ${record.generation}) ended without closing"
+        }
+        if (record != null &&
+            record.savedState.isNotEmpty()
+        ) {
+            findings += "device settings a session changed were not restored (${record.savedState.size})"
+        }
+        val pids = adb.processIds(serial, DRIVER_PACKAGE)
         val forwards = adb.forwards(serial).filter { it.devicePort in DEVICE_PORT_RANGE }
-        forwards.forEach { findings += "port forward tcp:${it.hostPort} -> tcp:${it.devicePort} has no session" }
+        val cleanIdle =
+            record?.runtimeIdle == true && pids == listOf(record.driverPid) &&
+                adb.bootId(serial) == record.bootId &&
+                adb.processStat(serial, record.driverPid!!) == Adb.ProcessStat.Live(record.driverStartToken!!)
+        if (pids.isNotEmpty() && !cleanIdle) findings += "the driver is running with no session"
+        forwards
+            .filterNot { cleanIdle && it.hostPort == record!!.hostPort && it.devicePort == record.devicePort }
+            .forEach { findings += "port forward tcp:${it.hostPort} -> tcp:${it.devicePort} has no session" }
         if (findings.isEmpty()) return Outcome.Clean
         if (!fix) return Outcome.Findings(findings.map { Finding(it) })
         try {
@@ -107,7 +122,15 @@ object DeviceDoctor {
             // close the journal, put back what it saved (again, for a retryable quarantine); it
             // quarantines what it cannot prove.
             val recovered = recoverJournal(adb, serial, adb.bootId(serial), store)
-            recovered?.let { if (it.state == JournalState.QUARANTINED) retryRestore(adb, serial, store, it) else restorePriorState(adb, serial, store, it) }
+            recovered?.let {
+                if (it.state ==
+                    JournalState.QUARANTINED
+                ) {
+                    retryRestore(adb, serial, store, it)
+                } else {
+                    restorePriorState(adb, serial, store, it)
+                }
+            }
             forceStopDriverAndVerify(adb, serial)
             adb
                 .forwards(serial)
@@ -161,7 +184,11 @@ object DeviceDoctor {
                 }
                 null to true
             }
-        if (!corrupt && record?.state != JournalState.QUARANTINED && record?.inspectedQuarantine == null) return UnquarantineOutcome.NotQuarantined
+        if (!corrupt && record?.state != JournalState.QUARANTINED &&
+            record?.inspectedQuarantine == null
+        ) {
+            return UnquarantineOutcome.NotQuarantined
+        }
         val reason = record?.let { it.quarantineReason ?: it.inspectedQuarantine ?: NO_REASON } ?: unreadableReason
         val bootId = adb.bootId(serial)
         val cleaned = mutableListOf<String>()

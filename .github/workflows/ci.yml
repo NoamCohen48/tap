@@ -391,6 +391,10 @@ jobs:
           trap '"$tap" stop' EXIT
           "$tap" status
           python .github/scripts/daemon_smoke.py
+          "$tap" stop
+          # Native SIGTERM must run the hook, not merely kill the process.
+          test ! -e "${TAP_STATE_DIR:-$HOME/.tap}/daemon.json"
+          trap - EXIT
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: tap-daemon-linux-x86_64

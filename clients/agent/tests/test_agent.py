@@ -33,6 +33,37 @@ def _node(ref: str, value: str, change=pb.NODE_CHANGE_UNSPECIFIED) -> pb.ScreenN
     )
 
 
+def test_cold_start_policy_is_forwarded_and_never_replaces_an_active_attachment(fake, agent):
+    agent.attach("emulator-5554", driver_start="cold")
+    assert fake.devices.attach_requests[-1].driver_start == pb.DRIVER_START_COLD
+    before = len(fake.devices.attach_requests)
+    with pytest.raises(AgentError, match="existing attachment") as failure:
+        agent.attach("emulator-5554", driver_start="cold")
+    assert failure.value.exit_code == EXIT_USAGE
+    assert len(fake.devices.attach_requests) == before
+    with pytest.raises(AgentError, match="driver_start"):
+        agent.attach("85e49002", driver_start="warm")
+
+
+def test_cli_cold_attach_flag(fake, agent):
+    args = cli.parser().parse_args(["attach", "emulator-5554", "--driver-start", "cold"])
+    cli.run(args, agent)
+    assert fake.devices.attach_requests[-1].driver_start == pb.DRIVER_START_COLD
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(["attach", "phone", "--driver-start", "warm"])
+
+
+@pytest.mark.anyio
+async def test_mcp_cold_attach_policy(fake, server):
+    async with Client(server, mode="legacy") as client:
+        result = await client.call_tool("attach", {"serial": "emulator-5554", "driver_start": "cold"})
+        assert not result.is_error
+        assert fake.devices.attach_requests[-1].driver_start == pb.DRIVER_START_COLD
+        result = await client.call_tool("attach", {"serial": "emulator-5554", "driver_start": "cold"})
+        assert result.is_error
+        assert len(fake.devices.attach_requests) == 1
+
+
 def test_attach_creates_a_held_session_and_later_calls_resume_it(fake, agent):
     out = agent.attach("emulator-5554", idle=600)
     assert out == "attached emulator-5554 to session 'agent', idle timeout 10m"

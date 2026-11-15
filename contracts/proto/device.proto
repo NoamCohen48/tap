@@ -168,6 +168,13 @@ message ListDevicesResponse {
   repeated DeviceEntry devices = 1;
 }
 
+// Runtime reuse never resumes the previous session: identity, credentials and state are fresh.
+enum DriverStartPolicy {
+  DRIVER_START_POLICY_UNSPECIFIED = 0; // daemon default (AUTO)
+  DRIVER_START_AUTO = 1; // reuse only a proven-clean daemon-owned runtime, otherwise cold
+  DRIVER_START_COLD = 2; // start fresh instrumentation and stop it on detach
+}
+
 message AttachRequest {
   string client_connection_id = 1;
   string serial = 2;
@@ -187,6 +194,7 @@ message AttachRequest {
   // False: no logcat child runs, DeviceLogService is FAILED_PRECONDITION and `DeviceLogs` reads
   // the device's ring buffers at the time of the call.
   optional bool capture_logs = 10;
+  DriverStartPolicy driver_start = 11;
 }
 
 message AttachResponse {
@@ -196,6 +204,8 @@ message AttachResponse {
   DeviceInfo device_info = 4;
   // Set when the attachment inspects a quarantined device: why it is quarantined.
   optional string quarantine_reason = 5;
+  // True only when this new session reused instrumentation; generation and credentials changed.
+  optional bool driver_reused = 6;
 }
 
 message DetachRequest {

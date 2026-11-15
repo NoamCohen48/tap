@@ -18,7 +18,7 @@ import time
 import uuid
 from dataclasses import replace
 from collections.abc import Callable, Iterator, Sequence
-from typing import TypeVar
+from typing import Literal, TypeVar
 
 from tap_e2e import (  # pyright: ignore[reportMissingImports]
     AppDeath,
@@ -575,12 +575,17 @@ class Agent:
         idle: float = DEFAULT_IDLE,
         wait_for_device: float = 0,
         inspect_quarantined: bool = False,
+        driver_start: Literal["auto", "cold"] = "auto",
     ) -> str:
         """Attaches ``serial`` to the session, creating the session (a held connection with an
         ``idle`` timeout) when it does not exist. ``inspect_quarantined`` attaches a quarantined
-        device to inspect and fix it; it stays quarantined after detach until ``unquarantine``."""
+        device to inspect and fix it; it stays quarantined after detach until ``unquarantine``.
+        ``driver_start="cold"`` forces a fresh driver, independently of APK installation. Release
+        an existing attachment first; cold mode never silently replaces an active session."""
 
         def step() -> str:
+            if driver_start not in ("auto", "cold"):
+                raise AgentError("driver_start must be auto or cold", EXIT_USAGE)
             entry = self._held()
             created = entry is None
             if entry is None:
@@ -589,10 +594,13 @@ class Agent:
                 connection = TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold)
                 attached = next((d for d in entry.attached_devices if d.serial == serial), None)
                 if attached is not None:
+                    if driver_start == "cold":
+                        raise AgentError("Release or detach the existing attachment before requesting a cold driver", EXIT_USAGE)
                     return f"{serial} is already attached to session {self.session!r}"
             try:
                 device = connection.attach_device(
-                    serial, wait_for_device=wait_for_device, inspect_quarantined=inspect_quarantined
+                    serial, wait_for_device=wait_for_device, inspect_quarantined=inspect_quarantined,
+                    driver_start=driver_start,
                 )
             except BaseException:
                 if created:  # leave no empty session behind

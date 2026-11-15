@@ -62,6 +62,8 @@ graalvmNative {
             mainClass.set("io.github.noamcohen48.tap.daemon.cli.TapDaemonMainKt")
             buildArgs.addAll(
                 "--no-fallback",
+                // SIGTERM (`tap stop`) must run restoration and idle-runtime cleanup hooks.
+                "--install-exit-handlers",
                 // Native-image otherwise uses every available core; keep developer machines
                 // responsive while several agents/builds share them (independent of Gradle workers).
                 "--parallelism=2",

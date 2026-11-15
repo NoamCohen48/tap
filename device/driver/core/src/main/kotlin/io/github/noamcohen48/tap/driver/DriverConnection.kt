@@ -18,10 +18,14 @@ import io.github.noamcohen48.tap.protocol.MAX_REQUEST_TIMEOUT_MS
 import io.github.noamcohen48.tap.protocol.ProtocolException
 import io.github.noamcohen48.tap.protocol.Responses
 import io.github.noamcohen48.tap.protocol.label
+import io.github.noamcohen48.tap.protocol.parsePayload
 import io.github.noamcohen48.tap.protocol.parseRequest
 import io.github.noamcohen48.tap.protocol.stamped
+import io.github.noamcohen48.tap.protocol.validateRuntimePark
+import io.github.noamcohen48.tap.wire.v1.ParkRuntime
 import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.wire.v1.Response
+import io.github.noamcohen48.tap.wire.v1.RuntimeParked
 import java.io.EOFException
 import java.io.IOException
 import java.net.Socket
@@ -46,36 +50,41 @@ internal class DriverConnection(
     private val uninterruptibleGraceMs: Long,
     private val heartbeatTimeoutMs: Long,
     private val onPoisoned: (reason: String) -> Unit,
+    private val resetForReuse: ((ParkRuntime) -> Unit)? = null,
 ) : PipelineListener {
     private val transportEnded = AtomicBoolean(false)
     private var highestRequestId = 0L
-    private val pipeline = CommandPipeline(
-        clock = SystemClock::elapsedRealtime,
-        sink = ::writeOutbound,
-        listener = this,
-        uninterruptibleGraceMs = uninterruptibleGraceMs,
-        heartbeatTimeoutMs = heartbeatTimeoutMs,
-        onExecuted = ::logFinished,
-    )
+    private val pipeline =
+        CommandPipeline(
+            clock = SystemClock::elapsedRealtime,
+            sink = ::writeOutbound,
+            listener = this,
+            uninterruptibleGraceMs = uninterruptibleGraceMs,
+            heartbeatTimeoutMs = heartbeatTimeoutMs,
+            onExecuted = ::logFinished,
+        )
 
     /** The command the executor is running, when it is one [ActionLog] logs. Executor thread only. */
     private var logged: Pair<Long, Command>? = null
 
     val isPoisoned: Boolean get() = pipeline.isPoisoned
+    var parked: ParkRuntime? = null
+        private set
 
     fun run() {
         faults.onConnectionOpened(::abortConnection)
         pipeline.start()
         try {
             while (!transportEnded.get()) {
-                val frame = try {
-                    FrameCodec.read(socket.getInputStream())
-                } catch (_: EOFException) {
-                    return
-                } catch (malformed: ProtocolException) {
-                    protocolViolation(malformed.message ?: "Malformed frame")
-                    return
-                }
+                val frame =
+                    try {
+                        FrameCodec.read(socket.getInputStream())
+                    } catch (_: EOFException) {
+                        return
+                    } catch (malformed: ProtocolException) {
+                        protocolViolation(malformed.message ?: "Malformed frame")
+                        return
+                    }
                 pipeline.heartbeat()
                 if (!handle(frame)) return
             }
@@ -89,28 +98,88 @@ internal class DriverConnection(
         }
     }
 
-    private fun handle(frame: Frame): Boolean = when (frame.type) {
-        FrameType.CLOSE -> false
-        FrameType.REQUEST -> handleRequest(frame)
-        FrameType.CANCEL -> when {
-            frame.requestId <= 0 -> protocolViolation("CANCEL requires a positive request ID, got ${frame.requestId}")
-            frame.payload.isNotEmpty() -> protocolViolation("CANCEL carries no payload")
-            else -> {
-                pipeline.cancel(frame.requestId)
-                true
+    private fun handle(frame: Frame): Boolean =
+        when (frame.type) {
+            FrameType.PARK_RUNTIME -> {
+                park(frame)
+            }
+
+            FrameType.CLOSE -> {
+                false
+            }
+
+            FrameType.REQUEST -> {
+                handleRequest(frame)
+            }
+
+            FrameType.CANCEL -> {
+                when {
+                    frame.requestId <= 0 -> {
+                        protocolViolation("CANCEL requires a positive request ID, got ${frame.requestId}")
+                    }
+
+                    frame.payload.isNotEmpty() -> {
+                        protocolViolation("CANCEL carries no payload")
+                    }
+
+                    else -> {
+                        pipeline.cancel(frame.requestId)
+                        true
+                    }
+                }
+            }
+
+            FrameType.PING -> {
+                when {
+                    frame.requestId != 0L -> {
+                        protocolViolation("PING is a connection frame, got request ID ${frame.requestId}")
+                    }
+
+                    frame.payload.isNotEmpty() -> {
+                        protocolViolation("PING carries no payload")
+                    }
+
+                    else -> {
+                        pipeline.pong(0)
+                        true
+                    }
+                }
+            }
+
+            FrameType.HELLO, FrameType.CHALLENGE, FrameType.AUTH, FrameType.AUTH_RESULT,
+            FrameType.RESPONSE, FrameType.PONG, FrameType.BLOB_START, FrameType.BLOB_CHUNK, FrameType.BLOB_END,
+            FrameType.RUNTIME_PARKED,
+            -> {
+                protocolViolation("Illegal frame ${frame.type} after authentication")
             }
         }
-        FrameType.PING -> when {
-            frame.requestId != 0L -> protocolViolation("PING is a connection frame, got request ID ${frame.requestId}")
-            frame.payload.isNotEmpty() -> protocolViolation("PING carries no payload")
-            else -> {
-                pipeline.pong(0)
-                true
+
+    private fun park(frame: Frame): Boolean {
+        val reset = resetForReuse ?: return protocolViolation("Runtime reuse is disabled")
+        if (frame.requestId != 0L) return protocolViolation("PARK_RUNTIME requires request ID 0")
+        val next =
+            try {
+                parsePayload("PARK_RUNTIME", frame.payload, ParkRuntime::parseFrom).also {
+                    validateRuntimePark(it, sessionId, generation)
+                }
+            } catch (_: Exception) {
+                return protocolViolation("Invalid runtime handoff")
             }
+        // No reader/writer/executor from this session may survive the acknowledgement.
+        if (!pipeline.awaitTermination(5_000) || pipeline.isPoisoned) {
+            onPoisoned("RUNTIME_DRAIN_UNCERTAIN")
+            return false
         }
-        FrameType.HELLO, FrameType.CHALLENGE, FrameType.AUTH, FrameType.AUTH_RESULT,
-        FrameType.RESPONSE, FrameType.PONG, FrameType.BLOB_START, FrameType.BLOB_CHUNK, FrameType.BLOB_END ->
-            protocolViolation("Illegal frame ${frame.type} after authentication")
+        reset(next)
+        val response =
+            RuntimeParked
+                .newBuilder()
+                .setNextSessionId(next.nextSessionId)
+                .setNextGeneration(next.nextGeneration)
+                .build()
+        FrameCodec.write(socket.getOutputStream(), Frame(FrameType.RUNTIME_PARKED, 0, response.toByteArray()))
+        parked = next
+        return false
     }
 
     private fun handleRequest(frame: Frame): Boolean {
@@ -182,20 +251,35 @@ internal class DriverConnection(
         if (transportEnded.get()) return
         val output = socket.getOutputStream()
         when (message) {
-            is Outbound.TerminalResponse -> writeResponse(message.requestId, message.response)
-            is Outbound.Pong -> FrameCodec.write(output, Frame(FrameType.PONG, 0, byteArrayOf()))
-            is Outbound.BlobStartFrame -> FrameCodec.write(
-                output,
-                Frame(FrameType.BLOB_START, message.requestId, message.start.toByteArray()),
-            )
-            is Outbound.BlobChunkFrame ->
+            is Outbound.TerminalResponse -> {
+                writeResponse(message.requestId, message.response)
+            }
+
+            is Outbound.Pong -> {
+                FrameCodec.write(output, Frame(FrameType.PONG, 0, byteArrayOf()))
+            }
+
+            is Outbound.BlobStartFrame -> {
+                FrameCodec.write(
+                    output,
+                    Frame(FrameType.BLOB_START, message.requestId, message.start.toByteArray()),
+                )
+            }
+
+            is Outbound.BlobChunkFrame -> {
                 FrameCodec.write(output, Frame(FrameType.BLOB_CHUNK, message.requestId, message.payload))
-            is Outbound.BlobEndFrame -> FrameCodec.write(
-                output,
-                Frame(FrameType.BLOB_END, message.requestId, message.end.toByteArray()),
-            )
-            is Outbound.Close ->
+            }
+
+            is Outbound.BlobEndFrame -> {
+                FrameCodec.write(
+                    output,
+                    Frame(FrameType.BLOB_END, message.requestId, message.end.toByteArray()),
+                )
+            }
+
+            is Outbound.Close -> {
                 FrameCodec.write(output, Frame(FrameType.CLOSE, 0, message.reason.take(MAX_CLOSE_REASON_CHARS).encodeToByteArray()))
+            }
         }
     }
 
@@ -213,15 +297,21 @@ internal class DriverConnection(
      * Every response leaves stamped with the request identity it answers, whichever lane built
      * it (engine, pipeline or reader rejection); the duration is the one already measured.
      */
-    private fun writeResponse(requestId: Long, response: Response) {
+    private fun writeResponse(
+        requestId: Long,
+        response: Response,
+    ) {
         val durationMs = response.result.durationMs
         var payload = response.stamped(durationMs, requestId, generation).toByteArray()
         if (payload.size > MAX_CONTROL_PAYLOAD) {
-            payload = Responses.failure(
-                ErrorCode.ERR_PAYLOAD_TOO_LARGE,
-                durationMs = durationMs,
-                message = "Response exceeded $MAX_CONTROL_PAYLOAD bytes",
-            ).stamped(durationMs, requestId, generation).toByteArray()
+            payload =
+                Responses
+                    .failure(
+                        ErrorCode.ERR_PAYLOAD_TOO_LARGE,
+                        durationMs = durationMs,
+                        message = "Response exceeded $MAX_CONTROL_PAYLOAD bytes",
+                    ).stamped(durationMs, requestId, generation)
+                    .toByteArray()
         }
         FrameCodec.write(socket.getOutputStream(), Frame(FrameType.RESPONSE, requestId, payload))
     }

@@ -163,6 +163,8 @@ tap/
 |   |   |   +-- Adb.kt               every ADB command as a typed method (`open class Adb`, serial-specific, parsing inside); raw `run` is `@RawAdb` opt-in, allowed only in :host:validation
 |   |   |   +-- SessionJournal.kt    JournalState, SessionJournal, SessionJournalStore (lease + fsync'd atomic write)
 |   |   |   +-- DriverLifecycle.kt   start-with-retry, port range, forward, process observation, journal recovery, cleanup
+|   |   |   +-- DriverRuntimeCache.kt opt-in bounded idle processes; fresh credentials, serial-locked identity checks/eviction
+|   |   |   +-- SessionLifecycleTimings.kt monotonic stage diagnostics; ScreenPreparation.kt conservative awake-state parsing
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
 |   |   |   +-- DriverClient.kt      authenticated client API, PendingCommand outcome/cancellation semantics, heartbeat policy, screenshot()
 |   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
@@ -490,6 +492,16 @@ lease(serial) -> bootId -> recoverJournal -> [install driver APKs] -> journal CR
 close(): client.close -> remove exact forward -> cleanupInstrumentation
   -> journal CLOSED, or QUARANTINED(SESSION_CLEANUP_UNCERTAIN) -> release lease
 ```
+
+With the opt-in `DriverRuntimeCache`, AUTO may instead verify a CLOSED idle runtime under the
+serial lock, recheck installed APK digests, and authenticate with pre-provisioned fresh credentials.
+Clean detach drains/joins command lanes and the location emitter, destroys UiAutomation, restores
+state and records `CLOSED(runtimeIdle=true)` before unlocking. The idle process has no input
+pipeline/automation and cannot reserve a device; bounded expiry and host eviction clean it up.
+Other processes cold-recover it. Changed rotation baselines, cold policy, startup overrides,
+synchronization, inspection and uncertainty refuse reuse. `DriverRuntimeReset.kt` contains the
+narrow Android/AndroidX disconnect bridge; protocol 5.2 adds the terminal PARK handshake. See
+`fast-attach.md` and pool decision 5 for the exact invariants and matrix evidence.
 
 Any failure during `open` runs the same cleanup and journals `CLOSED` or `QUARANTINED`
 (`SESSION_START_CLEANUP_UNCERTAIN`); `close()` throws after releasing when cleanup could not
