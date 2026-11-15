@@ -12,6 +12,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import kotlinx.coroutines.delay
 
 @OptIn(ExperimentalSerializationApi::class)
@@ -140,15 +141,34 @@ class SessionJournalStore(root: Path, private val serial: String) {
         channel.write(java.nio.ByteBuffer.wrap(holder.encodeToByteArray()), 0)
     }
 
-    /** The current record, null when there is none; unreadable or invalid content is a
-     * [CorruptJournalException] (recovery then preserves it and quarantines). */
+    /**
+     * The current record, null when there is none; unreadable or invalid content is a
+     * [CorruptJournalException] (recovery then preserves it and quarantines).
+     *
+     * A record with fields this engine does not know was written by another engine. A CLOSED one
+     * owes the device nothing, so it reads without them; an open one is a
+     * [ForeignJournalException], which recovery leaves on disk.
+     */
     fun read(): SessionJournal? {
         if (!Files.exists(journalPath)) return null
+        val text = Files.readString(journalPath)
         return try {
-            json.decodeFromString<SessionJournal>(Files.readString(journalPath)).also(::validate)
-        } catch (error: Exception) {
-            throw CorruptJournalException(serial, "Corrupt session journal: $journalPath", error)
+            json.decodeFromString<SessionJournal>(text).also(::validate)
+        } catch (strict: Exception) {
+            val lenient =
+                runCatching { lenientJson.decodeFromString<SessionJournal>(text).also(::validate) }.getOrNull()
+                    ?: throw CorruptJournalException(serial, "Corrupt session journal: $journalPath", strict)
+            if (lenient.state == JournalState.CLOSED) return lenient
+            throw ForeignJournalException(serial, unknownFields(text), strict)
         }
+    }
+
+    private val lenientJson = Json(json) { ignoreUnknownKeys = true }
+
+    /** The top-level keys of [text] that [SessionJournal] does not have; empty when only nested ones differ. */
+    private fun unknownFields(text: String): List<String> {
+        val known = SessionJournal.serializer().descriptor.let { d -> (0 until d.elementsCount).map(d::getElementName).toSet() }
+        return runCatching { json.parseToJsonElement(text).jsonObject.keys.filterNot { it in known }.sorted() }.getOrDefault(emptyList())
     }
 
     fun preserveCorrupt(): Path? {

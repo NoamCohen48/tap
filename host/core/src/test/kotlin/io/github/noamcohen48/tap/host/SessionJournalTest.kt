@@ -119,6 +119,25 @@ class SessionJournalTest {
         resetRequired = true,
     )
 
+    @Test
+    fun aClosedRecordOfAnotherEngineReadsWithoutItsUnknownFields() {
+        val store = SessionJournalStore(Files.createTempDirectory("tap-foreign-journal-test"), "serial")
+        val closed = record(generation = 3).copy(state = JournalState.CLOSED)
+        store.write(closed)
+        Files.writeString(store.file, Files.readString(store.file).replaceFirst("{", "{\"runtimeIdle\":{\"x\":1},"))
+        assertEquals(closed, store.read())
+    }
+
+    @Test
+    fun anOpenRecordOfAnotherEngineNamesTheFieldsItDoesNotKnow() {
+        val store = SessionJournalStore(Files.createTempDirectory("tap-foreign-journal-test"), "serial")
+        store.write(record(generation = 3).copy(state = JournalState.ACTIVE))
+        Files.writeString(store.file, Files.readString(store.file).replaceFirst("{", "{\"runtimeIdle\":true,\"zeta\":1,"))
+        val foreign = assertFailsWith<ForeignJournalException> { store.read() }
+        assertEquals(listOf("runtimeIdle", "zeta"), foreign.fields)
+        assertTrue("another Tap engine" in foreign.message!!, foreign.message)
+    }
+
     private fun record(generation: Long, sessionId: String = "session-$generation") = SessionJournal(
         state = JournalState.CLOSED,
         serial = "serial",

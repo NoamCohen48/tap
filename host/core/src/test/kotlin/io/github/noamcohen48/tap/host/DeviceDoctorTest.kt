@@ -160,6 +160,25 @@ class DeviceDoctorTest {
         }
 
     @Test
+    fun `an open journal of another engine is reported quarantined and only unquarantine closes it`(): Unit =
+        runBlocking {
+            val root = Files.createTempDirectory("tap-doctor")
+            journal(root, JournalState.ACTIVE)
+            val store = SessionJournalStore(root, serial)
+            val written = Files.readString(store.file).replaceFirst("{", "{\"runtimeIdle\":true,")
+            Files.writeString(store.file, written)
+            for (fix in listOf(false, true)) {
+                val outcome = DeviceDoctor.check(leftovers(), root, serial, fix = fix)
+                assertTrue(outcome is Outcome.Quarantined && "another Tap engine" in outcome.reason, outcome.toString())
+                assertEquals(written, Files.readString(store.file))
+            }
+            val released = DeviceDoctor.unquarantine(leftovers(), root, serial) as UnquarantineOutcome.Unquarantined
+            assertEquals("the session journal was written by another Tap engine (runtimeIdle)", released.reason)
+            assertEquals(JournalState.CLOSED, store.read()?.state)
+            assertTrue(Files.list(root).use { files -> files.anyMatch { ".corrupt-" in it.fileName.toString() } })
+        }
+
+    @Test
     fun `unquarantine leaves a held or healthy device alone`(): Unit =
         runBlocking {
             val root = Files.createTempDirectory("tap-doctor")

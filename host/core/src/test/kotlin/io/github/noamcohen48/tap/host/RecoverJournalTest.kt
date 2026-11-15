@@ -158,6 +158,20 @@ class RecoverJournalTest {
             assertTrue(Files.list(root).use { files -> files.anyMatch { ".corrupt-" in it.fileName.toString() } })
         }
 
+    @Test
+    fun `an open journal of another engine is refused and left as it is`() =
+        runBlocking {
+            store.write(record(JournalState.ACTIVE))
+            val written = Files.readString(store.file).replaceFirst("{", "{\"runtimeIdle\":true,")
+            Files.writeString(store.file, written)
+            val adb = adb()
+            assertFailsWith<ForeignJournalException> { recoverJournal(adb, serial, "boot-1", store) }
+            assertFailsWith<ForeignJournalException> { recoverJournal(adb, serial, "boot-1", store, inspect = true) }
+            assertEquals(written, Files.readString(store.file))
+            assertTrue(Files.list(root).use { files -> files.noneMatch { ".corrupt-" in it.fileName.toString() } })
+            assertTrue(adb.calls.none { "force-stop" in it || "forward --remove" in it }, adb.calls.toString())
+        }
+
     /** [device] answers the notification commands; the driver process runs while its listener is bound. */
     private fun listenerAdb(device: FakeDeviceState) =
         adb().apply {

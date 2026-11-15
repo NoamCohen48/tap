@@ -139,7 +139,11 @@ be stopped, the journal is corrupt, the boot identity changed under an active se
 mutation may still be in flight, or a setting the session changed did not read back when it was
 put back. That last one Tap can prove later by itself: the device is listed with
 `retry_on_attach`, and the next attach (or `tap doctor --fix`) writes the settings again and,
-once they read back, uses the device as usual. Any other quarantine keeps the device out of
+once they read back, uses the device as usual. A device whose open session was recorded by
+another Tap engine (a newer release or another build, whose journal has fields this one does
+not know) is listed as quarantined too, but its journal is left as it is: attach it with that
+engine to recover it, or run `tap unquarantine`. A closed journal of another engine is no
+obstacle. Any other quarantine keeps the device out of
 circulation until you have checked it and put it back yourself: Tap never lifts what it cannot
 prove.
 
