@@ -21,7 +21,7 @@ See `CONTRIBUTING.md` for build/run commands.
   note in the relevant decision record. Never silently "correct" code back to the plan.
 - `.docs/pool-and-leases.md` — decision record: the server leases nothing; exclusive device
   use is the per-serial journal lock, roles and device choice are client-side.
-- `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 5.1). Update it in
+- `.docs/protocol-contract.md` — the *implemented* wire contract (protocol 5.2, also negotiates 5.1). Update it in
   the same change as any protocol edit.
 - `.docs/project-architecture.md` — current module/file layout.
 - `.docs/phase-1-progress.md` — Phase 1 checklist. Keep it honest: only tick items that are
@@ -66,6 +66,8 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/app-deaths.md` — decision record + work plan: crashes and ANRs as results (the server's
   per-attachment record from a followed crash log, `ListAppDeaths`, waits ended early, client
   `guard` / `expectDeath`, the end-of-test check, tap-agent's per-step deaths).
+- `.docs/fast-attach.md` — approved plan and measured phone baseline for reducing attach/detach
+  overhead, including safe bounded instrumentation reuse with fresh per-test sessions.
 - `.docs/device-capabilities.md` — approved design and implementation plan for read-only
   per-attachment operation support, shared by the server, SDKs and tap-agent (G37).
 - `.docs/app-logs.md` — decision record: the device log (`DeviceLogService`): logcat streamed

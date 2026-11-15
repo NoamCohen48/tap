@@ -17,6 +17,21 @@ A **session** is a held connection on the server. It outlives each CLI call, is 
 CLI and the MCP server, and holds the device exclusively, as a test does, until `release` or
 15 idle minutes. `--session NAME` (or `TAP_AGENT_SESSION`) keeps several apart.
 
+### Force a fresh driver
+
+With the server's [experimental runtime reuse](../guide/server.md#driver-runtime-reuse-experimental)
+enabled, a new attachment may reuse clean instrumentation, but never the previous session's
+credentials or state. To start fresh instead:
+
+```sh
+tap-agent attach emulator-5554 --driver-start cold
+```
+
+MCP: `attach` with `driver_start="cold"`. Detach or release an existing attachment first;
+cold mode refuses to replace a live session silently. Installation is separate: cold startup
+does not reinstall unchanged APKs. The runtime idle timeout applies after detach/release,
+not between calls on your held connection.
+
 ### A quarantined device
 
 `devices` lists a device Tap could not prove clean after a session as `QUARANTINED` with the

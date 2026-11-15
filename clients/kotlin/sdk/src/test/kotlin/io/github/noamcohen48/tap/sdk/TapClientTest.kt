@@ -30,9 +30,9 @@ import io.github.noamcohen48.tap.api.v1.NarrowingPart
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.SystemPanel
-import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.grpc.ClientCall
 import io.grpc.ManagedChannel
 import io.grpc.MethodDescriptor
@@ -127,7 +127,11 @@ class TapClientTest {
                             headers: io.grpc.Metadata,
                             next: io.grpc.ServerCallHandler<ReqT, RespT>,
                         ): io.grpc.ServerCall.Listener<ReqT> {
-                            val step = headers.get(io.grpc.Metadata.Key.of("tap-step", io.grpc.Metadata.ASCII_STRING_MARSHALLER))
+                            val step =
+                                headers.get(
+                                    io.grpc.Metadata.Key
+                                        .of("tap-step", io.grpc.Metadata.ASCII_STRING_MARSHALLER),
+                                )
                             steps += call.methodDescriptor.bareMethodName.orEmpty() to step
                             return next.startCall(call, headers)
                         }
@@ -146,24 +150,25 @@ class TapClientTest {
     private fun client() = TapClient("inprocess:$serverName", channel)
 
     @Test
-    fun `capabilities names the owner and attachment without Execute and rejects after detach`() = runBlocking {
-        val connection = client().connect("capabilities")
-        try {
-            tapScope {
-                val device = connection.attachDevice("emulator-5554")
-                val entries = device.capabilities()
-                assertEquals(CapabilityStatus.UNKNOWN, entries[Capability.APP_SET_LOCALES].status)
-                assertEquals(connection.id, fakeDevices.capabilityRequests.single().clientConnectionId)
-                assertEquals(device.attachedDeviceId, fakeDevices.capabilityRequests.single().attachedDeviceId)
-                assertEquals(0, fakeDevices.executeCalls.get())
-                device.detach()
-                assertFailsWith<TapUsageException> { device.capabilities() }
-                assertEquals(1, fakeDevices.capabilityRequests.size)
+    fun `capabilities names the owner and attachment without Execute and rejects after detach`() =
+        runBlocking {
+            val connection = client().connect("capabilities")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    val entries = device.capabilities()
+                    assertEquals(CapabilityStatus.UNKNOWN, entries[Capability.APP_SET_LOCALES].status)
+                    assertEquals(connection.id, fakeDevices.capabilityRequests.single().clientConnectionId)
+                    assertEquals(device.attachedDeviceId, fakeDevices.capabilityRequests.single().attachedDeviceId)
+                    assertEquals(0, fakeDevices.executeCalls.get())
+                    device.detach()
+                    assertFailsWith<TapUsageException> { device.capabilities() }
+                    assertEquals(1, fakeDevices.capabilityRequests.size)
+                }
+            } finally {
+                connection.close()
             }
-        } finally {
-            connection.close()
         }
-    }
 
     private suspend fun withPrivateApp(block: suspend (App) -> Unit) {
         val connection = client().connect("private-data")
@@ -229,12 +234,21 @@ class TapClientTest {
                 fakeLogs.dropped = 7
                 fakeLogs.entries +=
                     listOf(
-                        LogEntryProto.newBuilder().setCursor(1).setMarker("checkout").build(),
+                        LogEntryProto
+                            .newBuilder()
+                            .setCursor(1)
+                            .setMarker("checkout")
+                            .build(),
                         LogEntryProto
                             .newBuilder()
                             .setCursor(2)
-                            .setAction(LogActionProto.newBuilder().setOperation("tap").setTarget("text=\"Pay\"").setRequestId(42))
-                            .build(),
+                            .setAction(
+                                LogActionProto
+                                    .newBuilder()
+                                    .setOperation("tap")
+                                    .setTarget("text=\"Pay\"")
+                                    .setRequestId(42),
+                            ).build(),
                         logLine(3, "paying", LogPriorityProto.LOG_PRIORITY_WARN),
                         LogEntryProto
                             .newBuilder()
@@ -248,7 +262,11 @@ class TapClientTest {
                                     .setDurationMs(243)
                                     .setRequestId(42),
                             ).build(),
-                        LogEntryProto.newBuilder().setCursor(5).setGap("logcat ended").build(),
+                        LogEntryProto
+                            .newBuilder()
+                            .setCursor(5)
+                            .setGap("logcat ended")
+                            .build(),
                         logLine(6, "no uid", uid = null),
                     )
 
@@ -306,7 +324,11 @@ class TapClientTest {
                 device.logs.redact("session=(\\w+)", "4111[0-9]{12}")
 
                 val owner =
-                    ReadLogRequest.newBuilder().setClientConnectionId(device.ownerConnection.id).setAttachedDeviceId(device.attachedDeviceId)
+                    ReadLogRequest
+                        .newBuilder()
+                        .setClientConnectionId(
+                            device.ownerConnection.id,
+                        ).setAttachedDeviceId(device.attachedDeviceId)
                 assertEquals(
                     listOf(
                         owner
@@ -319,7 +341,11 @@ class TapClientTest {
                             .setExcludeActions(true)
                             .build(),
                         owner.clone().setAfterCursor(12).build(),
-                        owner.clone().setTail(5).setMinPriority(LogPriorityProto.LOG_PRIORITY_FATAL).build(),
+                        owner
+                            .clone()
+                            .setTail(5)
+                            .setMinPriority(LogPriorityProto.LOG_PRIORITY_FATAL)
+                            .build(),
                         owner.clone().setLastAction(true).build(),
                         owner.build(),
                     ),
@@ -341,7 +367,11 @@ class TapClientTest {
                 fakeLogs.entries += listOf(logLine(1, "old"), logLine(2, "older"))
                 fakeLogs.live.trySend(logLine(3, "live"))
 
-                val seen = device.logs.follow(filter = LogFilter(tags = listOf("Shop"))).take(3).toList()
+                val seen =
+                    device.logs
+                        .follow(filter = LogFilter(tags = listOf("Shop")))
+                        .take(3)
+                        .toList()
 
                 assertEquals(listOf("old", "older", "live"), seen.map { it.line?.message })
                 assertTrue(fakeLogs.reads.single().follow)
@@ -363,12 +393,21 @@ class TapClientTest {
         runBlocking {
             withDevice { device ->
                 fakeLogs.entries +=
-                    LogEntryProto.newBuilder().setCursor(1).setAction(LogActionProto.newBuilder().setOperation("tap").setStep("s-1")).build()
+                    LogEntryProto
+                        .newBuilder()
+                        .setCursor(
+                            1,
+                        ).setAction(LogActionProto.newBuilder().setOperation("tap").setStep("s-1"))
+                        .build()
                 device.pressBack()
                 val inner =
                     withStep("s-1") { outer ->
                         device.pressBack()
-                        val inner = withStep { id -> device.pressBack(); id }
+                        val inner =
+                            withStep { id ->
+                                device.pressBack()
+                                id
+                            }
                         device.pressBack()
                         assertEquals("s-1", outer)
                         inner
@@ -940,12 +979,60 @@ class TapClientTest {
     fun `unquarantine names the device and reports what is still off`() {
         runBlocking {
             assertEquals(
-                UnquarantineResult(true, "BOOT_CHANGED: rebooted", listOf("stopped the driver"), listOf("device settings a session changed were not restored")),
+                UnquarantineResult(
+                    true,
+                    "BOOT_CHANGED: rebooted",
+                    listOf("stopped the driver"),
+                    listOf("device settings a session changed were not restored"),
+                ),
                 client().unquarantine("85e49002"),
             )
             assertEquals(listOf("85e49002"), fakeDevices.unquarantined.toList())
         }
     }
+
+    @Test
+    fun `driver startup policy is independent of installation and reuse provenance is optional`() =
+        runBlocking {
+            client().connect("runtime policy").use { connection ->
+                tapScope("runtime policy") {
+                    fakeDevices.reusedReply = true
+                    val automatic = connection.attachDevice("emulator-5554")
+                    try {
+                        assertEquals(true, automatic.driverReused)
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_AUTO,
+                            fakeDevices.attachRequests.last().driverStart,
+                        )
+                    } finally {
+                        automatic.detach()
+                    }
+                    fakeDevices.reusedReply = false
+                    val cold =
+                        connection.attachDevice(
+                            "emulator-5554",
+                            options = DeviceOptions(skipDriverInstall = true, driverStart = DriverStart.COLD),
+                        )
+                    try {
+                        assertEquals(false, cold.driverReused)
+                        assertTrue(fakeDevices.attachRequests.last().skipDriverInstall)
+                        assertEquals(
+                            io.github.noamcohen48.tap.api.v1.DriverStartPolicy.DRIVER_START_COLD,
+                            fakeDevices.attachRequests.last().driverStart,
+                        )
+                    } finally {
+                        cold.detach()
+                    }
+                    fakeDevices.reusedReply = null
+                    val older = connection.attachDevice("emulator-5554")
+                    try {
+                        assertNull(older.driverReused)
+                    } finally {
+                        older.detach()
+                    }
+                }
+            }
+        }
 
     @Test
     fun `inspecting a quarantined device asks for it and carries the reason`() {
@@ -974,8 +1061,16 @@ class TapClientTest {
     @Test
     fun `available serials end with quarantines that attaching retries`() {
         runBlocking {
-            fun entry(serial: String, state: io.github.noamcohen48.tap.api.v1.DeviceState, retry: Boolean = false) =
-                io.github.noamcohen48.tap.api.v1.DeviceEntry.newBuilder().setSerial(serial).setState(state).setRetryOnAttach(retry).build()
+            fun entry(
+                serial: String,
+                state: io.github.noamcohen48.tap.api.v1.DeviceState,
+                retry: Boolean = false,
+            ) = io.github.noamcohen48.tap.api.v1.DeviceEntry
+                .newBuilder()
+                .setSerial(serial)
+                .setState(state)
+                .setRetryOnAttach(retry)
+                .build()
             fakeDevices.listed =
                 listOf(
                     entry("retry", io.github.noamcohen48.tap.api.v1.DeviceState.DEVICE_QUARANTINED, retry = true),
@@ -1116,7 +1211,11 @@ class TapClientTest {
                             ),
                             saved,
                         )
-                        fakeDevices.deviceLogs = fakeDevices.deviceLogs.toBuilder().setCrashes("E AndroidRuntime: FATAL EXCEPTION: main").build()
+                        fakeDevices.deviceLogs =
+                            fakeDevices.deviceLogs
+                                .toBuilder()
+                                .setCrashes("E AndroidRuntime: FATAL EXCEPTION: main")
+                                .build()
                         val logs = device.deviceLogs()
                         assertEquals("E AndroidRuntime: FATAL EXCEPTION: main", logs.crashes)
                         assertEquals(
@@ -1197,7 +1296,11 @@ class TapClientTest {
                     try {
                         device.app("com.test").element(text("OK")).exists()
                         device.screen.element(text("OK")).exists()
-                        val (inApp, onScreen) = fakeDevices.executeRequests.map { it.command }.filter { it.hasExists() }.map { it.exists.selector }
+                        val (inApp, onScreen) =
+                            fakeDevices.executeRequests
+                                .map { it.command }
+                                .filter { it.hasExists() }
+                                .map { it.exists.selector }
                         assertEquals(text("OK").inPackage("com.test").proto, inApp)
                         assertEquals(text("OK").proto, onScreen)
                     } finally {
@@ -1316,7 +1419,10 @@ class TapClientTest {
         assertTrue(failure.message!!.contains("text=Placing order enabled=false"), failure.message)
 
         val parts = notReached.clone().addConditionHolds(true).addConditionHolds(false)
-        val partly = waitMappingWith({ CommandResult.newBuilder().setError(parts).build() }) { it.screen.await(res("pay")).until(enabled(false) and text("Pay")) }
+        val partly =
+            waitMappingWith({ CommandResult.newBuilder().setError(parts).build() }) {
+                it.screen.await(res("pay")).until(enabled(false) and text("Pay"))
+            }
         assertIs<WaitTimeoutException>(partly)
         assertEquals(listOf("enabled(false)" to true, "text(\"Pay\")" to false), partly.conditionParts.map { it.part to it.holds })
         assertTrue(partly.message!!.endsWith("\n  enabled(false): yes\n  text(\"Pay\"): no (\"Placing order\")"), partly.message)
@@ -1335,15 +1441,24 @@ class TapClientTest {
         val narrowing =
             SelectorNarrowing
                 .newBuilder()
-                .addParts(NarrowingPart.newBuilder().setAlone(0).setWithout(2).addNearMisses("Pay now").addNearMisses("Pay later"))
-                .addParts(NarrowingPart.newBuilder().setAlone(14))
+                .addParts(
+                    NarrowingPart
+                        .newBuilder()
+                        .setAlone(0)
+                        .setWithout(2)
+                        .addNearMisses("Pay now")
+                        .addNearMisses("Pay later"),
+                ).addParts(NarrowingPart.newBuilder().setAlone(14))
                 .addParts(NarrowingPart.newBuilder().setAlone(40))
         val notFound =
             io.github.noamcohen48.tap.api.v1.Error
                 .newBuilder()
                 .setCode(ErrorCode.ERR_NOT_FOUND)
                 .setNarrowing(narrowing)
-        val failure = waitMappingWith({ CommandResult.newBuilder().setError(notFound).build() }) { it.app("com.shop").element(text("Pay").clickable()).tap() }
+        val failure =
+            waitMappingWith(
+                { CommandResult.newBuilder().setError(notFound).build() },
+            ) { it.app("com.shop").element(text("Pay").clickable()).tap() }
         assertIs<CommandException>(failure)
         val explained = assertNotNull(failure.narrowing)
         assertEquals(listOf("text(\"Pay\")", "clickable()", "app(\"com.shop\")"), explained.parts.map { it.part })
@@ -1363,12 +1478,14 @@ class TapClientTest {
         assertTrue(picked.message!!.endsWith("\nonly 2 nodes match text(\"Row\").at(3); its pick needs 4"), picked.message)
 
         val drag = notFound.clone().setNarrowing(SelectorNarrowing.newBuilder().setSelectorIndex(1))
-        val dragged = waitMappingWith({ CommandResult.newBuilder().setError(drag).build() }) { it.screen.element(text("Card")).dragTo(res("bin")) }
+        val dragged =
+            waitMappingWith({ CommandResult.newBuilder().setError(drag).build() }) { it.screen.element(text("Card")).dragTo(res("bin")) }
         assertIs<CommandException>(dragged)
         assertEquals("res(\"bin\")", dragged.narrowing?.selector)
 
         val misfit = notFound.clone().setNarrowing(SelectorNarrowing.newBuilder().addParts(NarrowingPart.getDefaultInstance()))
-        val dropped = waitMappingWith({ CommandResult.newBuilder().setError(misfit).build() }) { it.screen.element(text("Pay").clickable()).tap() }
+        val dropped =
+            waitMappingWith({ CommandResult.newBuilder().setError(misfit).build() }) { it.screen.element(text("Pay").clickable()).tap() }
         assertIs<CommandException>(dropped)
         assertNull(dropped.narrowing)
     }
@@ -1380,8 +1497,15 @@ class TapClientTest {
                 .newBuilder()
                 .setCode(ErrorCode.ERR_WAIT_TIMEOUT)
                 .setDetail("NO_MATCH")
-                .setNarrowing(SelectorNarrowing.newBuilder().addParts(NarrowingPart.newBuilder().setAlone(1)).addParts(NarrowingPart.newBuilder().setWithout(1)))
-        val failure = waitMappingWith({ CommandResult.newBuilder().setError(noMatch).build() }) { it.screen.await(res("terms").enabled()).checked() }
+                .setNarrowing(
+                    SelectorNarrowing
+                        .newBuilder()
+                        .addParts(
+                            NarrowingPart.newBuilder().setAlone(1),
+                        ).addParts(NarrowingPart.newBuilder().setWithout(1)),
+                )
+        val failure =
+            waitMappingWith({ CommandResult.newBuilder().setError(noMatch).build() }) { it.screen.await(res("terms").enabled()).checked() }
         assertIs<WaitTimeoutException>(failure)
         assertEquals(listOf("res(\"terms\")", "enabled()"), failure.narrowing?.parts?.map { it.part })
         assertTrue(failure.message!!.contains("\n  enabled(): 0 alone, 1 without it"), failure.message)
@@ -1400,7 +1524,11 @@ class TapClientTest {
                     try {
                         device.openNotifications()
                         device.openQuickSettings()
-                        val panels = fakeDevices.executeRequests.map { it.command }.filter { it.hasOpenSystemPanel() }.map { it.openSystemPanel.panel }
+                        val panels =
+                            fakeDevices.executeRequests
+                                .map { it.command }
+                                .filter { it.hasOpenSystemPanel() }
+                                .map { it.openSystemPanel.panel }
                         assertEquals(listOf(SystemPanel.SYSTEM_PANEL_NOTIFICATIONS, SystemPanel.SYSTEM_PANEL_QUICK_SETTINGS), panels)
                     } finally {
                         device.detach()
@@ -1417,7 +1545,8 @@ class TapClientTest {
     fun `rotation methods send one typed mutation each`() {
         runBlocking {
             fakeDevices.executeResponder = { request ->
-                if (request.command.opCase in setOf(
+                if (request.command.opCase in
+                    setOf(
                         Command.OpCase.SET_ORIENTATION,
                         Command.OpCase.SET_DISPLAY_ROTATION,
                         Command.OpCase.UNFREEZE_ROTATION,
@@ -1438,11 +1567,12 @@ class TapClientTest {
                         device.unfreezeRotation()
                         val commands =
                             fakeDevices.executeRequests.map { it.command }.filter {
-                                it.opCase in setOf(
-                                    Command.OpCase.SET_ORIENTATION,
-                                    Command.OpCase.SET_DISPLAY_ROTATION,
-                                    Command.OpCase.UNFREEZE_ROTATION,
-                                )
+                                it.opCase in
+                                    setOf(
+                                        Command.OpCase.SET_ORIENTATION,
+                                        Command.OpCase.SET_DISPLAY_ROTATION,
+                                        Command.OpCase.UNFREEZE_ROTATION,
+                                    )
                             }
                         assertEquals(
                             listOf(
@@ -1788,7 +1918,11 @@ class TapClientTest {
                         assertFailsWith<IllegalArgumentException> { card.setProgress(Float.NaN) }
                         device.choosePermission(PermissionChoice.ALLOW_FOREGROUND_ONLY, LocationAccuracy.APPROXIMATE)
                         val commands = fakeDevices.executeRequests.map { it.command }
-                        val (standard, custom) = commands.filter { it.hasPerformAccessibilityAction() }.map { it.performAccessibilityAction }
+                        val (standard, custom) =
+                            commands
+                                .filter {
+                                    it.hasPerformAccessibilityAction()
+                                }.map { it.performAccessibilityAction }
                         assertEquals(io.github.noamcohen48.tap.api.v1.StandardAction.A11Y_EXPAND, standard.standard)
                         assertEquals(res("card").proto, standard.selector)
                         assertEquals("Archive", custom.custom)
@@ -2614,7 +2748,10 @@ class TapClientTest {
                             }
                         assertEquals(connection.id to device.attachedDeviceId, ids)
                     }
-                    val sizes = fakeDevices.fileHeaders.filterIsInstance<io.github.noamcohen48.tap.api.v1.PushFileHeader>().map { it.sizeBytes }
+                    val sizes =
+                        fakeDevices.fileHeaders.filterIsInstance<io.github.noamcohen48.tap.api.v1.PushFileHeader>().map {
+                            it.sizeBytes
+                        }
                     assertEquals(listOf(5L, big.size.toLong(), 1L), sizes)
                 } finally {
                     Files.deleteIfExists(local)
@@ -3166,24 +3303,31 @@ class TapClientTest {
             return DisconnectResponse.getDefaultInstance()
         }
 
-        override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.newBuilder().setApiCompatibility(io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY).build()
+        override suspend fun info(request: InfoRequest): InfoResponse =
+            InfoResponse.newBuilder().setApiCompatibility(io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY).build()
     }
 
     private class FakeDevices : DeviceServiceGrpcKt.DeviceServiceCoroutineImplBase() {
         @Volatile var listed: List<io.github.noamcohen48.tap.api.v1.DeviceEntry> = emptyList()
 
-        override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse = ListDevicesResponse.newBuilder().addAllDevices(listed).build()
+        override suspend fun listDevices(request: ListDevicesRequest): ListDevicesResponse =
+            ListDevicesResponse.newBuilder().addAllDevices(listed).build()
 
         val capabilityRequests = CopyOnWriteArrayList<io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest>()
 
-        override suspend fun getDeviceCapabilities(request: io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest): io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse {
+        override suspend fun getDeviceCapabilities(
+            request: io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest,
+        ): io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse {
             capabilityRequests.add(request)
-            return io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse.getDefaultInstance()
+            return io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse
+                .getDefaultInstance()
         }
 
         val unquarantined = CopyOnWriteArrayList<String>()
 
-        override suspend fun unquarantine(request: io.github.noamcohen48.tap.api.v1.UnquarantineRequest): io.github.noamcohen48.tap.api.v1.UnquarantineResponse {
+        override suspend fun unquarantine(
+            request: io.github.noamcohen48.tap.api.v1.UnquarantineRequest,
+        ): io.github.noamcohen48.tap.api.v1.UnquarantineResponse {
             unquarantined.add(request.serial)
             return io.github.noamcohen48.tap.api.v1.UnquarantineResponse
                 .newBuilder()
@@ -3214,6 +3358,7 @@ class TapClientTest {
         var openRelease: CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { it.complete(Unit) }
 
         val attachRequests = CopyOnWriteArrayList<AttachRequest>()
+        var reusedReply: Boolean? = null
 
         override suspend fun attach(request: AttachRequest): AttachResponse {
             opens.add(request.serial)
@@ -3225,15 +3370,18 @@ class TapClientTest {
                 .setAttachedDeviceId("attached-${request.serial}")
                 .setSerial(request.serial)
                 .setGeneration(1)
-                .apply { if (request.inspectQuarantined) setQuarantineReason("BOOT_CHANGED: rebooted") }
-                .build()
+                .apply {
+                    if (request.inspectQuarantined) setQuarantineReason("BOOT_CHANGED: rebooted")
+                    reusedReply?.let { setDriverReused(it) }
+                }.build()
         }
 
         /** When set, answers Execute with its result (null falls through to the default). */
         @Volatile var executeResponder: ((ExecuteRequest) -> CommandResult?)? = null
         val executeRequests = CopyOnWriteArrayList<ExecuteRequest>()
 
-        override suspend fun execute(request: ExecuteRequest): ExecuteResponse = ExecuteResponse.newBuilder().setResult(result(request)).build()
+        override suspend fun execute(request: ExecuteRequest): ExecuteResponse =
+            ExecuteResponse.newBuilder().setResult(result(request)).build()
 
         private suspend fun result(request: ExecuteRequest): CommandResult {
             executeCalls.incrementAndGet()
@@ -3667,7 +3815,10 @@ class TapClientTest {
                 .AtomicBoolean(false)
         private val inputBytes = output.toByteArray()
         private val outputSink = java.io.ByteArrayOutputStream()
-        private val exit = java.util.concurrent.CompletableFuture<Process>().also { if (!alive) it.complete(this) }
+        private val exit =
+            java.util.concurrent
+                .CompletableFuture<Process>()
+                .also { if (!alive) it.complete(this) }
 
         override fun onExit(): java.util.concurrent.CompletableFuture<Process> = exit.thenApply { it }
 

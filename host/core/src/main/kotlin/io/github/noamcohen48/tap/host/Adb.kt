@@ -422,12 +422,16 @@ open class Adb internal constructor(
     }
 
     /**
-     * Best-effort screen preparation: wakes the display and dismisses an insecure keyguard so
-     * the AUT can reach the foreground. A secure lock is not bypassed; the app-visible wait
-     * then reports the lock screen package as the last observation.
+     * Best-effort screen preparation: wakes the display unless power state positively reports
+     * it already awake, then dismisses an insecure keyguard. Unknown/OEM power output keeps the
+     * wake path. A secure lock is not bypassed; the app-visible wait then reports the lock screen
+     * package as the last observation. Power is checked afresh on every attachment, never cached.
      */
     open suspend fun wakeAndDismissKeyguard(serial: String) {
-        execResult(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP", timeoutMs = 10_000)
+        val power = execResult(serial, "shell", "dumpsys", "-t", "1", "power", timeoutMs = 10_000)
+        if (power.exitCode != 0 || !powerStateDefinitelyAwake(power.output)) {
+            execResult(serial, "shell", "input", "keyevent", "KEYCODE_WAKEUP", timeoutMs = 10_000)
+        }
         execResult(serial, "shell", "wm", "dismiss-keyguard", timeoutMs = 10_000)
     }
 
@@ -639,6 +643,7 @@ open class Adb internal constructor(
             is StateKey.Setting -> {
                 exec(serial, "shell", "settings", "get", parsed.namespace, parsed.name).trim().takeUnless { it == "null" }
             }
+
             StateKey.NightMode -> {
                 val output = exec(serial, "shell", "cmd", "uimode", "night").trim()
                 output.removePrefix("Night mode: ").takeIf { it != output && it.isNotBlank() }
@@ -650,6 +655,7 @@ open class Adb internal constructor(
                         "Unreadable night mode on $serial: $output",
                     )
             }
+
             StateKey.Density -> {
                 val output = exec(serial, "shell", "wm", "density")
                 if (!output.contains("Physical density:")) {
@@ -662,18 +668,26 @@ open class Adb internal constructor(
                     )
                 }
                 output.lineSequence().firstNotNullOfOrNull { line ->
-                    line.trim().removePrefix("Override density:").takeIf { it != line.trim() }?.trim()
+                    line
+                        .trim()
+                        .removePrefix("Override density:")
+                        .takeIf { it != line.trim() }
+                        ?.trim()
                 }
             }
+
             is StateKey.Network -> {
                 val raw = exec(serial, "shell", "settings", "get", "global", parsed.setting).trim().takeUnless { it == "null" }
                 when (parsed) {
                     // wifi_on: 1 on, 2 on while airplane mode is on, 3 off by airplane mode (back on with it), 0 off.
                     StateKey.Network.WIFI -> raw?.let { if (it == "1" || it == "2") "1" else "0" } ?: "0"
+
                     StateKey.Network.AIRPLANE -> if (raw == "1") "1" else "0"
+
                     StateKey.Network.MOBILE_DATA -> raw
                 }
             }
+
             StateKey.SystemLocales -> {
                 // A device whose locale was never changed has no system_locales: the property
                 // the system persists, then the build's default.
@@ -726,6 +740,7 @@ open class Adb internal constructor(
                         )
                 }
             }
+
             is StateKey.AppLocales -> {
                 val command = listOf("shell", "cmd", "locale", "get-app-locales", shellQuote(parsed.packageName), "--user", "current")
                 val output = exec(serial, *command.toTypedArray()).trim()
@@ -799,10 +814,16 @@ open class Adb internal constructor(
             }
 
             StateKey.MockLocationProviders -> {
-                val keep = value.orEmpty().split(',').filter(String::isNotEmpty).toSet()
+                val keep =
+                    value
+                        .orEmpty()
+                        .split(',')
+                        .filter(String::isNotEmpty)
+                        .toSet()
                 val remove = mockLocationProviders(serial) - keep
                 if (remove.isNotEmpty()) removeTestProviders(serial, remove.sorted())
             }
+
             is StateKey.DeviceFile -> {
                 // Only ever captured as absent: restoring removes what the session created.
                 check(value == null) { "a device file can only be restored as absent, not $value" }
@@ -813,6 +834,7 @@ open class Adb internal constructor(
                     execResult(serial, "shell", "rmdir", shellQuote(parsed.path.substringBeforeLast('/')))
                 }
             }
+
             StateKey.DriverNotificationListener -> {
                 val allow = value == "allowed"
                 exec(
@@ -870,8 +892,12 @@ open class Adb internal constructor(
             if ("No such file" in result.output) return null
             throw AdbCommandException(serial, command, result.exitCode, result.output, "Unable to stat $path on $serial: ${result.output}")
         }
-        val (type, size) = result.output.trim().split('|').takeIf { it.size == 2 }
-            ?: throw AdbCommandException(serial, command, null, result.output, "Unreadable stat of $path on $serial: ${result.output}")
+        val (type, size) =
+            result.output
+                .trim()
+                .split('|')
+                .takeIf { it.size == 2 }
+                ?: throw AdbCommandException(serial, command, null, result.output, "Unreadable stat of $path on $serial: ${result.output}")
         return DeviceFileInfo(regular = type == "regular file" || type == "regular empty file", sizeBytes = size.toLongOrNull() ?: -1)
     }
 
@@ -1072,7 +1098,12 @@ open class Adb internal constructor(
     private suspend fun mockLocationProviders(serial: String): Set<String> {
         val lines = exec(serial, "shell", "dumpsys", "location").lines().map(String::trim)
         val current = lines.mapNotNull { MOCK_PROVIDER.matchEntire(it)?.groupValues?.get(1) }
-        val legacy = lines.zipWithNext().filter { (name, next) -> next.startsWith("mHasLocation=") && PROVIDER_NAME.matches(name) }.map { it.first }
+        val legacy =
+            lines
+                .zipWithNext()
+                .filter { (name, next) ->
+                    next.startsWith("mHasLocation=") && PROVIDER_NAME.matches(name)
+                }.map { it.first }
         return (current + legacy).toSet()
     }
 
@@ -1235,9 +1266,11 @@ open class Adb internal constructor(
         }
         for (entry in entries.asReversed()) writeState(serial, entry.key, entry.value)
         if (rotation.isNotEmpty()) settleRotation(serial, rotation)
+        // Final verification is fresh, not the last settle observation. Non-rotation reads stay typed.
+        val restoredRotation = readRotationSettings(serial, rotation.map { it.key })
         val wrong =
             entries.mapNotNull { entry ->
-                readState(serial, entry.key).let { actual ->
+                (if (entry.key in StateKey.ROTATION) restoredRotation.getValue(entry.key) else readState(serial, entry.key)).let { actual ->
                     "${entry.key}=$actual (expected ${entry.value})".takeUnless { StateKey.holds(entry.key, entry.value, actual) }
                 }
             }
@@ -1262,7 +1295,7 @@ open class Adb internal constructor(
         var stableSince = System.nanoTime()
         while (System.nanoTime() < deadline) {
             delay(ROTATION_SETTLE_POLL_MS)
-            val holds = rotation.all { StateKey.holds(it.key, it.value, readState(serial, it.key)) }
+            val holds = rotationSettingsHold(serial, rotation)
             if (!holds) {
                 for (entry in rotation.asReversed()) writeState(serial, entry.key, entry.value)
                 stableSince = System.nanoTime()
@@ -1270,6 +1303,39 @@ open class Adb internal constructor(
                 return
             }
         }
+    }
+
+    /** One fresh shell observation of rotation settings; no writes, cached values or shortened settle window. */
+    internal open suspend fun readRotationSettings(
+        serial: String,
+        keys: List<String>,
+    ): Map<String, String?> {
+        require(keys.distinct().size == keys.size && keys.all { it in StateKey.ROTATION })
+        if (keys.isEmpty()) return emptyMap()
+        val commands =
+            keys.map { key ->
+                val setting = StateKey.parse(key) as StateKey.Setting
+                listOf("settings", "get", setting.namespace, setting.name)
+            }
+        val results = attachmentProbeResults(serial, commands)
+        return keys
+            .mapIndexed { index, key ->
+                val result = results[index]
+                if (result.exitCode !=
+                    0
+                ) {
+                    throw AdbCommandException(serial, listOf("shell") + commands[index], result.exitCode, result.output)
+                }
+                key to result.output.trim().takeUnless { it == "null" }
+            }.toMap()
+    }
+
+    internal suspend fun rotationSettingsHold(
+        serial: String,
+        entries: List<SavedState>,
+    ): Boolean {
+        val observed = readRotationSettings(serial, entries.map { it.key })
+        return entries.all { StateKey.holds(it.key, it.value, observed.getValue(it.key)) }
     }
 
     /** Whether a TCP socket is listening on [port] (IPv4 or IPv6), from `/proc/net/tcp*`. */
@@ -1303,31 +1369,51 @@ open class Adb internal constructor(
     ): ProcessStat {
         val command = listOf("shell", "cat", "/proc/$pid/stat")
         val result = execResult(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
-        if (result.exitCode != 0) {
-            if ("No such file" !in result.output && "No such process" !in result.output) {
-                throw AdbCommandException(
-                    serial,
-                    command,
-                    result.exitCode,
-                    result.output,
-                    "Unable to observe process $pid on $serial: ${result.output}",
-                )
-            }
-            return ProcessStat.Gone
-        }
-
-        fun malformed(what: String) = AdbCommandException(serial, command, null, result.output, "$what /proc stat for PID $pid on $serial")
-        // The command name is in parentheses and may itself contain spaces; fields follow it.
-        val closingName = result.output.lastIndexOf(')')
-        if (closingName < 0) throw malformed("Malformed")
-        val fieldsFromState =
-            result.output
-                .substring(closingName + 1)
-                .trim()
-                .split(WHITESPACE)
-        if (fieldsFromState.size <= 19) throw malformed("Incomplete")
-        return ProcessStat.Live(fieldsFromState[19]) // starttime: clock ticks since boot
+        return parseProcessStat(serial, pid, result, command)
     }
+
+    /** Adjacent parked-runtime reads, with independent statuses, under the caller's serial lock. */
+    internal open suspend fun runtimeObservation(
+        serial: String,
+        pid: Int,
+        rotationKeys: List<String>,
+    ): RuntimeObservation {
+        require(pid > 0)
+        val settings = rotationKeys.map { StateKey.parse(it) as? StateKey.Setting ?: error("Not a setting: $it") }
+        val commands = settings.map { listOf("settings", "get", it.namespace, it.name) } + listOf(listOf("cat", "/proc/$pid/stat"))
+        val results = attachmentProbeResults(serial, commands)
+        val rotation =
+            rotationKeys.mapIndexed { index, key ->
+                val result = results[index]
+                if (result.exitCode !=
+                    0
+                ) {
+                    throw AdbCommandException(serial, listOf("shell") + commands[index], result.exitCode, result.output)
+                }
+                SavedState(key, result.output.trim().takeUnless { it == "null" })
+            }
+        return RuntimeObservation(rotation, parseProcessStat(serial, pid, results.last(), listOf("shell") + commands.last()))
+    }
+
+    /** Fresh unique-package PID and the expected process's token, still checked again before authentication. */
+    internal open suspend fun processObservation(
+        serial: String,
+        packageName: String,
+        expectedPid: Int,
+    ): AttachmentProcessObservation {
+        require(expectedPid > 0)
+        val commands = listOf(listOf("pidof", packageName), listOf("cat", "/proc/$expectedPid/stat"))
+        val results = attachmentProbeResults(serial, commands)
+        return AttachmentProcessObservation(
+            parseProcessIds(serial, results[0], listOf("shell", "pidof", shellQuote(packageName))),
+            parseProcessStat(serial, expectedPid, results[1], listOf("shell") + commands[1]),
+        )
+    }
+
+    private suspend fun attachmentProbeResults(
+        serial: String,
+        commands: List<List<String>>,
+    ): List<Result> = readAttachmentProbeResults(serial, commands) { command -> execResult(serial, *command.toTypedArray()) }
 
     // ---- packages and processes --------------------------------------------------------------
     //
@@ -1391,25 +1477,74 @@ open class Adb internal constructor(
         packageName: String,
         timeoutMs: Long = 15_000,
     ): List<String> {
+        val command = listOf("shell", apkDigestScript(packageName))
+        val result = execResult(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
+        return installedApkDigests(serial, command, result)
+    }
+
+    /** Both APKs in one serial-specific shell call, retaining independent status and hash fallback. */
+    open suspend fun installedApksSha256(
+        serial: String,
+        packages: List<String>,
+        timeoutMs: Long = 15_000,
+    ): Map<String, List<String>> {
+        require(packages.isNotEmpty() && packages.distinct().size == packages.size)
         val script =
-            """
-            paths=${'$'}(pm path ${shellQuote(packageName)} 2>&1); status=${'$'}?
-            printf '%s\n' "${'$'}paths"
-            printf 'tap-pm-status:%s\n' "${'$'}status"
-            if [ "${'$'}status" -eq 0 ]; then
-                printf '%s\n' "${'$'}paths" | while IFS= read -r line; do
-                    case "${'$'}line" in
-                        package:*) sha256sum "${'$'}{line#package:}" || exit ${'$'}? ;;
-                    esac
-                done
-            fi
-            """.trimIndent()
+            buildString {
+                packages.forEachIndexed { index, name ->
+                    appendLine("echo 'tap-apk-start:$index'")
+                    appendLine("(")
+                    appendLine(apkDigestScript(name))
+                    appendLine(")")
+                    appendLine("status=${'$'}?")
+                    appendLine("echo \"tap-apk-end:$index:${'$'}status\"")
+                }
+            }
         val command = listOf("shell", script)
         val result = execResult(serial, *command.toTypedArray(), timeoutMs = timeoutMs)
         val lines = result.output.lines()
+        return packages
+            .mapIndexed { index, name ->
+                val start = lines.indexOf("tap-apk-start:$index")
+                val end = lines.indexOfFirst { it.startsWith("tap-apk-end:$index:") }
+                val status = lines.getOrNull(end)?.substringAfterLast(':')?.toIntOrNull()
+                if (start < 0 || end <= start ||
+                    status == null
+                ) {
+                    throw AdbCommandException(serial, command, result.exitCode, result.output, "APK check was incomplete on $serial")
+                }
+                name to installedApkDigests(serial, command, Result(status, lines.subList(start + 1, end).joinToString("\n")))
+            }.toMap()
+    }
+
+    private fun apkDigestScript(packageName: String): String =
+        """
+        paths=${'$'}(pm path ${shellQuote(packageName)} 2>&1); status=${'$'}?
+        printf '%s\n' "${'$'}paths"
+        echo "tap-pm-status:${'$'}status"
+        if [ "${'$'}status" -eq 0 ]; then
+            printf '%s\n' "${'$'}paths" | while IFS= read -r line; do
+                case "${'$'}line" in
+                    package:*) sha256sum "${'$'}{line#package:}" || exit ${'$'}? ;;
+                esac
+            done
+        fi
+        """.trimIndent()
+
+    private suspend fun installedApkDigests(
+        serial: String,
+        command: List<String>,
+        result: Result,
+    ): List<String> {
+        val lines = result.output.lines()
         val marker = lines.indexOfFirst { it.startsWith("tap-pm-status:") }
-        val status = lines.getOrNull(marker)?.removePrefix("tap-pm-status:")?.trim()?.toIntOrNull()
-            ?: throw AdbCommandException(serial, command, result.exitCode, result.output, "APK listing status missing on $serial")
+        val status =
+            lines
+                .getOrNull(marker)
+                ?.removePrefix("tap-pm-status:")
+                ?.trim()
+                ?.toIntOrNull()
+                ?: throw AdbCommandException(serial, command, result.exitCode, result.output, "APK listing status missing on $serial")
         val paths = packagePaths(serial, command, Result(status, lines.take(marker).joinToString("\n")))
         if (paths.isEmpty()) return emptyList()
         val digests = lines.drop(marker + 1).mapNotNull { SHA256SUM_LINE.matchEntire(it.trim())?.groupValues?.get(1) }
@@ -1681,32 +1816,7 @@ open class Adb internal constructor(
     ): List<Int> {
         val command = listOf("shell", "pidof", shellQuote(packageName))
         val result = execResult(serial, *command.toTypedArray())
-        if (result.exitCode != 0) {
-            if (result.exitCode != 1 || result.output.isNotBlank()) {
-                throw AdbCommandException(
-                    serial,
-                    command,
-                    result.exitCode,
-                    result.output,
-                    "Unable to observe process IDs for $serial: ${result.output}",
-                )
-            }
-            return emptyList()
-        }
-        val tokens = result.output.split(WHITESPACE).filter(String::isNotBlank)
-        if (tokens.isEmpty()) {
-            throw AdbCommandException(
-                serial,
-                command,
-                null,
-                result.output,
-                "pidof succeeded without reporting a PID on $serial",
-            )
-        }
-        return tokens.map { token ->
-            token.toIntOrNull()
-                ?: throw AdbCommandException(serial, command, null, result.output, "pidof returned a nonnumeric PID on $serial: $token")
-        }
+        return parseProcessIds(serial, result, command)
     }
 
     data class Forwarding(
@@ -1904,8 +2014,7 @@ private val SHELL_SAFE = Regex("[A-Za-z0-9_@%+=:,./-]+")
  * (POSIX `sh`, like Python's `shlex.quote`): tokens made only of safe characters pass through
  * unchanged, anything else is single-quoted with embedded `'` spelled `'\''`.
  */
-fun shellQuote(token: String): String =
-    if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"
+fun shellQuote(token: String): String = if (SHELL_SAFE.matches(token)) token else "'" + token.replace("'", "'\\''") + "'"
 
 /** A device file as `stat` reports it; [sizeBytes] is -1 when unreadable. */
 data class DeviceFileInfo(

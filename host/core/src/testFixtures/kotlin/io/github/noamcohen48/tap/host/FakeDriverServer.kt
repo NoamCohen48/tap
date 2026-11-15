@@ -52,6 +52,8 @@ class FakeDriverServer(
     private val driverTestApkBuildId: String = DRIVER_TEST_APK_BUILD_ID,
     /** Protocol versions the fake driver speaks; with none in common it refuses the HELLO. */
     private val supportedVersions: List<ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS,
+    /** Runtime handoff tests accept another authenticated connection after the previous EOF. */
+    private val allowReconnect: Boolean = false,
 ) : AutoCloseable {
     /** The session secret the handshake HMACs with; tests update it when the code under test
      * generates the secret itself (it travels in the instrumentation command). */
@@ -141,7 +143,14 @@ class FakeDriverServer(
                 .setHeight(4)
                 .build()
         val result = CommandResult.newBuilder().setDurationMs(5).setDone(Done.getDefaultInstance())
-        respond(requestId, Response.newBuilder().setResult(result).setArtifact(info).build())
+        respond(
+            requestId,
+            Response
+                .newBuilder()
+                .setResult(result)
+                .setArtifact(info)
+                .build(),
+        )
         return info
     }
 
@@ -167,17 +176,33 @@ class FakeDriverServer(
     }
 
     private fun serve() {
-        try {
-            val socket = server.accept()
-            socket.tcpNoDelay = true
-            client = socket
-            authenticate(socket)
-            while (true) {
-                received.put(FrameCodec.read(socket.getInputStream()))
+        do {
+            try {
+                server.accept().use { socket ->
+                    socket.tcpNoDelay = true
+                    client = socket
+                    authenticate(socket)
+                    while (true) received.put(FrameCodec.read(socket.getInputStream()))
+                }
+            } catch (_: EOFException) {
+            } catch (_: Throwable) {
             }
-        } catch (_: EOFException) {
-        } catch (_: Throwable) {
-        }
+        } while (allowReconnect && !server.isClosed)
+    }
+
+    fun acknowledgePark(frame: Frame) {
+        check(frame.type == FrameType.PARK_RUNTIME)
+        val next =
+            io.github.noamcohen48.tap.wire.v1.ParkRuntime
+                .parseFrom(frame.payload)
+        secret = next.nextSecret.toByteArray()
+        val result =
+            io.github.noamcohen48.tap.wire.v1.RuntimeParked
+                .newBuilder()
+                .setNextSessionId(next.nextSessionId)
+                .setNextGeneration(next.nextGeneration)
+                .build()
+        write(Frame(FrameType.RUNTIME_PARKED, 0, result.toByteArray()))
     }
 
     private fun authenticate(socket: Socket) {
@@ -193,7 +218,12 @@ class FakeDriverServer(
         // client's challenge check (sessionId/sessionGeneration equality) can succeed. Fixed-id
         // tests keep the constructor values, preserving the fencing check they exercise.
         if (ProtocolNegotiation.selectVersion(hello.supportedVersionsList, supportedVersions) == null) {
-            val unsupported = AuthenticationResult.newBuilder().setOk(false).setError("UNSUPPORTED").build()
+            val unsupported =
+                AuthenticationResult
+                    .newBuilder()
+                    .setOk(false)
+                    .setError("UNSUPPORTED")
+                    .build()
             FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, unsupported.toByteArray()))
             socket.close()
             return

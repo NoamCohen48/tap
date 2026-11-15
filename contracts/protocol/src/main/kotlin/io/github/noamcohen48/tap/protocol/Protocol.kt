@@ -29,6 +29,7 @@ const val DRIVER_TEST_APK_BUILD_ID = ENGINE_VERSION
 const val UIAUTOMATOR_BUILD_ID = UIAUTOMATOR_VERSION
 
 /**
+ * 5.2: capability-gated clean runtime parking with fresh next-session credentials.
  * 5.1: adds the `STALE_BEFORE_INPUT` error code.
  * 5.0: no selector scopes (package ownership is a `PROPERTY_PACKAGE_NAME` predicate, every lookup
  * searches all windows), `ResourceId` has no `aut_package`, gestures fail `NOT_INTERACTABLE`/`OBSCURED`
@@ -36,19 +37,31 @@ const val UIAUTOMATOR_BUILD_ID = UIAUTOMATOR_VERSION
  * 4.0: no `scroll_until`, `swipe`/`scroll` report `done`, any-package and any-window selector
  * scopes. 3.0: payloads are protobuf (`tap.wire.v1`); 2.0 was canonical JSON.
  */
-val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(5, 1)
-val SUPPORTED_PROTOCOL_VERSIONS: List<ProtocolVersion> = listOf(PROTOCOL_VERSION)
-val SUPPORTED_CAPABILITIES = listOf(
-    "artifact.screenshot.v1",
-    "diagnostic.hierarchy.v1",
-    "input.key-events.v1",
-    "product.probe.v1",
-    "synchronization.v1",
-)
+val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(5, 2)
+val SUPPORTED_PROTOCOL_VERSIONS: List<ProtocolVersion> = listOf(protocolVersion(5, 1), PROTOCOL_VERSION)
+const val RUNTIME_PARK_CAPABILITY = "runtime.park.v1"
+const val MIN_RUNTIME_IDLE_MS = 1_000L
+const val MAX_RUNTIME_IDLE_MS = 300_000L
+val SUPPORTED_CAPABILITIES =
+    listOf(
+        "artifact.screenshot.v1",
+        "diagnostic.hierarchy.v1",
+        "input.key-events.v1",
+        "product.probe.v1",
+        RUNTIME_PARK_CAPABILITY,
+        "synchronization.v1",
+    )
 
-fun protocolVersion(major: Int, minor: Int): ProtocolVersion {
+fun protocolVersion(
+    major: Int,
+    minor: Int,
+): ProtocolVersion {
     require(major >= 0 && minor >= 0) { "Protocol versions must not be negative" }
-    return ProtocolVersion.newBuilder().setMajor(major).setMinor(minor).build()
+    return ProtocolVersion
+        .newBuilder()
+        .setMajor(major)
+        .setMinor(minor)
+        .build()
 }
 
 operator fun ProtocolVersion.compareTo(other: ProtocolVersion): Int =
@@ -59,7 +72,9 @@ fun ProtocolVersion.render(): String = "$major.$minor"
 
 val PROTOCOL_VERSION_ORDER: Comparator<ProtocolVersion> = compareBy({ it.major }, { it.minor })
 
-enum class FrameType(val wireValue: Byte) {
+enum class FrameType(
+    val wireValue: Byte,
+) {
     HELLO(1),
     CHALLENGE(2),
     AUTH(3),
@@ -72,7 +87,10 @@ enum class FrameType(val wireValue: Byte) {
     PONG(10),
     BLOB_START(11),
     BLOB_CHUNK(12),
-    BLOB_END(13);
+    BLOB_END(13),
+    PARK_RUNTIME(14),
+    RUNTIME_PARKED(15),
+    ;
 
     companion object {
         fun fromWireValue(value: Byte): FrameType =
@@ -89,7 +107,10 @@ const val MAX_TOUCH_SEQUENCE_MS = 30_000L
 const val MAX_TAP_COUNT = 100
 
 /** Duration of all presses and release-to-press gaps; validate count/interval before calling. */
-fun multiTapDurationMs(count: Int, intervalMs: Long): Long = count * TAP_DURATION_MS + (count - 1L) * intervalMs
+fun multiTapDurationMs(
+    count: Int,
+    intervalMs: Long,
+): Long = count * TAP_DURATION_MS + (count - 1L) * intervalMs
 
 /** `Swipe`/`Scroll.distance_percent`. */
 const val DEFAULT_GESTURE_PERCENT = 80
@@ -114,4 +135,6 @@ class Frame(
     override fun toString(): String = "Frame($type, requestId=$requestId, ${payload.size} bytes)"
 }
 
-class ProtocolException(message: String) : RuntimeException(message)
+class ProtocolException(
+    message: String,
+) : RuntimeException(message)

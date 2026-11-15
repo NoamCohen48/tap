@@ -18,6 +18,10 @@ or write it where you like. They share one artifact shape: `bytes` (the serializ
 | `device.driver_log()` | `DriverLog`: the driver's recent `lines` for the session, `text` joined with newlines |
 | `device.info()` | `DeviceInfo`: API level, manufacturer, model, display size and rotation, the package owning the focused window, and the [device conditions](device-conditions.md); `bytes` is JSON |
 
+`device.info()` reads a snapshot; it does not wait for the UI or accessibility events to settle.
+`current_package` (Kotlin `currentPackage`) is absent when no active accessibility root/package
+is available. Use [explicit waits](waits.md) when your test needs a particular UI state.
+
 ```python
 shot = device.screenshot()
 print(shot.width, shot.height)

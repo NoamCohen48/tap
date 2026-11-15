@@ -10,6 +10,7 @@ import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.NotificationList
@@ -17,10 +18,9 @@ import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Toast
-import io.github.noamcohen48.tap.api.v1.StandardAction
-import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.wire.v1.ArtifactInfo
 import io.github.noamcohen48.tap.wire.v1.Authentication
 import io.github.noamcohen48.tap.wire.v1.AuthenticationResult
@@ -55,7 +55,8 @@ class GoldenWireTest {
     private val system = "com.google.android.permissioncontroller"
 
     private val negotiation =
-        Negotiation.newBuilder()
+        Negotiation
+            .newBuilder()
             .addAllEnabledCapabilities(listOf("artifact.screenshot.v1", "synchronization.v1"))
             .setSelectedVersion(protocolVersion(3, 0))
             .build()
@@ -64,8 +65,26 @@ class GoldenWireTest {
 
     private val fixtures: Map<String, Pair<MessageLite, (ByteArray) -> MessageLite>> =
         linkedMapOf(
+            "park-runtime" to (
+                io.github.noamcohen48.tap.wire.v1.ParkRuntime
+                    .newBuilder()
+                    .setNextSessionId("next")
+                    .setNextGeneration(4)
+                    .setNextSecret(nonceA)
+                    .setIdleTimeoutMs(60_000)
+                    .build()
+                    to io.github.noamcohen48.tap.wire.v1.ParkRuntime::parseFrom
+            ),
+            "runtime-parked" to (
+                io.github.noamcohen48.tap.wire.v1.RuntimeParked
+                    .newBuilder()
+                    .setNextSessionId("next")
+                    .setNextGeneration(4)
+                    .build() to io.github.noamcohen48.tap.wire.v1.RuntimeParked::parseFrom
+            ),
             "hello" to (
-                Hello.newBuilder()
+                Hello
+                    .newBuilder()
                     .setHostBuildId("1.0.0")
                     .setHostNonce(nonceA)
                     .setSessionGeneration(3)
@@ -74,7 +93,8 @@ class GoldenWireTest {
                     .build() to Hello::parseFrom
             ),
             "challenge" to (
-                Challenge.newBuilder()
+                Challenge
+                    .newBuilder()
                     .setAndroidApiLevel(34)
                     .addAllCapabilities(listOf("artifact.screenshot.v1", "synchronization.v1"))
                     .setDriverApkBuildId("1.0.0")
@@ -91,13 +111,15 @@ class GoldenWireTest {
             ),
             "negotiation" to (negotiation to Negotiation::parseFrom),
             "authentication" to (
-                Authentication.newBuilder()
+                Authentication
+                    .newBuilder()
                     .setNegotiation(negotiation.toByteString())
                     .setTranscriptHmac(nonceB)
                     .build() to Authentication::parseFrom
             ),
             "authentication-result-ok" to (
-                AuthenticationResult.newBuilder()
+                AuthenticationResult
+                    .newBuilder()
                     .setOk(true)
                     .addAllEnabledCapabilities(negotiation.enabledCapabilitiesList)
                     .setSelectedVersion(negotiation.selectedVersion)
@@ -105,13 +127,19 @@ class GoldenWireTest {
                     .build() to AuthenticationResult::parseFrom
             ),
             "authentication-result-rejected" to (
-                AuthenticationResult.newBuilder().setOk(false).setError(ErrorCode.ERR_UNAUTHENTICATED.label).build() to
+                AuthenticationResult
+                    .newBuilder()
+                    .setOk(false)
+                    .setError(ErrorCode.ERR_UNAUTHENTICATED.label)
+                    .build() to
                     AuthenticationResult::parseFrom
             ),
             "request-health" to (envelope(Requests.health()) to Request::parseFrom),
             "request-screenshot" to (envelope(Requests.screenshot()) to Request::parseFrom),
             "request-sync-poll" to (
-                envelope(Requests.syncPoll(4242, "1234567", "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01", "session-identity", AUT, "$AUT.tap-sync")) to
+                envelope(
+                    Requests.syncPoll(4242, "1234567", "5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01", "session-identity", AUT, "$AUT.tap-sync"),
+                ) to
                     Request::parseFrom
             ),
             "request-tap-resource" to (envelope(Requests.of(Commands.tap(Selectors.of(Nodes.resource("login"))))) to Request::parseFrom),
@@ -135,7 +163,9 @@ class GoldenWireTest {
             ),
             "request-choose-permission-accuracy" to (
                 envelope(
-                    Requests.of(Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE)),
+                    Requests.of(
+                        Commands.choosePermission(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY, LocationAccuracy.LOCATION_APPROXIMATE),
+                    ),
                 ) to Request::parseFrom
             ),
             "request-perform-accessibility-action" to (
@@ -148,16 +178,23 @@ class GoldenWireTest {
             "request-set-location" to (
                 envelope(Requests.of(Commands.setLocation(48.8584, 2.2945, accuracyM = 3.5f, altitudeM = 35.0))) to Request::parseFrom
             ),
-            "request-set-progress" to (envelope(Requests.of(Commands.setProgress(Selectors.resource("volume"), 42.5f))) to Request::parseFrom),
+            "request-set-progress" to
+                (envelope(Requests.of(Commands.setProgress(Selectors.resource("volume"), 42.5f))) to Request::parseFrom),
             "request-await-toast" to (
                 envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom
             ),
             "request-await-notification" to (
-                envelope(Requests.of(Commands.awaitNotification(Commands.notificationMatch(AUT, "New message", "from Ada", MatchMode.MATCH_CONTAINS)))) to
+                envelope(
+                    Requests.of(
+                        Commands.awaitNotification(Commands.notificationMatch(AUT, "New message", "from Ada", MatchMode.MATCH_CONTAINS)),
+                    ),
+                ) to
                     Request::parseFrom
             ),
             "request-open-notification-action" to (
-                envelope(Requests.of(Commands.openNotification(Commands.notificationMatch(AUT, title = "New message"), action = "Reply"))) to
+                envelope(
+                    Requests.of(Commands.openNotification(Commands.notificationMatch(AUT, title = "New message"), action = "Reply")),
+                ) to
                     Request::parseFrom
             ),
             "request-dismiss-notification" to (
@@ -178,11 +215,14 @@ class GoldenWireTest {
             "request-scroll" to (
                 envelope(
                     Requests.of(
-                        Commands.scroll(
-                            Selectors.androidResource(AUT, "list"),
-                            Direction.DIR_UP,
-                            distancePercent = 50,
-                        ).toBuilder().setTimeoutMs(9_000).build(),
+                        Commands
+                            .scroll(
+                                Selectors.androidResource(AUT, "list"),
+                                Direction.DIR_UP,
+                                distancePercent = 50,
+                            ).toBuilder()
+                            .setTimeoutMs(9_000)
+                            .build(),
                     ),
                 ) to Request::parseFrom
             ),
@@ -190,12 +230,13 @@ class GoldenWireTest {
                 envelope(
                     Requests.of(
                         Commands.tap(
-                            Selectors.of(
-                                Nodes.className("android.widget.Button") and
-                                    Nodes.flag(NodeFlag.FLAG_CLICKABLE) and
-                                    Nodes.ancestor(Nodes.androidResource(AUT, "row")) and
-                                    Nodes.child(Nodes.text("Row \\d+", MatchMode.MATCH_REGEX)),
-                            ).pickAt(1),
+                            Selectors
+                                .of(
+                                    Nodes.className("android.widget.Button") and
+                                        Nodes.flag(NodeFlag.FLAG_CLICKABLE) and
+                                        Nodes.ancestor(Nodes.androidResource(AUT, "row")) and
+                                        Nodes.child(Nodes.text("Row \\d+", MatchMode.MATCH_REGEX)),
+                                ).pickAt(1),
                         ),
                     ),
                 ) to Request::parseFrom
@@ -204,11 +245,12 @@ class GoldenWireTest {
                 envelope(
                     Requests.of(
                         Commands.exists(
-                            Selectors.of(
-                                (Nodes.text("Allow") or Nodes.text("While using the app", MatchMode.MATCH_CONTAINS)) and
-                                    Nodes.flag(NodeFlag.FLAG_ENABLED) and
-                                    Nodes.packageName(system),
-                            ).pickFirst(),
+                            Selectors
+                                .of(
+                                    (Nodes.text("Allow") or Nodes.text("While using the app", MatchMode.MATCH_CONTAINS)) and
+                                        Nodes.flag(NodeFlag.FLAG_ENABLED) and
+                                        Nodes.packageName(system),
+                                ).pickFirst(),
                         ),
                     ),
                 ) to Request::parseFrom
@@ -220,13 +262,20 @@ class GoldenWireTest {
             "response-snapshot" to (
                 result {
                     setSnapshot(
-                        ElementSnapshot.newBuilder()
+                        ElementSnapshot
+                            .newBuilder()
                             .setClassName("android.widget.Button")
                             .setPackageName(AUT)
                             .setResourceName("$AUT:id/login")
                             .setText("Sign in")
-                            .setBounds(Bounds.newBuilder().setLeft(10).setTop(20).setRight(300).setBottom(120))
-                            .setClickable(true)
+                            .setBounds(
+                                Bounds
+                                    .newBuilder()
+                                    .setLeft(10)
+                                    .setTop(20)
+                                    .setRight(300)
+                                    .setBottom(120),
+                            ).setClickable(true)
                             .setEnabled(true)
                             .setFocusable(true),
                     )
@@ -235,7 +284,8 @@ class GoldenWireTest {
             "response-snapshot-showing-hint" to (
                 result {
                     setSnapshot(
-                        ElementSnapshot.newBuilder()
+                        ElementSnapshot
+                            .newBuilder()
                             .setClassName("android.widget.EditText")
                             .setText("Email")
                             .setHint("Email")
@@ -246,7 +296,8 @@ class GoldenWireTest {
             "response-device-info" to (
                 result {
                     setDeviceInfo(
-                        DeviceInfo.newBuilder()
+                        DeviceInfo
+                            .newBuilder()
                             .setApiLevel(34)
                             .setManufacturer("Google")
                             .setModel("sdk_gphone64_x86_64")
@@ -260,7 +311,8 @@ class GoldenWireTest {
             "response-device-info-screen" to (
                 result {
                     setDeviceInfo(
-                        DeviceInfo.newBuilder()
+                        DeviceInfo
+                            .newBuilder()
                             .setApiLevel(29)
                             .setDisplayWidth(1480)
                             .setDisplayHeight(720)
@@ -283,9 +335,11 @@ class GoldenWireTest {
             "response-notifications" to (
                 result {
                     setNotifications(
-                        NotificationList.newBuilder()
+                        NotificationList
+                            .newBuilder()
                             .addNotifications(
-                                DeviceNotification.newBuilder()
+                                DeviceNotification
+                                    .newBuilder()
                                     .setPackageName(AUT)
                                     .setTitle("New message")
                                     .setText("from Ada")
@@ -300,7 +354,8 @@ class GoldenWireTest {
             "response-permission-prompt" to (
                 result {
                     setPermissionPrompt(
-                        PermissionPrompt.newBuilder()
+                        PermissionPrompt
+                            .newBuilder()
                             .setPackageName("com.google.android.permissioncontroller")
                             .addChoices(PermissionChoice.PERMISSION_ALLOW_FOREGROUND_ONLY)
                             .addChoices(PermissionChoice.PERMISSION_ALLOW_ONE_TIME)
@@ -310,16 +365,19 @@ class GoldenWireTest {
             ),
             "response-error-ambiguous" to (Responses.failure(ErrorCode.ERR_AMBIGUOUS).stamped(4, 12, 3) to Response::parseFrom),
             "response-error-indeterminate" to (
-                Responses.failure(
-                    ErrorCode.ERR_INDETERMINATE,
-                    detail = "WAIT_TIMEOUT", // the original code, as the pipeline rewrites it after the gate
-                    message = "WAIT_TIMEOUT after the mutation started",
-                ).stamped(5_000, 12, 3) to Response::parseFrom
+                Responses
+                    .failure(
+                        ErrorCode.ERR_INDETERMINATE,
+                        detail = "WAIT_TIMEOUT", // the original code, as the pipeline rewrites it after the gate
+                        message = "WAIT_TIMEOUT after the mutation started",
+                    ).stamped(5_000, 12, 3) to Response::parseFrom
             ),
             "response-artifact" to (
-                Response.newBuilder(Responses.done().stamped(250, 12, 3))
+                Response
+                    .newBuilder(Responses.done().stamped(250, 12, 3))
                     .setArtifact(
-                        ArtifactInfo.newBuilder()
+                        ArtifactInfo
+                            .newBuilder()
                             .setBlobId("00112233-4455-6677-8899-aabbccddeeff")
                             .setMediaType("image/png")
                             .setByteCount(123_456)
@@ -329,9 +387,11 @@ class GoldenWireTest {
                     ).build() to Response::parseFrom
             ),
             "response-sync" to (
-                Response.newBuilder(Responses.done().stamped(8, 12, 3))
+                Response
+                    .newBuilder(Responses.done().stamped(8, 12, 3))
                     .setSync(
-                        SyncState.newBuilder()
+                        SyncState
+                            .newBuilder()
                             .setInitialized(true)
                             .setProcessId(4242)
                             .setProcessStartUuid("5b4c2f4e-0a8d-4d2a-9d63-7a0c9f5f6f01")
@@ -342,7 +402,8 @@ class GoldenWireTest {
                     ).build() to Response::parseFrom
             ),
             "blob-start" to (
-                BlobStart.newBuilder()
+                BlobStart
+                    .newBuilder()
                     .setBlobId("00112233-4455-6677-8899-aabbccddeeff")
                     .setMediaType("image/png")
                     .setTotalLength(123_456)
@@ -350,7 +411,8 @@ class GoldenWireTest {
                     .build() to BlobStart::parseFrom
             ),
             "blob-end" to (
-                BlobEnd.newBuilder()
+                BlobEnd
+                    .newBuilder()
                     .setBlobId("00112233-4455-6677-8899-aabbccddeeff")
                     .setByteCount(123_456)
                     .setSha256("ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
@@ -399,7 +461,11 @@ class GoldenWireTest {
     }
 
     private fun result(outcome: CommandResult.Builder.() -> CommandResult.Builder): Response =
-        Response.newBuilder().setResult(CommandResult.newBuilder().outcome()).build().stamped(17, 12, 3)
+        Response
+            .newBuilder()
+            .setResult(CommandResult.newBuilder().outcome())
+            .build()
+            .stamped(17, 12, 3)
 
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
 

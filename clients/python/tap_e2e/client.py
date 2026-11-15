@@ -23,7 +23,7 @@ import subprocess
 import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import grpc
 
@@ -631,13 +631,17 @@ class TapConnection:
         wait_for_device: float = 0,
         inspect_quarantined: bool = False,
         capture_logs: bool = True,
+        driver_start: Literal["auto", "cold"] = "auto",
     ) -> Device:
-        """Attach ``serial``: install and start the driver (unless ``skip_driver_install``) and
-        take the device's session. ``timeouts`` are this device's defaults;
+        """Attach ``serial`` with a fresh session, checking/installing the driver unless
+        ``skip_driver_install`` is set. ``timeouts`` are this device's defaults;
         ``wait_for_device`` > 0 waits that many seconds for another session to release it.
         ``capture_logs=False`` turns the device log off (``Device.logs``): the server then runs
         no ``logcat`` for this attachment, and failure artifacts hold what the device's own ring
         buffer still has.
+        ``driver_start="auto"`` allows verified instrumentation reuse when the daemon enables
+        it; ``"cold"`` forces fresh instrumentation and stops it on detach. Both create fresh
+        generations and restore state between attachments. This is independent of installation.
         Raises ``TapError`` without an RPC once the connection is closed or broken.
 
         ``inspect_quarantined`` attaches a quarantined device to inspect and fix it before
@@ -656,6 +660,7 @@ class TapConnection:
             wait_for_device=wait_for_device,
             inspect_quarantined=inspect_quarantined,
             capture_logs=capture_logs,
+            driver_start=driver_start,
         )
 
     def attached_devices(self, timeouts: Timeouts | None = None) -> list[Device]:

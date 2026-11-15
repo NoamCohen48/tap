@@ -13,6 +13,7 @@ import io.github.noamcohen48.tap.protocol.FrameType
 import io.github.noamcohen48.tap.protocol.Operations
 import io.github.noamcohen48.tap.protocol.ProtocolAuthentication
 import io.github.noamcohen48.tap.protocol.ProtocolNegotiation
+import io.github.noamcohen48.tap.protocol.RUNTIME_PARK_CAPABILITY
 import io.github.noamcohen48.tap.protocol.SUPPORTED_CAPABILITIES
 import io.github.noamcohen48.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import io.github.noamcohen48.tap.protocol.UIAUTOMATOR_BUILD_ID
@@ -28,6 +29,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetAddress
 import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import java.util.UUID
 
 /**
@@ -40,60 +42,123 @@ class TapDriverServer(
     arguments: Bundle,
     private val faults: FaultHooks = FaultHooks.NONE,
 ) {
-    private val config = SessionConfig.from(arguments::getString)
-    private val device =
-        UiDevice.getInstance(instrumentation).also {
-            // Every UiAutomator lookup first waits for the accessibility event stream to go quiet
-            // (default: up to 10 s). On a screen that never settles — a ticker, an indeterminate
-            // spinner — that turns each command into a 10 s stall and a watchdog poison. Bound it
-            // (Maestro uses 0, Appium's default is 10 s); stability is an explicit wait in Tap.
-            Configurator.getInstance().waitForIdleTimeout = UI_AUTOMATOR_IDLE_TIMEOUT_MS
-        }
-    private val driverInstanceId = UUID.randomUUID().toString()
-    private val engine =
-        DriverCommandEngine(
+    private var config = SessionConfig.from(arguments::getString)
+    private var parkNegotiated = false
+
+    private fun newEngine(): DriverCommandEngine {
+        val device =
+            UiDevice.getInstance(instrumentation).also {
+                // Every UiAutomator lookup first waits for the accessibility event stream to go quiet
+                // (default: up to 10 s). On a screen that never settles — a ticker, an indeterminate
+                // spinner — that turns each command into a 10 s stall and a watchdog poison. Bound it
+                // (Maestro uses 0, Appium's default is 10 s); stability is an explicit wait in Tap.
+                Configurator.getInstance().waitForIdleTimeout = UI_AUTOMATOR_IDLE_TIMEOUT_MS
+            }
+        return DriverCommandEngine(
             instrumentation,
             device,
             faults,
             SyncProviderClient(instrumentation),
         )
+    }
 
-    /** Blocks until the one authenticated connection ends (or the process is killed). */
+    private val driverInstanceId = UUID.randomUUID().toString()
+    private var engine: DriverCommandEngine? = newEngine()
+
+    /** Only an acknowledged clean handoff survives a connection; all other endings exit. */
     fun serve() {
         ServerSocket(config.port, 1, InetAddress.getByName("127.0.0.1")).use { server ->
             announceReady()
+            var idleDeadline: Long? = null
             while (true) {
-                server.accept().use { socket ->
+                val remaining = idleDeadline?.let { ((it - System.nanoTime()) / 1_000_000).coerceAtMost(300_000).toInt() }
+                if (remaining != null && remaining <= 0) return
+                server.soTimeout = remaining ?: 0
+                val accepted =
+                    try {
+                        server.accept()
+                    } catch (_: SocketTimeoutException) {
+                        return
+                    }
+                accepted.use { socket ->
                     // Whole frames go out in one write; don't let Nagle hold them for an ACK.
                     socket.tcpNoDelay = true
-                    socket.soTimeout = 10_000
+                    socket.soTimeout = minOf(10_000, remaining ?: 10_000)
+                    val timer =
+                        idleDeadline?.let { deadline ->
+                            java.util.Timer("tap-idle-handshake", true).also { timer ->
+                                timer.schedule(
+                                    object : java.util.TimerTask() {
+                                        override fun run() {
+                                            runCatching { socket.close() }
+                                        }
+                                    },
+                                    ((deadline - System.nanoTime()) / 1_000_000).coerceAtLeast(1),
+                                )
+                            }
+                        }
                     val authenticated =
                         try {
                             authenticate(socket.getInputStream(), socket.getOutputStream())
                         } catch (_: Exception) {
                             // A failed or malformed handshake only ends this attempt; Errors propagate.
                             false
+                        } finally {
+                            timer?.cancel()
                         }
                     if (!authenticated) return@use
+                    if (idleDeadline?.let { System.nanoTime() >= it } == true) return
 
+                    idleDeadline = null
                     socket.soTimeout = 0
+                    val activeEngine = engine ?: newEngine().also { engine = it }
                     val connection =
                         DriverConnection(
                             socket,
-                            engine,
+                            activeEngine,
                             faults,
                             config.sessionId,
                             config.generation,
                             config.uninterruptibleGraceMs,
                             config.heartbeatTimeoutMs,
                             onPoisoned = { reason -> onPoisoned(server, reason) },
+                            resetForReuse =
+                                if (config.reusable && parkNegotiated) {
+                                    (
+                                        { next ->
+                                            io.github.noamcohen48.tap.protocol.validateRuntimePark(
+                                                next,
+                                                config.sessionId,
+                                                config.generation,
+                                                config.secret,
+                                            )
+                                            activeEngine.closeForReuse()
+                                            DriverRuntimeReset.disconnect(instrumentation)
+                                            engine = null
+                                        }
+                                    )
+                                } else {
+                                    null
+                                },
                         )
                     connection.run()
                     if (connection.isPoisoned && faults.watchdogKillsProcess) {
                         // The executor never came back; nothing may run in this process again.
                         android.os.Process.killProcess(android.os.Process.myPid())
                     }
-                    return
+                    val next = connection.parked ?: return
+                    config.secret.fill(0)
+                    config =
+                        SessionConfig(
+                            next.nextSessionId,
+                            next.nextGeneration,
+                            next.nextSecret.toByteArray(),
+                            config.port,
+                            config.uninterruptibleGraceMs,
+                            config.heartbeatTimeoutMs,
+                            reusable = true,
+                        )
+                    idleDeadline = System.nanoTime() + next.idleTimeoutMs * 1_000_000L
                 }
             }
         }
@@ -125,8 +190,9 @@ class TapDriverServer(
     }
 
     private fun announceReady() {
-        val ready = "TAP_READY session=${config.sessionId} generation=${config.generation} " +
-            "port=${config.port} instance=$driverInstanceId"
+        val ready =
+            "TAP_READY session=${config.sessionId} generation=${config.generation} " +
+                "port=${config.port} instance=$driverInstanceId"
         println(ready)
         instrumentation.sendStatus(2, Bundle().apply { putString("tapReady", ready) })
     }
@@ -135,7 +201,10 @@ class TapDriverServer(
      * HELLO → CHALLENGE → AUTH → AUTH_RESULT. The transcript MACs the exact HELLO and CHALLENGE
      * payloads and the serialized negotiation bytes the host sent, never a re-encoding.
      */
-    private fun authenticate(input: InputStream, output: OutputStream): Boolean {
+    private fun authenticate(
+        input: InputStream,
+        output: OutputStream,
+    ): Boolean {
         val helloFrame = FrameCodec.read(input)
         require(helloFrame.type == FrameType.HELLO && helloFrame.requestId == 0L)
         val hello = parsePayload("HELLO", helloFrame.payload, Hello::parseFrom)
@@ -143,28 +212,32 @@ class TapDriverServer(
         require(ProtocolNegotiation.isValidHello(hello))
         if (ProtocolNegotiation.selectVersion(hello.supportedVersionsList, SUPPORTED_PROTOCOL_VERSIONS) == null) {
             // Say why instead of a bare EOF: the host reports it as a version mismatch.
-            val unsupported = AuthenticationResult.newBuilder()
-                .setOk(false)
-                .setError(ErrorCode.ERR_UNSUPPORTED.label)
-                .build()
+            val unsupported =
+                AuthenticationResult
+                    .newBuilder()
+                    .setOk(false)
+                    .setError(ErrorCode.ERR_UNSUPPORTED.label)
+                    .build()
             FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, unsupported.toByteArray()))
             return false
         }
 
-        val challenge = Challenge.newBuilder()
-            .setAndroidApiLevel(android.os.Build.VERSION.SDK_INT)
-            .addAllCapabilities(SUPPORTED_CAPABILITIES)
-            .setDriverApkBuildId(DRIVER_APK_BUILD_ID)
-            .setDriverInstanceId(driverInstanceId)
-            .setDriverNonce(ProtocolAuthentication.nonce())
-            .setDriverTestApkBuildId(DRIVER_TEST_APK_BUILD_ID)
-            .setHostNonce(hello.hostNonce)
-            .setSessionGeneration(config.generation)
-            .setSessionId(config.sessionId)
-            .addAllSupportedOperations(Operations.ALL)
-            .addAllSupportedVersions(SUPPORTED_PROTOCOL_VERSIONS)
-            .setUiAutomatorBuildId(UIAUTOMATOR_BUILD_ID)
-            .build()
+        val challenge =
+            Challenge
+                .newBuilder()
+                .setAndroidApiLevel(android.os.Build.VERSION.SDK_INT)
+                .addAllCapabilities(SUPPORTED_CAPABILITIES.filter { it != RUNTIME_PARK_CAPABILITY || config.reusable })
+                .setDriverApkBuildId(DRIVER_APK_BUILD_ID)
+                .setDriverInstanceId(driverInstanceId)
+                .setDriverNonce(ProtocolAuthentication.nonce())
+                .setDriverTestApkBuildId(DRIVER_TEST_APK_BUILD_ID)
+                .setHostNonce(hello.hostNonce)
+                .setSessionGeneration(config.generation)
+                .setSessionId(config.sessionId)
+                .addAllSupportedOperations(Operations.ALL)
+                .addAllSupportedVersions(SUPPORTED_PROTOCOL_VERSIONS)
+                .setUiAutomatorBuildId(UIAUTOMATOR_BUILD_ID)
+                .build()
         val challengePayload = challenge.toByteArray()
         FrameCodec.write(output, Frame(FrameType.CHALLENGE, 0, challengePayload))
 
@@ -180,20 +253,26 @@ class TapDriverServer(
             !validNegotiation ||
             !ProtocolAuthentication.constantTimeEquals(expected, authentication.transcriptHmac)
         ) {
-            val rejected = AuthenticationResult.newBuilder()
-                .setOk(false)
-                .setError(ErrorCode.ERR_UNAUTHENTICATED.label)
-                .build()
+            val rejected =
+                AuthenticationResult
+                    .newBuilder()
+                    .setOk(false)
+                    .setError(ErrorCode.ERR_UNAUTHENTICATED.label)
+                    .build()
             FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, rejected.toByteArray()))
             return false
         }
 
-        val result = AuthenticationResult.newBuilder()
-            .setOk(true)
-            .addAllEnabledCapabilities(negotiation.enabledCapabilitiesList)
-            .setSelectedVersion(negotiation.selectedVersion)
-            .setTranscriptHmac(ProtocolAuthentication.driverMac(config.secret, transcript))
-            .build()
+        parkNegotiated = RUNTIME_PARK_CAPABILITY in negotiation.enabledCapabilitiesList &&
+            negotiation.selectedVersion.major == 5 && negotiation.selectedVersion.minor >= 2
+        val result =
+            AuthenticationResult
+                .newBuilder()
+                .setOk(true)
+                .addAllEnabledCapabilities(negotiation.enabledCapabilitiesList)
+                .setSelectedVersion(negotiation.selectedVersion)
+                .setTranscriptHmac(ProtocolAuthentication.driverMac(config.secret, transcript))
+                .build()
         FrameCodec.write(output, Frame(FrameType.AUTH_RESULT, 0, result.toByteArray()))
         return true
     }

@@ -51,7 +51,10 @@ internal class LocationCommands(
                 emit(manager, command)
             }
         } catch (denied: SecurityException) {
-            throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Android refused the mock location (the driver lacks the mock-location app-op): ${denied.message}")
+            throw CommandFailure(
+                ErrorCode.ERR_ACTION_REJECTED,
+                message = "Android refused the mock location (the driver lacks the mock-location app-op): ${denied.message}",
+            )
         } catch (refused: IllegalArgumentException) {
             throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Android refused the mock location: ${refused.message}")
         }
@@ -63,6 +66,17 @@ internal class LocationCommands(
                 RESEND_MS,
                 TimeUnit.MILLISECONDS,
             )
+    }
+
+    /** Stop and join the emitter before acknowledging a clean session handoff. */
+    fun close() {
+        synchronized(this) {
+            resending?.cancel(false)
+            resending = null
+            providers.clear()
+        }
+        resender.shutdownNow()
+        check(resender.awaitTermination(1_000, TimeUnit.MILLISECONDS)) { "Mock location emitter did not stop" }
     }
 
     private fun addMissing(manager: LocationManager) {
@@ -95,7 +109,18 @@ internal class LocationCommands(
             manager.addTestProvider(name, properties)
         } else {
             @Suppress("DEPRECATION")
-            manager.addTestProvider(name, false, false, false, false, true, true, true, ProviderProperties.POWER_USAGE_LOW, ProviderProperties.ACCURACY_FINE)
+            manager.addTestProvider(
+                name,
+                false,
+                false,
+                false,
+                false,
+                true,
+                true,
+                true,
+                ProviderProperties.POWER_USAGE_LOW,
+                ProviderProperties.ACCURACY_FINE,
+            )
         }
         manager.setTestProviderEnabled(name, true)
         providers += name

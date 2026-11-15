@@ -7,8 +7,8 @@ held by one client at a time. You start it; clients never do.
 ## The `tap` command
 
 ```
-tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR]
-tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK]
+tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-idle-timeout-ms N]
+tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK] [--driver-idle-timeout-ms N]
 tap status  [--state-dir DIR]
 tap stop    [--state-dir DIR]
 tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
@@ -25,6 +25,7 @@ tap version
 | `--adb` | the ADB executable; default `$TAP_ADB` or `adb` on `PATH` |
 | `--scrcpy` | the [scrcpy](https://github.com/Genymobile/scrcpy) executable, used only by [recordings](artifacts.md#recordings); default `$TAP_SCRCPY` or `scrcpy` on `PATH`. Tap runs it with its own ADB |
 | `--scrcpy-server` | a scrcpy **4.1** server JAR for the shared screen video that [Tap watcher](../watcher/index.md) shows; default `$TAP_SCRCPY_SERVER`, otherwise no shared video. Recordings do not need it |
+| `--driver-idle-timeout-ms` | experimental clean instrumentation reuse: `0` (default) disables it; `1000`–`300000` keeps a clean runtime for that many milliseconds after detach, without reserving the device |
 | `--driver-apk`, `--driver-test-apk` | a driver build of your own instead of the one bundled in the executable. Clients cannot pick a driver per attach |
 | `status` | prints `running 127.0.0.1:PORT pid=… version=… adb=…` (never the token); exit 1 when no server is running |
 | `stop` | terminates the server recorded in `daemon.json` after it answered an authenticated call; a stale file is removed and nothing is signalled |
@@ -54,6 +55,62 @@ be using them. To reclaim space, stop every Tap server using that state director
 its `driver/` directory (including any older version-only subdirectories). The next start
 extracts its bundled APKs again. Leave `sessions/` intact: it holds device locks and recovery
 journals, not cached files.
+
+## Driver runtime reuse (experimental)
+
+To avoid restarting instrumentation between independent tests, opt in when starting the server:
+
+```sh
+tap stop
+tap start --driver-idle-timeout-ms 60000
+```
+
+Restart to change the setting: `tap start` does not reconfigure an already-running server.
+Each attachment still gets a fresh session generation and credentials, restores Tap-managed
+changes on detach, and releases the device lock. Only the process and its verified forward
+may remain, for at most the configured idle interval. The idle runtime has no automation
+connection or input pipeline; it does not reserve the device. Another process can acquire it.
+This does not reset the app's data or share a test session.
+
+The default attachment policy is `auto`: use a verified clean runtime when enabled, otherwise
+start cold. To force a new process (also stopped on detach):
+
+```python
+connection.attach_device("85e49002", driver_start="cold")
+```
+
+Kotlin: `DeviceOptions(driverStart = DriverStart.COLD)`. `skip_driver_install` /
+`skipDriverInstall` is separate: avoiding installation does not force or prevent process reuse.
+New handles expose `driver_reused` / `driverReused`; older servers and resumed held-connection
+handles may report `None` / `null` because startup provenance is unavailable.
+
+Reuse is refused after poison, uncertain cleanup, failed restoration, inspection, startup fault
+overrides or synchronization calls. Changed builds, boot/process/forward identity or rotation
+baseline take the cold path. No transmitted mutation is retried. The explicit disconnect bridge
+has been validated on API 29 and API 34; if reset is unsupported, Tap proves cold cleanup instead.
+A held agent connection still retains its attachment until release/its own timeout; this runtime
+idle interval starts only after detach, not between CLI calls within that held session.
+
+## Attachment timing
+
+With runtime reuse disabled, each attachment starts fresh instrumentation and detach stops it.
+Driver APKs stay installed. Before starting, Tap checks the device's
+power state and sends the wake key only when it cannot confirm that the device is already
+awake and stable. It still attempts to dismiss an insecure keyguard; a secure lock is not bypassed.
+
+The server log (`<state-dir>/daemon.log` with `tap start`) includes lifecycle stage durations:
+
+```text
+[tap] lifecycle serial=85e49002 stage=attach_instrumentation outcome=ok elapsed_ms=2056
+```
+
+Stages distinguish lock waiting, boot/recovery, screen preparation, APK checking/installation,
+instrumentation startup, forwarding, process identity, authentication, health and detach cleanup.
+Durations use a monotonic clock; failed and cancelled stages are reported without request payloads
+or error messages. `attach_total` is the host-core open, including its stages, not the entire
+client RPC or a value to add to the other durations. An APK installation is a deployment cost,
+not the steady-state cost of every attachment. The startup log also reports `mode=cold` or
+`mode=reused`, and warm detach includes `detach_runtime_reset`.
 
 ## Cleaning up after a crash
 

@@ -27,6 +27,7 @@ const val DRIVER_TEST_PACKAGE = "$DRIVER_PACKAGE.test"
 
 /** The driver app's notification listener (the notification commands), as a flattened component. */
 const val DRIVER_NOTIFICATION_LISTENER = "$DRIVER_PACKAGE/$DRIVER_PACKAGE.TapNotificationListener"
+
 /**
  * Whether [packageName] is one of Tap's own driver packages. They are never an app under test or
  * a lifecycle target: stopping, clearing or uninstalling them would kill the device session.
@@ -76,6 +77,9 @@ data class RunningInstrumentation(
     val devicePort: Int,
     val driverInstanceId: String,
     internal val drainScope: CoroutineScope,
+    internal val logSink: java.util.concurrent.atomic.AtomicReference<(String) -> Unit> =
+        java.util.concurrent.atomic
+            .AtomicReference({}),
 )
 
 suspend fun isPortListening(
@@ -184,6 +188,9 @@ suspend fun startDriverWithRetry(
                 }
         }
         val output = StringBuilder()
+        val activeLog =
+            java.util.concurrent.atomic
+                .AtomicReference(logSink)
         val markerPrefix = "TAP_READY session=$sessionId generation=$generation port=$devicePort instance="
         // The drain looks at each line once; it completes with the instance ID, or null when the
         // output ends (the instrumentation exited) without the marker.
@@ -194,8 +201,11 @@ suspend fun startDriverWithRetry(
                 try {
                     withContext(Dispatchers.IO) {
                         process.inputStream.bufferedReader().forEachLine { line ->
-                            synchronized(output) { output.appendLine(line) }
-                            logSink(line)
+                            synchronized(output) {
+                                output.appendLine(line)
+                                if (output.length > 65_536) output.delete(0, output.length - 65_536)
+                            }
+                            activeLog.get().invoke(line)
                             if (!ready.isCompleted && markerPrefix in line) {
                                 ready.complete(line.substringAfter(markerPrefix).trim())
                             }
@@ -220,7 +230,7 @@ suspend fun startDriverWithRetry(
             val instanceId = if (remainingMs > 0) withTimeoutOrNull(remainingMs) { ready.await() } else null
             if (!instanceId.isNullOrEmpty()) {
                 handedOff = true
-                return RunningInstrumentation(process, output, outputDrain, devicePort, instanceId, drainScope)
+                return RunningInstrumentation(process, output, outputDrain, devicePort, instanceId, drainScope, activeLog)
             }
             // Completed without an instance: the output ended, so the instrumentation exited.
             exited = ready.isCompleted
@@ -288,9 +298,14 @@ private suspend fun cleanupAttempt(
             }
         }
         closeProcessStreams(process) { failure = failure ?: it }
-        val drainCompleted = withTimeoutOrNull(1_000) { outputDrain.join(); true } == true
+        val drainCompleted =
+            withTimeoutOrNull(1_000) {
+                outputDrain.join()
+                true
+            } == true
         if (!drainCompleted || !outputDrain.isCompleted) {
-            failure = failure ?: DeviceQuarantinedException(serial, "Instrumentation output drain survived failed startup cleanup on $serial")
+            failure =
+                failure ?: DeviceQuarantinedException(serial, "Instrumentation output drain survived failed startup cleanup on $serial")
         }
         drainScope.cancel()
         failure
@@ -304,6 +319,16 @@ suspend fun cleanupInstrumentation(
 ) {
     var driverFailure: Throwable? = null
     cleanupStep({ driverFailure = it }) { forceStopDriverAndVerify(adb, serial) }
+    cleanupStep({ driverFailure = driverFailure ?: it }) { cleanupInstrumentationProcess(serial, running) }
+    driverFailure?.let { throw it }
+}
+
+/** Reap only this host child; never force-stop a newer driver after ownership has changed. */
+internal suspend fun cleanupInstrumentationProcess(
+    serial: String,
+    running: RunningInstrumentation,
+) {
+    var driverFailure: Throwable? = null
     cleanupStep({ driverFailure = driverFailure ?: it }) {
         if (running.process.isAlive) running.process.destroyForcibly()
     }
@@ -315,7 +340,11 @@ suspend fun cleanupInstrumentation(
         }
     }
     closeProcessStreams(running.process) { driverFailure = driverFailure ?: it }
-    val drainCompleted = withTimeoutOrNull(1_000) { running.outputDrain.join(); true } == true
+    val drainCompleted =
+        withTimeoutOrNull(1_000) {
+            running.outputDrain.join()
+            true
+        } == true
     if (!drainCompleted || !running.outputDrain.isCompleted) {
         driverFailure = driverFailure ?: DeviceQuarantinedException(serial, "Instrumentation output drain survived cleanup on $serial")
     }
@@ -390,7 +419,10 @@ suspend fun recoverJournal(
     }
     if (record.devicePort !in DEVICE_PORT_RANGE) {
         store.write(record.quarantined("JOURNAL_PORT_OUT_OF_RANGE: tcp:${record.devicePort}"))
-        throw DeviceQuarantinedException(serial, "Journal device port on $serial is outside the reserved framework range; device quarantined")
+        throw DeviceQuarantinedException(
+            serial,
+            "Journal device port on $serial is outside the reserved framework range; device quarantined",
+        )
     }
 
     if (record.state != JournalState.CLOSED) {
@@ -421,6 +453,10 @@ suspend fun recoverJournal(
     }
 
     forceStopDriverAndVerify(adb, serial, record.driverPid, record.driverStartToken)
+    if (record.runtimeIdle) {
+        removeJournalForwards(adb, serial, record)
+        return record.copy(runtimeIdle = false, updatedAtEpochMs = System.currentTimeMillis()).also(store::write)
+    }
     return record
 }
 
@@ -428,6 +464,7 @@ suspend fun recoverJournal(
 private fun SessionJournal.quarantined(reason: String): SessionJournal =
     copy(
         state = JournalState.QUARANTINED,
+        runtimeIdle = false,
         quarantineReason = inspectedQuarantine?.let { if (it == reason) it else "$reason (quarantined before: $it)" } ?: reason,
         inspectedQuarantine = null,
         updatedAtEpochMs = System.currentTimeMillis(),

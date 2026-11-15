@@ -97,6 +97,7 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("attach", "attach a device to the session (created if needed)", common)
     p.add_argument("serial")
+    p.add_argument("--driver-start", choices=("auto", "cold"), default="auto", help="cold: start fresh instrumentation; detach an existing attachment first")
     p.add_argument("--idle", type=_duration, default=None, help="end the session after this long unused (default 15m)")
     p.add_argument("--wait-for-device", type=_duration, default=0, metavar="DURATION", help="wait this long for a device another session holds")
     p.add_argument(
@@ -384,7 +385,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "attach":
         kwargs = {} if args.idle is None else {"idle": args.idle}
         return agent.attach(
-            args.serial, wait_for_device=args.wait_for_device, inspect_quarantined=args.inspect_quarantined, **kwargs
+            args.serial, wait_for_device=args.wait_for_device, inspect_quarantined=args.inspect_quarantined,
+            driver_start=args.driver_start, **kwargs
         )
     if v == "sessions":
         return agent.sessions()

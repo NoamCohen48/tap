@@ -24,6 +24,17 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 
+/** A frozen UiAutomation snapshot stores physical rotation, which can differ from USER_ROTATION
+ * when the foreground app requests an orientation. Only an explicitly unfrozen, complete
+ * baseline can use readback alone after disconnect; frozen/unknown modes need full restore. */
+internal fun canUseReadOnlyRotationRestore(
+    baseline: List<SavedState>,
+    rotationTouched: Boolean,
+): Boolean =
+    !rotationTouched && baseline.size == StateKey.ROTATION.size &&
+        baseline.map { it.key }.toSet() == StateKey.ROTATION.toSet() &&
+        baseline.single { it.key == StateKey.ACCELEROMETER_ROTATION }.value == "1"
+
 /** Everything needed to bring up one driver session on one device. */
 data class DeviceSessionConfig(
     val serial: String,
@@ -56,7 +67,17 @@ data class DeviceSessionConfig(
      * could otherwise install a different build between the check and this session's driver start.
      */
     val installDriver: suspend () -> Boolean = { true },
-)
+    /** Receives duration-only lifecycle diagnostics; never authentication or command payloads. */
+    val lifecycleLog: (String) -> Unit = {},
+    /** Optional daemon-local cache; null retains the original per-session process lifecycle. */
+    val runtimeCache: DriverRuntimeCache? = null,
+    val driverStart: DriverStart = DriverStart.AUTO,
+) {
+    // Fault hooks and startup overrides must never leak into another session.
+    internal val allowsRuntimeReuse: Boolean get() =
+        runtimeCache != null && driverStart == DriverStart.AUTO &&
+            !inspectQuarantined && driverArguments.isEmpty()
+}
 
 /**
  * One disposable session unit: device lease, journal, driver instrumentation, ADB forward,
@@ -76,6 +97,9 @@ class DeviceSession private constructor(
     private val hostPort: Int,
     val client: DriverClient,
     private val hooks: SessionHooks,
+    /** Fresh session, but the verified instrumentation process was retained from the last one. */
+    val driverReused: Boolean = false,
+    private val runtimeRotationBaseline: List<SavedState> = emptyList(),
 ) {
     val serial: String get() = config.serial
     val generation: Long get() = journal.generation
@@ -84,6 +108,7 @@ class DeviceSession private constructor(
     /** The raw runner. Internal: cross-module users go through typed [AppLifecycle] operations. */
     internal val adb: Adb get() = config.adb
 
+    private val timings = SessionLifecycleTimings(config.serial, config.lifecycleLog)
     private val apps = ConcurrentHashMap<String, AppLifecycle>()
 
     /** Serialize explicit app lifecycle changes with stopped-app private-data operations. */
@@ -274,16 +299,30 @@ class DeviceSession private constructor(
     }
 
     /** Restore one teardown phase; retain unproven entries for cleanup/quarantine recovery. */
+    @Volatile private var rotationTouched = false
+
     private suspend fun restoreSavedState(rotation: Boolean = false) {
         savedStateMutex.withLock {
             val entries = savedState.filter { (it.key in StateKey.ROTATION) == rotation }
             if (entries.isEmpty()) return
+            if (rotation && canUseReadOnlyRotationRestore(runtimeRotationBaseline, rotationTouched) &&
+                adb.rotationSettingsHold(serial, entries)
+            ) {
+                // No rotation command ran and the matching baseline was unfrozen. Destroy's
+                // thaw is already a no-op: do not introduce settings writes (and their SystemUI
+                // settle window). A frozen snapshot is never eligible for this fast path.
+                savedState.removeAll(entries.toSet())
+                return
+            }
             adb.restoreState(serial, entries)
             savedState.removeAll(entries.toSet())
         }
     }
 
-    private suspend fun captureRotation() = captureBeforeChange(StateKey.ROTATION)
+    private suspend fun captureRotation() {
+        rotationTouched = true
+        captureBeforeChange(StateKey.ROTATION)
+    }
 
     private val closeStarted = AtomicBoolean(false)
     private val cancellationCleanupScheduled = AtomicBoolean(false)
@@ -313,13 +352,14 @@ class DeviceSession private constructor(
                 if (findReapUncertain(error) != null) failed(error) else firstFailure = firstFailure ?: error
             }
             var clientPoison: Throwable? = null
+            var runtimeRetained = false
             val finished =
                 withTimeoutOrNull(timeoutMs) {
                     // Admitted operations drain first, through their poison-recording point, so the
                     // CLOSED vs QUARANTINED choice below observes every in-flight uncertainty and no
                     // lease handoff or final CLOSED can race a late poison. The drain shares this
                     // bound and quarantines on expiry.
-                    val drainFailure = awaitAdmittedOperations(timeoutMs)
+                    val drainFailure = timings.measure("detach_drain") { awaitAdmittedOperations(timeoutMs) }
                     if (drainFailure != null) failed(drainFailure)
                     // Read before client.close(): a deliberate close never poisons, so this is
                     // exactly "the transport failed while the session was in use".
@@ -328,20 +368,55 @@ class DeviceSession private constructor(
                     // as cancellation (finished == null below), never as a recorded failure.
                     // Before the driver ends: Android force-stops the package when the instrumentation
                     // finishes, and a listener bound then comes back (Adb.releaseDriverNotificationListener).
-                    cleanupStep(failed) { adb.releaseDriverNotificationListener(serial) }
-                    cleanupStep(failed) { client.close() }
-                    cleanupStep(restoreFailed) { restoreSavedState() }
-                    cleanupStep(failed) { adb.removeForward(serial, hostPort) }
+                    cleanupStep(failed) { timings.measure("detach_listener") { adb.releaseDriverNotificationListener(serial) } }
+                    val cache = config.runtimeCache
+                    var next: io.github.noamcohen48.tap.wire.v1.ParkRuntime? = null
+                    var expires = 0L
+                    if (cache != null && config.allowsRuntimeReuse && journal.inspectedQuarantine == null &&
+                        firstFailure == null && clientPoison == null && reapUncertain.get() == null
+                    ) {
+                        try {
+                            val prepared = cache.nextSession(generation)
+                            expires = System.nanoTime() + cache.idleTimeoutMs * 1_000_000L
+                            timings.measure("detach_runtime_reset") { client.parkForReuse(prepared) }
+                            next = prepared
+                        } catch (cancelled: CancellationException) {
+                            throw cancelled
+                        } catch (_: Exception) {
+                            // Optional reuse failed before any future-session input. Prove cold
+                            // cleanup below; never claim a warm runtime or replay a mutation.
+                            runCatching { config.lifecycleLog("driver runtime serial=$serial reuse=refused") }
+                        }
+                    }
+                    cleanupStep(failed) { timings.measure("detach_client") { client.close() } }
+                    cleanupStep(restoreFailed) { timings.measure("detach_restore") { restoreSavedState() } }
+                    if (next != null && firstFailure == null) {
+                        // PARKED proves UiAutomation was destroyed, not merely a socket closed.
+                        cleanupStep(restoreFailed) { timings.measure("detach_rotation") { restoreSavedState(rotation = true) } }
+                        if (firstFailure == null) {
+                            cleanupStep(failed) {
+                                val idle = journal.copy(state = JournalState.CLOSED, savedState = emptyList(), runtimeIdle = true)
+                                runtimeRetained = cache!!.offer(IdleDriverRuntime(idle, running, next, expires, runtimeRotationBaseline))
+                            }
+                        }
+                    }
                     var instrumentationGone = false
-                    cleanupStep(failed) {
-                        cleanupInstrumentation(adb, serial, running)
-                        instrumentationGone = true
+                    if (!runtimeRetained) {
+                        cleanupStep(failed) { timings.measure("detach_forward") { adb.removeForward(serial, hostPort) } }
+                        cleanupStep(failed) {
+                            timings.measure("detach_instrumentation") { cleanupInstrumentation(adb, serial, running) }
+                            instrumentationGone = true
+                        }
                     }
                     // UiAutomation.disconnect restores Android's own rotation snapshot. A closed
                     // protocol socket does not prove that disconnect has finished. Put our saved
                     // rotation back only after instrumentation is gone; if cleanup fails, leave
                     // these entries journaled instead of claiming restore.
-                    if (instrumentationGone) cleanupStep(restoreFailed) { restoreSavedState(rotation = true) }
+                    if (instrumentationGone) {
+                        cleanupStep(
+                            restoreFailed,
+                        ) { timings.measure("detach_rotation") { restoreSavedState(rotation = true) } }
+                    }
                     true
                 }
             if (finished == null) {
@@ -364,13 +439,18 @@ class DeviceSession private constructor(
                 store.write(
                     journal.copy(
                         state = state,
+                        runtimeIdle = runtimeRetained && state == JournalState.CLOSED,
                         // A failed or timed-out restore keeps what is still to put back.
                         savedState = savedState.toList(),
-                        restoreRetryable = inspected == null && quarantined && poison == null && onlyRestoreFailed && savedState.isNotEmpty(),
+                        restoreRetryable =
+                            inspected == null && quarantined && poison == null && onlyRestoreFailed && savedState.isNotEmpty(),
                         // An inspected device stays quarantined for the reason it was, and a new
                         // cleanup failure says both.
                         quarantineReason =
-                            (firstFailure ?: poison)?.let { "SESSION_CLEANUP_UNCERTAIN: ${it.message}" + (inspected?.let { was -> " (quarantined before: $was)" } ?: "") }
+                            (firstFailure ?: poison)?.let {
+                                "SESSION_CLEANUP_UNCERTAIN: ${it.message}" +
+                                    (inspected?.let { was -> " (quarantined before: $was)" } ?: "")
+                            }
                                 ?: inspected
                                 ?: clientPoison?.let { "DRIVER_CONNECTION_POISONED: ${it.message}" },
                         inspectedQuarantine = null,
@@ -404,7 +484,22 @@ class DeviceSession private constructor(
     }
 
     companion object {
-        suspend fun open(config: DeviceSessionConfig): DeviceSession = open(config, SessionHooks.None)
+        suspend fun open(config: DeviceSessionConfig): DeviceSession =
+            SessionLifecycleTimings(config.serial, config.lifecycleLog).measure("attach_total") {
+                try {
+                    open(config, SessionHooks.None)
+                } catch (warm: WarmDriverAttachException) {
+                    // No client ever received this session; only authentication/health ran.
+                    try {
+                        open(config.copy(driverStart = DriverStart.COLD), SessionHooks.None)
+                    } catch (
+                        cold: Throwable,
+                    ) {
+                        cold.addSuppressed(warm.cause ?: warm)
+                        throw cold
+                    }
+                }
+            }
 
         /** [open] with session [hooks]; host/core tests park or observe the race points. */
         internal suspend fun open(
@@ -414,38 +509,86 @@ class DeviceSession private constructor(
             val adb = config.adb
             val serial = config.serial
             val store = SessionJournalStore(config.journalRoot, serial)
-            val lease = store.acquireLease(config.leaseTimeoutMs)
+            val timings = SessionLifecycleTimings(serial, config.lifecycleLog)
+            val lease = timings.measure("attach_lock") { store.acquireLease(config.leaseTimeoutMs) }
             var leaseOwnedBySession = false
             var observedBootId: String? = null
             var observedPrior: SessionJournal? = null
+            var removedRuntime: IdleDriverRuntime? = null
+            var warmAttempt = false
             try {
-                val bootId = adb.bootId(serial)
+                val bootId = timings.measure("attach_boot") { adb.bootId(serial) }
                 observedBootId = bootId
+                val candidate = config.runtimeCache?.take(serial).also { removedRuntime = it }
+                val recorded = if (candidate != null) runCatching { store.read() }.getOrNull() else null
+                observedPrior = recorded
+                val hasApks = config.driverApk != null || config.driverTestApk != null
+                var installChecked: Boolean? = null
+                val warm =
+                    if (candidate != null && config.allowsRuntimeReuse &&
+                        timings.measure("attach_runtime_verify") { config.runtimeCache!!.verify(candidate, recorded, bootId) }
+                    ) {
+                        installChecked = if (hasApks) timings.measure("attach_apk_check") { config.installDriver() } else false
+                        candidate.takeUnless { installChecked == true }
+                    } else {
+                        null
+                    }
+                warmAttempt = warm != null
                 val prior =
-                    recoverJournal(adb, serial, bootId, store, inspect = config.inspectQuarantined)?.let {
-                        when {
-                            it.state != JournalState.QUARANTINED -> restorePriorState(adb, serial, store, it)
-                            it.restoreRetryable ->
-                                try {
-                                    retryRestore(adb, serial, store, it)
-                                } catch (still: DeviceQuarantinedException) {
-                                    // Still not reading back: inspecting goes ahead with it.
-                                    if (!config.inspectQuarantined) throw still
-                                    checkNotNull(store.read())
+                    if (warm != null) {
+                        recorded
+                    } else {
+                        timings.measure("attach_recovery") {
+                            recoverJournal(adb, serial, bootId, store, inspect = config.inspectQuarantined)?.let {
+                                when {
+                                    it.state != JournalState.QUARANTINED -> {
+                                        restorePriorState(adb, serial, store, it)
+                                    }
+
+                                    it.restoreRetryable -> {
+                                        try {
+                                            retryRestore(adb, serial, store, it)
+                                        } catch (still: DeviceQuarantinedException) {
+                                            // Still not reading back: inspecting goes ahead with it.
+                                            if (!config.inspectQuarantined) throw still
+                                            checkNotNull(store.read())
+                                        }
+                                    }
+
+                                    else -> {
+                                        it
+                                    } // inspectQuarantined: recoverJournal refuses it otherwise
                                 }
-                            else -> it // inspectQuarantined: recoverJournal refuses it otherwise
+                            }
                         }
                     }
                 observedPrior = prior
-                adb.wakeAndDismissKeyguard(serial)
-                if ((config.driverApk != null || config.driverTestApk != null) && config.installDriver()) {
-                    config.driverApk?.let { installDriverPackage(adb, serial, DRIVER_PACKAGE, it) }
-                    config.driverTestApk?.let { installDriverPackage(adb, serial, DRIVER_TEST_PACKAGE, it) }
+                timings.measure("attach_screen") { adb.wakeAndDismissKeyguard(serial) }
+                if (candidate != null && warm == null) {
+                    cleanupInstrumentationProcess(serial, candidate.running)
+                    removedRuntime = null
+                }
+                val installNeeded = hasApks && (installChecked ?: timings.measure("attach_apk_check") { config.installDriver() })
+                if (installNeeded) {
+                    timings.measure("attach_apk_install") {
+                        config.driverApk?.let { installDriverPackage(adb, serial, DRIVER_PACKAGE, it) }
+                        config.driverTestApk?.let { installDriverPackage(adb, serial, DRIVER_TEST_PACKAGE, it) }
+                    }
                 }
 
                 val generation = Math.addExact(prior?.generation ?: 0L, 1L)
-                val sessionId = UUID.randomUUID().toString()
-                val secret = ByteArray(32).also(SecureRandom()::nextBytes)
+                val sessionId = warm?.next?.nextSessionId ?: UUID.randomUUID().toString()
+                val secret = warm?.next?.nextSecret?.toByteArray() ?: ByteArray(32).also(SecureRandom()::nextBytes)
+                check(warm == null || warm.next.nextGeneration == generation) { "Runtime generation did not advance" }
+                val baselineRotation =
+                    warm?.rotationBaseline
+                        ?: if (config.allowsRuntimeReuse) {
+                            timings.measure(
+                                "attach_rotation_baseline",
+                            ) { StateKey.ROTATION.map { SavedState(it, adb.readState(serial, it)) } }
+                        } else {
+                            emptyList()
+                        }
                 val encodedSecret = Base64.getUrlEncoder().withoutPadding().encodeToString(secret)
                 var journal =
                     SessionJournal(
@@ -454,11 +597,15 @@ class DeviceSession private constructor(
                         bootId = bootId,
                         sessionId = sessionId,
                         generation = generation,
-                        devicePort = DEVICE_PORT,
+                        devicePort = warm?.record?.devicePort ?: DEVICE_PORT,
+                        hostPort = warm?.record?.hostPort,
+                        driverPid = warm?.record?.driverPid,
+                        driverStartToken = warm?.record?.driverStartToken,
+                        driverInstanceId = warm?.record?.driverInstanceId,
                         // A quarantine's unrestored state carries over; a retryable one (its retry
                         // just failed) is an ordinary session that restores it, an unproven one an
                         // inspection that goes back to QUARANTINED.
-                        savedState = prior?.takeIf { it.state == JournalState.QUARANTINED }?.savedState.orEmpty(),
+                        savedState = prior?.takeIf { it.state == JournalState.QUARANTINED }?.savedState ?: baselineRotation,
                         inspectedQuarantine =
                             prior
                                 ?.takeIf { it.state == JournalState.QUARANTINED && !it.restoreRetryable }
@@ -472,48 +619,96 @@ class DeviceSession private constructor(
                 var session: DeviceSession? = null
                 var transferAttempted = false
                 try {
-                    running =
-                        startDriverWithRetry(
-                            adb = adb,
-                            serial = serial,
-                            sessionId = sessionId,
-                            generation = generation,
-                            encodedSecret = encodedSecret,
-                            driverArguments = config.driverArguments,
-                            logSink = config.driverLog,
-                            processStarter = config.processStarter,
-                        ) { devicePort ->
-                            journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
-                            store.write(journal)
+                    val started =
+                        warm?.running ?: timings.measure("attach_instrumentation") {
+                            startDriverWithRetry(
+                                adb = adb,
+                                serial = serial,
+                                sessionId = sessionId,
+                                generation = generation,
+                                encodedSecret = encodedSecret,
+                                driverArguments =
+                                    config.driverArguments +
+                                        (
+                                            if (config.allowsRuntimeReuse) {
+                                                mapOf("tapReusable" to "true")
+                                            } else {
+                                                emptyMap()
+                                            }
+                                        ),
+                                logSink = config.driverLog,
+                                processStarter = config.processStarter,
+                            ) { devicePort ->
+                                journal = journal.copy(devicePort = devicePort, updatedAtEpochMs = System.currentTimeMillis())
+                                store.write(journal)
+                            }
                         }
-                    hostPort = adb.forward(serial, running.devicePort)
+                    running = started
+                    removedRuntime = null // The inner startup cleanup now owns this process.
+                    started.logSink.set(config.driverLog)
+                    hostPort = warm?.record?.hostPort ?: timings.measure("attach_forward") { adb.forward(serial, started.devicePort) }
+                    val observation =
+                        warm?.let {
+                            timings
+                                .measure("attach_process_observation") {
+                                    adb.processObservation(serial, DRIVER_PACKAGE, checkNotNull(it.record.driverPid))
+                                }.also { observed ->
+                                    if (!observed.matches(checkNotNull(it.record.driverPid), checkNotNull(it.record.driverStartToken))) {
+                                        throw DriverStartException("Driver identity on $serial changed during reusable startup")
+                                    }
+                                }
+                        }
                     val driverPid =
-                        adb.processIds(serial, DRIVER_PACKAGE).singleOrNull()
-                            ?: throw DriverStartException("Driver on $serial reported ready but is not exactly one process")
+                        observation?.pids?.single() ?: timings.measure("attach_pid") {
+                            adb.processIds(serial, DRIVER_PACKAGE).singleOrNull()
+                                ?: throw DriverStartException("Driver on $serial reported ready but is not exactly one process")
+                        }
+                    val startToken =
+                        (observation?.process as? Adb.ProcessStat.Live)?.startToken
+                            ?: timings.measure("attach_process_identity") { processStartToken(adb, serial, driverPid) }
                     journal =
                         journal.copy(
                             state = JournalState.ACTIVE,
                             hostPort = hostPort,
                             driverPid = driverPid,
-                            driverStartToken = processStartToken(adb, serial, driverPid),
-                            driverInstanceId = running.driverInstanceId,
+                            driverStartToken = startToken,
+                            driverInstanceId = started.driverInstanceId,
                             updatedAtEpochMs = System.currentTimeMillis(),
                         )
                     store.write(journal)
 
-                    client =
-                        connectWithRetry(
-                            hostPort,
-                            sessionId,
-                            generation,
-                            secret,
-                            serial = serial,
-                            heartbeatIntervalMs = config.heartbeatIntervalMs,
-                        )
-                    client.execute(Requests.health())
+                    val connected =
+                        timings.measure("attach_authentication") {
+                            connectWithRetry(
+                                hostPort,
+                                sessionId,
+                                generation,
+                                secret,
+                                serial = serial,
+                                heartbeatIntervalMs = config.heartbeatIntervalMs,
+                            )
+                        }
+                    client = connected
+                    check(
+                        warm == null || connected.driverInstanceId == started.driverInstanceId,
+                    ) { "Driver instance changed during attach" }
+                    runCatching { config.lifecycleLog("driver startup serial=$serial mode=${if (warm == null) "cold" else "reused"}") }
+                    timings.measure("attach_health") { connected.execute(Requests.health()) }
                     journal = journal.copy(state = JournalState.READY, updatedAtEpochMs = System.currentTimeMillis())
                     store.write(journal)
-                    session = DeviceSession(config, lease, store, journal, running, hostPort, client, hooks)
+                    session =
+                        DeviceSession(
+                            config,
+                            lease,
+                            store,
+                            journal,
+                            started,
+                            hostPort,
+                            connected,
+                            hooks,
+                            driverReused = warm != null,
+                            runtimeRotationBaseline = baselineRotation,
+                        )
                     // Bind the session-owned usability gate once: every later command admission on
                     // this client — including through previously captured references — consults the
                     // same sticky poison/closing state under the transport mutex, before any ID or
@@ -561,9 +756,23 @@ class DeviceSession private constructor(
                                         adb.removeForward(serial, port)
                                     }
                                 }
+                                var instrumentationGone = false
                                 running?.let {
                                     cleanupStep({ failure -> cleanupFailure = cleanupFailure ?: failure }) {
                                         cleanupInstrumentation(adb, serial, it)
+                                        instrumentationGone = true
+                                    }
+                                }
+                                if (running == null && baselineRotation.isNotEmpty()) {
+                                    cleanupStep({ failure -> cleanupFailure = cleanupFailure ?: failure }) {
+                                        forceStopDriverAndVerify(adb, serial)
+                                        instrumentationGone = true
+                                    }
+                                }
+                                if (instrumentationGone && baselineRotation.isNotEmpty()) {
+                                    cleanupStep({ failure -> cleanupFailure = cleanupFailure ?: failure }) {
+                                        timings.measure("attach_failure_rotation") { adb.restoreState(serial, baselineRotation) }
+                                        journal = journal.copy(savedState = journal.savedState.filterNot { it.key in StateKey.ROTATION })
                                     }
                                 }
                                 true
@@ -581,7 +790,13 @@ class DeviceSession private constructor(
                             store.write(
                                 journal.copy(
                                     state =
-                                        if (!quarantined && journal.inspectedQuarantine == null) JournalState.CLOSED else JournalState.QUARANTINED,
+                                        if (!quarantined &&
+                                            journal.inspectedQuarantine == null
+                                        ) {
+                                            JournalState.CLOSED
+                                        } else {
+                                            JournalState.QUARANTINED
+                                        },
                                     quarantineReason =
                                         (cleanupFailure ?: startupUncertain)?.let { "SESSION_START_CLEANUP_UNCERTAIN: ${it.message}" }
                                             ?: journal.inspectedQuarantine,
@@ -611,17 +826,36 @@ class DeviceSession private constructor(
                 }
                 // A constructed session owns the lease; either close() finalized it or the
                 // cancellable return handoff scheduled the session-owned cleanup job.
-                if (!leaseOwnedBySession) lease.close()
+                if (!leaseOwnedBySession) {
+                    removedRuntime?.let { entry ->
+                        withContext(NonCancellable) {
+                            runCatching {
+                                cleanupInstrumentationProcess(
+                                    serial,
+                                    entry.running,
+                                )
+                            }.exceptionOrNull()?.let(error::addSuppressed)
+                        }
+                    }
+                    lease.close()
+                }
                 // A cancelled open reports cancellation even when the failure it tripped over was
                 // the transport closing under a write (the cause is kept).
                 if (error !is CancellationException && !currentCoroutineContext().isActive) {
                     throw CancellationException("Session open on $serial was cancelled", error)
+                }
+                if (warmAttempt && !leaseOwnedBySession && error !is CancellationException && findReapUncertain(error) == null) {
+                    throw WarmDriverAttachException(error)
                 }
                 throw error
             }
         }
     }
 }
+
+private class WarmDriverAttachException(
+    cause: Throwable,
+) : RuntimeException("Warm driver attach failed before exposure", cause)
 
 /** Sentinel boot identity for an open that never proved the kernel's boot id. QUARANTINED-only;
  * recovery rejects QUARANTINED before any boot comparison, so it is never mistaken for CLOSED. */
@@ -639,7 +873,15 @@ internal fun quarantineEarlyOpen(
     val now = System.currentTimeMillis()
     val known: SessionJournal? = prior ?: runCatching { store.read() }.getOrNull()
     if (known != null) {
-        store.write(known.copy(state = JournalState.QUARANTINED, quarantineReason = reason, restoreRetryable = false, updatedAtEpochMs = now))
+        store.write(
+            known.copy(
+                state = JournalState.QUARANTINED,
+                runtimeIdle = false,
+                quarantineReason = reason,
+                restoreRetryable = false,
+                updatedAtEpochMs = now,
+            ),
+        )
         return
     }
     store.write(

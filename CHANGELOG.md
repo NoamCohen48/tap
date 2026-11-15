@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- `device.info()` and attachment metadata no longer wait for accessibility idle just to read
+  rotation and the current package. They read the current platform display and a fresh active
+  accessibility root; the package is absent when no root/package is available. Explicit waits,
+  rotation settling/restoration and selector behavior are unchanged.
 - Device logs: the server reads `logcat` for every attached device from the moment it is
   attached and serves it through `DeviceLogService` (`ReadLog`, `MarkLog`, `RedactLog`): the
   app's lines in order with the actions Tap ran (the driver logs each action and wait when it
@@ -31,6 +35,20 @@ name the components affected. Earlier releases used independent version lines. T
   client took (`AcknowledgeAppDeaths`) or a failure carried is `handled` and explains nothing
   more. `ListAppDeaths` `settle_ms` waits for a crash the latest input may still cause, and
   `wait_ms` blocks until the next death without keeping an idle held session alive.
+- Opt in to clean driver-process reuse with `tap start --driver-idle-timeout-ms 60000`
+  (experimental, off by default). Attachments still get fresh generations and credentials,
+  restore changes and release the device on detach; idle instrumentation reserves no device.
+  Force fresh instrumentation with Python `driver_start="cold"`, Kotlin
+  `DeviceOptions(driverStart = DriverStart.COLD)`, or tap-agent's `--driver-start cold` /
+  MCP `driver_start="cold"`. `driver_reused` / `driverReused` reports actual reuse when known.
+  Awake devices also avoid the redundant wake key, and both installed driver APK digests are
+  checked in one ADB call without weakening verification. Warm attachments batch adjacent
+  read-only rotation/process probes and avoid external processes for fixed diagnostic markers;
+  fresh PID/token checks and per-attach APK byte verification remain mandatory. Rotation cleanup
+  also batches readbacks, retaining its full stability interval, restore writes and fresh final
+  verification. Internal wire protocol is 5.2; 5.1 still works without process reuse.
+- Native `tap stop` runs the shutdown hooks, restoring active settings and cleaning idle
+  driver processes/forwards before exit, like the JVM server.
 - Read per-device operation support with `device.capabilities()` in Kotlin/Python,
   `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
   explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining

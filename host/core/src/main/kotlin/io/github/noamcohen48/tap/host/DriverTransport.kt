@@ -50,6 +50,9 @@ internal class DriverTransport(
     private val pending = ConcurrentHashMap<Long, DriverClient.PendingCommand>()
     private val pongs = Channel<Long>(Channel.UNLIMITED)
     private var nextRequestId = 1L
+    private val parked = kotlinx.coroutines.CompletableDeferred<io.github.noamcohen48.tap.wire.v1.RuntimeParked>()
+
+    @Volatile private var parking = false
 
     @Volatile private var poisoned = false
 
@@ -94,7 +97,7 @@ internal class DriverTransport(
         }
 
     private fun ensureUsable(request: Request) {
-        if (!poisoned && !closed) return
+        if (!poisoned && !closed && !parking) return
         throw CommandTransportException(
             ErrorCode.ERR_TRANSPORT_LOST,
             request.op,
@@ -232,6 +235,19 @@ internal class DriverTransport(
                             ?: throw ProtocolException("BLOB_END before BLOB_START for request ${frame.requestId}")
                     }
 
+                    FrameType.RUNTIME_PARKED -> {
+                        if (!parking || frame.requestId != 0L ||
+                            pending.isNotEmpty()
+                        ) {
+                            throw ProtocolException("Unexpected runtime handoff acknowledgement")
+                        }
+                        val result =
+                            parsePayload("RUNTIME_PARKED", frame.payload, io.github.noamcohen48.tap.wire.v1.RuntimeParked::parseFrom)
+                        closed = true
+                        runCatching { socket.close() }
+                        parked.complete(result)
+                    }
+
                     FrameType.CLOSE -> {
                         // The driver ends the connection after a protocol violation; the reason
                         // becomes the poison cause so in-flight commands report why.
@@ -251,6 +267,22 @@ internal class DriverTransport(
 
     private fun pendingFor(frame: Frame): DriverClient.PendingCommand =
         pending[frame.requestId] ?: throw ProtocolException("${frame.type} for unknown request ${frame.requestId}")
+
+    /** End this generation permanently; a new client must authenticate with the fresh secret. */
+    suspend fun park(next: io.github.noamcohen48.tap.wire.v1.ParkRuntime) =
+        pingMutex.withLock {
+            mutex.withLock {
+                check(!closed && !poisoned && !parking && pending.isEmpty()) { "Only a healthy drained transport may park" }
+                parking = true
+                writeFrame(Frame(FrameType.PARK_RUNTIME, 0, next.toByteArray()), remainingTimeoutMs(5_000))
+            }
+            val result =
+                withTimeoutOrNull(5_000) { parked.await() }
+                    ?: throw SocketTimeoutException("Runtime handoff did not complete within 5000 ms")
+            check(
+                result.nextGeneration == next.nextGeneration && result.nextSessionId == next.nextSessionId,
+            ) { "Runtime handoff identity mismatch" }
+        }
 
     suspend fun close() {
         if (closed) return
@@ -287,6 +319,7 @@ internal class DriverTransport(
             poisoned = true
             runCatching { socket.close() }
         }
+        parked.completeExceptionally(cause)
         failPending(cause)
     }
 

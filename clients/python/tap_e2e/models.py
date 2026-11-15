@@ -845,8 +845,8 @@ class Hierarchy(Artifact):
 
 @dataclass(frozen=True)
 class DeviceInfo(Artifact):
-    """Static facts about the device plus its current display, screen and focus state
-    (``Device.info()``). Serialized as JSON."""
+    """Snapshot of device facts, display, screen and focus state (``Device.info()``).
+    Does not wait for UI idle. Serialized as JSON."""
 
     api_level: int
     manufacturer: str
@@ -856,7 +856,7 @@ class DeviceInfo(Artifact):
     display_height: int
     display_rotation: DisplayRotation
     current_package: str | None
-    """The package owning the focused window, when there is one."""
+    """The active accessibility root's package; None when no root/package is available."""
     screen_on: bool
     """The screen is on (interactive)."""
     keyguard_locked: bool

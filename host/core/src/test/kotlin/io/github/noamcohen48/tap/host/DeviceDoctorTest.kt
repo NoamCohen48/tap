@@ -165,7 +165,7 @@ class DeviceDoctorTest {
             val root = Files.createTempDirectory("tap-doctor")
             journal(root, JournalState.ACTIVE)
             val store = SessionJournalStore(root, serial)
-            val written = Files.readString(store.file).replaceFirst("{", "{\"runtimeIdle\":true,")
+            val written = Files.readString(store.file).replaceFirst("{", "{\"futureEngineField\":true,")
             Files.writeString(store.file, written)
             for (fix in listOf(false, true)) {
                 val outcome = DeviceDoctor.check(leftovers(), root, serial, fix = fix)
@@ -173,7 +173,7 @@ class DeviceDoctorTest {
                 assertEquals(written, Files.readString(store.file))
             }
             val released = DeviceDoctor.unquarantine(leftovers(), root, serial) as UnquarantineOutcome.Unquarantined
-            assertEquals("the session journal was written by another Tap engine (runtimeIdle)", released.reason)
+            assertEquals("the session journal was written by another Tap engine (futureEngineField)", released.reason)
             assertEquals(JournalState.CLOSED, store.read()?.state)
             assertTrue(Files.list(root).use { files -> files.anyMatch { ".corrupt-" in it.fileName.toString() } })
         }

@@ -112,6 +112,12 @@ snapshots (follow-up; the proto is there), recording evidence video, coordinate 
 recording was subsequently approved and added in the SDK coverage follow-up above; it is not a
 passive watcher stream, and coordinate taps remain excluded.
 
+Amended 2026-11-14: bounded clean instrumentation reuse is implemented as an opt-in daemon
+optimization (`fast-attach.md`, pool decision 5), not held-session reuse. CLI/MCP attach accept
+`driver_start` (`--driver-start auto|cold`); cold never replaces an already-attached held session.
+Fresh credentials, generations and restoration remain per attachment, and idle runtime retention
+begins only after detach/release.
+
 ## CLI shape
 
 ```

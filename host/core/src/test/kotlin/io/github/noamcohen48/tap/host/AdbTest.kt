@@ -38,6 +38,15 @@ class AdbTest {
             },
         )
 
+    /** Preserve the legacy stateful fake's single-get answers; real batch parsing is tested separately. */
+    private fun rotationAdb(starter: ProcessStarter): Adb =
+        object : Adb("fake-adb", starter) {
+            internal override suspend fun readRotationSettings(
+                serial: String,
+                keys: List<String>,
+            ) = keys.associateWith { readState(serial, it) }
+        }
+
     @Test
     fun `device states keep offline unauthorized and other rows`() =
         runBlocking {
@@ -81,7 +90,10 @@ class AdbTest {
             [ro.product.manufacturer]: [Google]
             [ro.product.model]: [sdk_gphone64_x86_64]
             """.trimIndent()
-        assertEquals(DeviceProperties(34, "Google", "sdk_gphone64_x86_64", emulator = true), parseDeviceProperties("emulator-5554", emulator))
+        assertEquals(
+            DeviceProperties(34, "Google", "sdk_gphone64_x86_64", emulator = true),
+            parseDeviceProperties("emulator-5554", emulator),
+        )
         val samsung =
             """
             [ro.build.version.sdk]: [29]
@@ -131,10 +143,10 @@ class AdbTest {
             // Gone: only other packages' records and non-record mentions remain.
             val gone =
                 """
-                  * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
-                    * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
-                  mLastFocusedRootTask=Task{ad960a2 #794 type=standard A=10198:com.example}
-                    source=ActivityRecord{416ef61 u0 com.example/.MainActivity t793} SCREEN_ORIENTATION_UNSPECIFIED
+                * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
+                  * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
+                mLastFocusedRootTask=Task{ad960a2 #794 type=standard A=10198:com.example}
+                  source=ActivityRecord{416ef61 u0 com.example/.MainActivity t793} SCREEN_ORIENTATION_UNSPECIFIED
                 """.trimIndent()
             assertFalse(scriptedAdb(gone).hasTaskOrActivity(serial, "com.example"))
 
@@ -142,20 +154,24 @@ class AdbTest {
             // its destroy timeout (which kills a process a launch started meanwhile).
             val emptiedTask =
                 """
-                  * Task{d77087b #11 type=standard A=10194:com.example U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=0}
-                  * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
-                    * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
+                * Task{d77087b #11 type=standard A=10194:com.example U=0 visible=false visibleRequested=false mode=fullscreen translucent=true sz=0}
+                * Task{1e0bb8 #1 type=home ?? U=0 visible=true sz=1}
+                  * Hist  #0: ActivityRecord{77a1d1 u0 com.example.launcher/.Home t1}
                 """.trimIndent()
             assertTrue(scriptedAdb(emptiedTask).hasTaskOrActivity(serial, "com.example"))
             // API 29's TaskRecord with a bare affinity, and a task named by its intent instead.
             assertTrue(scriptedAdb("  * TaskRecord{a1b2c3 #12 A=com.example U=0 StackId=3 sz=0}").hasTaskOrActivity(serial, "com.example"))
-            assertTrue(scriptedAdb("  * Task{3ec4d83 #7 type=standard I=com.example/.MainActivity U=0 sz=0}").hasTaskOrActivity(serial, "com.example"))
+            assertTrue(
+                scriptedAdb(
+                    "  * Task{3ec4d83 #7 type=standard I=com.example/.MainActivity U=0 sz=0}",
+                ).hasTaskOrActivity(serial, "com.example"),
+            )
             // Another package whose name starts with this one's is not this one's task.
             val other =
                 """
-                  * Task{d77087b #11 type=standard A=10195:com.example.launcher U=0 visible=true sz=1}
-                  * TaskRecord{a1b2c3 #12 A=com.example.other U=0 StackId=3 sz=1}
-                  * Task{3ec4d83 #7 type=home I=com.example.launcher/.Home U=0 sz=1}
+                * Task{d77087b #11 type=standard A=10195:com.example.launcher U=0 visible=true sz=1}
+                * TaskRecord{a1b2c3 #12 A=com.example.other U=0 StackId=3 sz=1}
+                * Task{3ec4d83 #7 type=home I=com.example.launcher/.Home U=0 sz=1}
                 """.trimIndent()
             assertFalse(scriptedAdb(other).hasTaskOrActivity(serial, "com.example"))
 
@@ -186,19 +202,19 @@ class AdbTest {
             // record-less listing under "Running activities" (no `* `, so not a task header).
             val dialog29 =
                 """
-                    Task id #812
-                    mBounds=Rect(0, 0 - 0, 0)
-                    * TaskRecord{8e5a3d1 #812 A=com.example U=0 StackId=45 sz=1}
-                      affinity=com.example
-                      intent={act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.example/.MainActivity}
-                      realActivity=com.example/.MainActivity
-                      Activities=[ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}]
-                      * Hist #0: ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}
-                          packageName=com.google.android.permissioncontroller processName=com.google.android.permissioncontroller
+                Task id #812
+                mBounds=Rect(0, 0 - 0, 0)
+                * TaskRecord{8e5a3d1 #812 A=com.example U=0 StackId=45 sz=1}
+                  affinity=com.example
+                  intent={act=android.intent.action.MAIN cat=[android.intent.category.LAUNCHER] flg=0x10000000 cmp=com.example/.MainActivity}
+                  realActivity=com.example/.MainActivity
+                  Activities=[ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}]
+                  * Hist #0: ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}
+                      packageName=com.google.android.permissioncontroller processName=com.google.android.permissioncontroller
 
-                    Running activities (most recent first):
-                      TaskRecord{8e5a3d1 #812 A=com.example U=0 StackId=45 sz=1}
-                        Run #0: ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}
+                Running activities (most recent first):
+                  TaskRecord{8e5a3d1 #812 A=com.example U=0 StackId=45 sz=1}
+                    Run #0: ActivityRecord{c41f0e2 u0 com.google.android.permissioncontroller/com.android.packageinstaller.permission.ui.GrantPermissionsActivity t812}
                 """.trimIndent()
             assertFalse(scriptedAdb(dialog29).hasTaskOrActivity(serial, "com.example"))
             val under29 =
@@ -221,12 +237,36 @@ class AdbTest {
             adb.revokePermission(serial, "com.example", "android.permission.CAMERA")
             val extras =
                 listOf(
-                    IntentExtra.newBuilder().setKey("query").setStringValue("it's a test; id").build(),
-                    IntentExtra.newBuilder().setKey("empty").setStringValue("").build(),
-                    IntentExtra.newBuilder().setKey("flag").setBoolValue(true).build(),
-                    IntentExtra.newBuilder().setKey("count").setIntValue(-3).build(),
-                    IntentExtra.newBuilder().setKey("id").setLongValue(9_000_000_000).build(),
-                    IntentExtra.newBuilder().setKey("ratio").setFloatValue(1.5f).build(),
+                    IntentExtra
+                        .newBuilder()
+                        .setKey("query")
+                        .setStringValue("it's a test; id")
+                        .build(),
+                    IntentExtra
+                        .newBuilder()
+                        .setKey("empty")
+                        .setStringValue("")
+                        .build(),
+                    IntentExtra
+                        .newBuilder()
+                        .setKey("flag")
+                        .setBoolValue(true)
+                        .build(),
+                    IntentExtra
+                        .newBuilder()
+                        .setKey("count")
+                        .setIntValue(-3)
+                        .build(),
+                    IntentExtra
+                        .newBuilder()
+                        .setKey("id")
+                        .setLongValue(9_000_000_000)
+                        .build(),
+                    IntentExtra
+                        .newBuilder()
+                        .setKey("ratio")
+                        .setFloatValue(1.5f)
+                        .build(),
                 )
             adb.startActivity(serial, "com.example/.Main", 5_000, extras)
             assertEquals(
@@ -237,14 +277,30 @@ class AdbTest {
                     listOf("shell", "pm", "clear", "com.example"),
                     listOf("shell", "pm", "revoke", "com.example", "android.permission.CAMERA"),
                     listOf(
-                        "shell", "am", "start", "-W",
-                        "--es", "query", "'it'\\''s a test; id'",
-                        "--es", "empty", "''",
-                        "--ez", "flag", "true",
-                        "--ei", "count", "-3",
-                        "--el", "id", "9000000000",
-                        "--ef", "ratio", "1.5",
-                        "-n", "com.example/.Main",
+                        "shell",
+                        "am",
+                        "start",
+                        "-W",
+                        "--es",
+                        "query",
+                        "'it'\\''s a test; id'",
+                        "--es",
+                        "empty",
+                        "''",
+                        "--ez",
+                        "flag",
+                        "true",
+                        "--ei",
+                        "count",
+                        "-3",
+                        "--el",
+                        "id",
+                        "9000000000",
+                        "--ef",
+                        "ratio",
+                        "1.5",
+                        "-n",
+                        "com.example/.Main",
                     ),
                 ),
                 commands.map { it.drop(3) },
@@ -255,6 +311,7 @@ class AdbTest {
     fun `a driver signed by another build or newer is uninstalled and reinstalled, anything else fails`() =
         runBlocking {
             val apk = Files.createTempFile("tap-driver", ".apk")
+
             fun adbWith(
                 commands: MutableList<List<String>>,
                 firstInstall: String,
@@ -334,7 +391,10 @@ class AdbTest {
             assertEquals("no", read(StateKey.NightMode.id, "Night mode: no\n"))
             assertNull(read(StateKey.Density.id, "Physical density: 280\n"))
             assertEquals("320", read(StateKey.Density.id, "Physical density: 280\nOverride density: 320\n"))
-            assertEquals("fr-FR,en-US", read(StateKey.AppLocales("com.example").id, "Locales for com.example for user -2 are [fr-FR,en-US]\n"))
+            assertEquals(
+                "fr-FR,en-US",
+                read(StateKey.AppLocales("com.example").id, "Locales for com.example for user -2 are [fr-FR,en-US]\n"),
+            )
             assertEquals("", read(StateKey.AppLocales("com.example").id, "Locales for com.example for user -2 are []\n"))
             assertNull(read(StateKey.FONT_SCALE, "null\n"))
             assertEquals("1.1", read(StateKey.FONT_SCALE, "1.1\n"))
@@ -400,7 +460,17 @@ class AdbTest {
                 listOf(
                     listOf("shell", "getprop", "ro.build.version.sdk"),
                     listOf("shell", "readlink", "-f", "'/sdcard/Pictures/Tap/a b.png'"),
-                    listOf("shell", "content", "call", "--uri", "content://media/", "--method", "scan_file", "--arg", "'/storage/emulated/0/Pictures/Tap/a b.png'"),
+                    listOf(
+                        "shell",
+                        "content",
+                        "call",
+                        "--uri",
+                        "content://media/",
+                        "--method",
+                        "scan_file",
+                        "--arg",
+                        "'/storage/emulated/0/Pictures/Tap/a b.png'",
+                    ),
                 ),
                 commands.take(3).map { it.drop(3) },
             )
@@ -419,7 +489,7 @@ class AdbTest {
             // after the restore's own writes.
             var lateLock = true
             val adb =
-                testAdb(
+                rotationAdb(
                     ProcessStarter { command ->
                         val args = command.dropWhile { it != "settings" }
                         val out =
@@ -431,15 +501,24 @@ class AdbTest {
                                     }
                                     settings[args[3]] ?: "null"
                                 }
-                                "put" -> "".also {
-                                    writes += "${args[3]}=${args[4]}"
-                                    settings[args[3]] = args[4]
+
+                                "put" -> {
+                                    "".also {
+                                        writes += "${args[3]}=${args[4]}"
+                                        settings[args[3]] = args[4]
+                                    }
                                 }
-                                "delete" -> "Deleted 1 rows".also {
-                                    writes += "${args[3]}=null"
-                                    settings.remove(args[3])
+
+                                "delete" -> {
+                                    "Deleted 1 rows".also {
+                                        writes += "${args[3]}=null"
+                                        settings.remove(args[3])
+                                    }
                                 }
-                                else -> ""
+
+                                else -> {
+                                    ""
+                                }
                             }
                         FakeProcess(stdout = out)
                     },
@@ -463,17 +542,25 @@ class AdbTest {
             val settings = mutableMapOf("accelerometer_rotation" to "1", "user_rotation" to "1")
             val writes = mutableListOf<String>()
             val adb =
-                testAdb(
+                rotationAdb(
                     ProcessStarter { command ->
                         val args = command.dropWhile { it != "settings" }
                         val out =
                             when (args.getOrNull(1)) {
-                                "get" -> settings[args[3]] ?: "null"
-                                "put" -> "".also {
-                                    writes += "${args[3]}=${args[4]}"
-                                    settings[args[3]] = args[4]
+                                "get" -> {
+                                    settings[args[3]] ?: "null"
                                 }
-                                else -> ""
+
+                                "put" -> {
+                                    "".also {
+                                        writes += "${args[3]}=${args[4]}"
+                                        settings[args[3]] = args[4]
+                                    }
+                                }
+
+                                else -> {
+                                    ""
+                                }
                             }
                         FakeProcess(stdout = out)
                     },
@@ -492,22 +579,33 @@ class AdbTest {
             // What the device writes back right after a delete.
             val reappear = mutableMapOf<String, String>()
             val adb =
-                testAdb(
+                rotationAdb(
                     ProcessStarter { command ->
                         val args = command.dropWhile { it != "settings" }
                         val out =
                             when (args.getOrNull(1)) {
-                                "get" -> settings[args[3]] ?: "null"
-                                "put" -> "".also {
-                                    writes += "${args[3]}=${args[4]}"
-                                    if (args[3] != stuck) settings[args[3]] = args[4]
+                                "get" -> {
+                                    settings[args[3]] ?: "null"
                                 }
-                                "delete" -> "Deleted 1 rows".also {
-                                    writes += "${args[3]}=null"
-                                    settings.remove(args[3])
-                                    reappear[args[3]]?.let { settings[args[3]] = it }
+
+                                "put" -> {
+                                    "".also {
+                                        writes += "${args[3]}=${args[4]}"
+                                        if (args[3] != stuck) settings[args[3]] = args[4]
+                                    }
                                 }
-                                else -> ""
+
+                                "delete" -> {
+                                    "Deleted 1 rows".also {
+                                        writes += "${args[3]}=null"
+                                        settings.remove(args[3])
+                                        reappear[args[3]]?.let { settings[args[3]] = it }
+                                    }
+                                }
+
+                                else -> {
+                                    ""
+                                }
                             }
                         FakeProcess(stdout = out)
                     },
@@ -525,7 +623,8 @@ class AdbTest {
 
             settings["font_scale"] = "1.3"
             stuck = "font_scale"
-            val failure = assertFailsWith<DeviceSettingException> { adb.restoreState(serial, listOf(SavedState(StateKey.FONT_SCALE, "1.0"))) }
+            val failure =
+                assertFailsWith<DeviceSettingException> { adb.restoreState(serial, listOf(SavedState(StateKey.FONT_SCALE, "1.0"))) }
             assertTrue("system/font_scale=1.3 (expected 1.0)" in failure.message.orEmpty(), failure.message)
 
             // Android writes an absent font_scale back at 1.0 after the delete: that is restored.
@@ -558,8 +657,14 @@ class AdbTest {
                                     if (answer == "1") locale = command.last().trim('\'')
                                     "Broadcasting: Intent { flg=0x20 }\nBroadcast completed: result=$answer"
                                 }
-                                "system_locales" in command -> locale
-                                else -> ""
+
+                                "system_locales" in command -> {
+                                    locale
+                                }
+
+                                else -> {
+                                    ""
+                                }
                             }
                         FakeProcess(stdout = out)
                     },
@@ -573,14 +678,16 @@ class AdbTest {
             // Never answered: the restore fails after the last attempt, naming it.
             broadcasts = 0
             answers += listOf("0", "0", "0")
-            val unanswered = assertFailsWith<AdbCommandException> { adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "fr-FR"))) }
+            val unanswered =
+                assertFailsWith<AdbCommandException> { adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "fr-FR"))) }
             assertEquals(3, broadcasts)
             assertTrue("result=0 (after 3 attempts)" in unanswered.message.orEmpty(), unanswered.message)
 
             // The receiver's own failure is its answer: not sent again.
             broadcasts = 0
             answers += listOf("2")
-            val failed = assertFailsWith<AdbCommandException> { adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "fr-FR"))) }
+            val failed =
+                assertFailsWith<AdbCommandException> { adb.restoreState(serial, listOf(SavedState(StateKey.SystemLocales.id, "fr-FR"))) }
             assertEquals(1, broadcasts)
             assertTrue(failed.message.orEmpty().endsWith("result=2"), failed.message)
         }
@@ -608,12 +715,12 @@ class AdbTest {
         runBlocking {
             val dumpsys =
                 """
-                    install permissions:
-                      android.permission.INTERNET: granted=true
-                    User 0: ceDataInode=1 installed=true
-                      runtime permissions:
-                        android.permission.CAMERA: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED ]
-                        android.permission.CAMERA_EXTRA: granted=true
+                install permissions:
+                  android.permission.INTERNET: granted=true
+                User 0: ceDataInode=1 installed=true
+                  runtime permissions:
+                    android.permission.CAMERA: granted=false, flags=[ USER_SENSITIVE_WHEN_GRANTED ]
+                    android.permission.CAMERA_EXTRA: granted=true
                 """.trimIndent()
             val adb = scriptedAdb(dumpsys)
             assertTrue(adb.isPermissionGranted(serial, "com.example", "android.permission.INTERNET"))
@@ -631,7 +738,9 @@ class AdbTest {
                 testAdb(
                     ProcessStarter { command ->
                         commands += command
-                        FakeProcess(stdout = "package:/data/app/~~x/$DRIVER_PACKAGE-y/base.apk\npackage:/data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk\ntap-pm-status:0\n$digest  /data/app/~~x/$DRIVER_PACKAGE-y/base.apk\n$split  /data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk\n")
+                        FakeProcess(
+                            stdout = "package:/data/app/~~x/$DRIVER_PACKAGE-y/base.apk\npackage:/data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk\ntap-pm-status:0\n$digest  /data/app/~~x/$DRIVER_PACKAGE-y/base.apk\n$split  /data/app/~~x/$DRIVER_PACKAGE-y/split_a.apk\n",
+                        )
                     },
                 )
             assertEquals(listOf(digest, split), adb.installedApkSha256(serial, DRIVER_PACKAGE))
@@ -690,15 +799,21 @@ class AdbTest {
             try {
                 val commands = mutableListOf<List<String>>()
                 for ((listing, code) in listOf("package:$apk" to 0, "" to 0, "" to 1, "" to 2, "Permission denied" to 1)) {
-                    val adb = testAdb(ProcessStarter { command ->
-                        commands += command
-                        val quoted = "'" + listing.replace("'", "'\\''") + "'"
-                        ProcessBuilder("sh", "-c", "pm() { printf '%s\\n' $quoted; return $code; }; " + command.last()).start()
-                    })
+                    val adb =
+                        testAdb(
+                            ProcessStarter { command ->
+                                commands += command
+                                val quoted = "'" + listing.replace("'", "'\\''") + "'"
+                                ProcessBuilder("sh", "-c", "pm() { printf '%s\\n' $quoted; return $code; }; " + command.last()).start()
+                            },
+                        )
                     if (code == 2 || listing == "Permission denied") {
                         assertFailsWith<AdbCommandException> { adb.installedApkSha256(serial, DRIVER_PACKAGE) }
                     } else {
-                        assertEquals(if (listing.isEmpty()) emptyList() else listOf(BlobFrames.sha256Hex(Files.readAllBytes(apk))), adb.installedApkSha256(serial, DRIVER_PACKAGE))
+                        assertEquals(
+                            if (listing.isEmpty()) emptyList() else listOf(BlobFrames.sha256Hex(Files.readAllBytes(apk))),
+                            adb.installedApkSha256(serial, DRIVER_PACKAGE),
+                        )
                     }
                 }
                 assertEquals(5, commands.size)
@@ -1231,7 +1346,12 @@ class AdbTest {
             starter.delegate =
                 ProcessStarter { command ->
                     val serial = command[2]
-                    val now = running.computeIfAbsent(serial) { java.util.concurrent.atomic.AtomicInteger() }.incrementAndGet()
+                    val now =
+                        running
+                            .computeIfAbsent(serial) {
+                                java.util.concurrent.atomic
+                                    .AtomicInteger()
+                            }.incrementAndGet()
                     peakPerSerial.merge(serial, now, ::maxOf)
                     bothStarted.countDown()
                     check(release.await(5, TimeUnit.SECONDS))

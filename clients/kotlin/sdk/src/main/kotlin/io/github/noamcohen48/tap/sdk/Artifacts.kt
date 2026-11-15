@@ -1,7 +1,7 @@
 package io.github.noamcohen48.tap.sdk
 
-import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.add
+import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import java.nio.file.Files
@@ -31,16 +31,25 @@ interface Artifact {
 }
 
 /** A bounded device recording ([Device.stopRecording]): MP4, Matroska, or Opus. */
-class Recording(override val bytes: ByteArray, override val extension: String) : Artifact {
-    init { require(extension in setOf("mp4", "mkv", "opus")) { "Unknown recording format: $extension" } }
-    override val mediaType: String get() = when (extension) {
-        "mp4" -> "video/mp4"
-        "mkv" -> "video/x-matroska"
-        else -> "audio/ogg"
+class Recording(
+    override val bytes: ByteArray,
+    override val extension: String,
+) : Artifact {
+    init {
+        require(extension in setOf("mp4", "mkv", "opus")) { "Unknown recording format: $extension" }
     }
 
+    override val mediaType: String get() =
+        when (extension) {
+            "mp4" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            else -> "audio/ogg"
+        }
+
     override fun equals(other: Any?): Boolean = other is Recording && extension == other.extension && bytes.contentEquals(other.bytes)
+
     override fun hashCode(): Int = 31 * extension.hashCode() + bytes.contentHashCode()
+
     override fun toString(): String = "Recording($extension, ${bytes.size} bytes)"
 }
 
@@ -77,6 +86,7 @@ class Screenshot(
         fun png(bytes: ByteArray): Screenshot {
             val signature = byteArrayOf(0x89.toByte(), 'P'.code.toByte(), 'N'.code.toByte(), 'G'.code.toByte())
             val isPng = bytes.size >= 24 && bytes.copyOfRange(0, 4).contentEquals(signature)
+
             fun int(at: Int) = (0 until 4).fold(0) { acc, i -> (acc shl 8) or (bytes[at + i].toInt() and 0xFF) }
             return Screenshot(bytes, ImageFormat.PNG, if (isPng) int(16) else 0, if (isPng) int(20) else 0)
         }
@@ -104,7 +114,8 @@ class Hierarchy(
 /**
  * Facts about the device at the moment of [Device.info]: identity, display geometry and
  * rotation, screen, keyguard and keyboard state, the package owning the focused window and the
- * device conditions ([Device.setAnimations] and the rest). Serialized as JSON.
+ * device conditions ([Device.setAnimations] and the rest). Does not wait for UI idle.
+ * Serialized as JSON.
  */
 data class DeviceInfo(
     val apiLevel: Int,
@@ -114,7 +125,7 @@ data class DeviceInfo(
     val displayWidth: Int,
     val displayHeight: Int,
     val displayRotation: DisplayRotation,
-    /** The package owning the focused window, when there is one. */
+    /** The active accessibility root's package; null when no root/package is available. */
     val currentPackage: String?,
     /** The screen is on (interactive). */
     val screenOn: Boolean,

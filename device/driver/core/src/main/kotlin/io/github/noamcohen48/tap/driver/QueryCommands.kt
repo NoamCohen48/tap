@@ -18,6 +18,7 @@ internal class QueryCommands(
     private val keyboard: KeyboardCommands,
     private val rotation: RotationCommands,
     private val conditions: DeviceConditionsReader,
+    private val metadata: DeviceMetadataReader,
 ) {
     fun exists(
         context: CommandContext,
@@ -92,8 +93,8 @@ internal class QueryCommands(
             .setProduct(Build.PRODUCT)
             .setDisplayWidth(device.displayWidth)
             .setDisplayHeight(device.displayHeight)
-            .setDisplayRotation(device.displayRotation)
-            .apply { device.currentPackageName?.let(::setCurrentPackage) }
+            .setDisplayRotation(metadata.displayRotation)
+            .apply { metadata.currentPackage?.let(::setCurrentPackage) }
             .setScreenOn(screen.screenOn)
             .setKeyguardLocked(screen.keyguardLocked)
             .setKeyguardSecure(screen.keyguardSecure)

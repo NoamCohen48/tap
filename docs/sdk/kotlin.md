@@ -175,10 +175,15 @@ takes an explicit `timeout`. With the client directly, pass `Timeouts` and `Devi
 | `DeviceOptions` | Meaning |
 |---|---|
 | `skipDriverInstall` | assume the server's driver is already installed (CI images with a pre-provisioned driver) |
+| `driverStart` | `DriverStart.AUTO` (default): verified clean process reuse when enabled by the server, otherwise cold; `DriverStart.COLD`: fresh instrumentation, stopped on detach |
 | `waitForDevice` | how long to wait for a device another session holds; zero (the default) fails at once with `DeviceBusyException` |
 
 The JUnit extension uses the defaults. The driver itself is the server's: clients cannot pick
-one per attach.
+one per attach. [Experimental runtime reuse](../guide/server.md#driver-runtime-reuse-experimental)
+is independent of installation and does not share a test session: generations, credentials and
+restoration remain per attachment. `device.driverReused` reports actual process reuse; `null`
+means an older server or resumed handle did not provide startup provenance. `PER_CLASS` device
+lifetime is different: it retains the entire attachment and its changed state.
 
 ## Multi-device tests
 

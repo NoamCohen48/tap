@@ -133,9 +133,10 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
                 )
             ),
         ] = False,
+        driver_start: Annotated[Literal["auto", "cold"], Field(description="cold forces fresh instrumentation; detach an existing attachment first.")] = "auto",
         session: Session = "",
     ) -> CallToolResult:
-        """Attach a device to the session, creating the session if needed. Call this first."""
+        """Attach a device with a fresh session, creating the held connection if needed. Call this first."""
         return await call(
             session,
             report=False,
@@ -144,6 +145,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
                 idle=idle_minutes * 60,
                 wait_for_device=wait_for_device_seconds,
                 inspect_quarantined=inspect_quarantined,
+                driver_start=driver_start,
             ),
         )
 

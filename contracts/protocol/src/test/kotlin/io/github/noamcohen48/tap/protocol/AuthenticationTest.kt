@@ -13,7 +13,12 @@ import kotlin.test.assertTrue
 
 class AuthenticationTest {
     private val secret = ByteArray(32) { it.toByte() }
-    private val transcript = ProtocolAuthentication.transcript("hello".encodeToByteArray(), "challenge".encodeToByteArray(), "negotiation".encodeToByteArray())
+    private val transcript =
+        ProtocolAuthentication.transcript(
+            "hello".encodeToByteArray(),
+            "challenge".encodeToByteArray(),
+            "negotiation".encodeToByteArray(),
+        )
 
     @Test
     fun hostAndDriverMacsAreDomainSeparated() {
@@ -80,7 +85,13 @@ class AuthenticationTest {
         val wrongVersion = negotiation.toBuilder().setSelectedVersion(protocolVersion(2, 0)).build()
         val noVersion = negotiation.toBuilder().clearSelectedVersion().build()
         val notOffered = negotiation.toBuilder().addEnabledCapabilities("zzz.not.offered").build()
-        val unsorted = negotiation.toBuilder().clearEnabledCapabilities().addAllEnabledCapabilities(SUPPORTED_CAPABILITIES.reversed()).build()
+        val unsorted =
+            negotiation
+                .toBuilder()
+                .clearEnabledCapabilities()
+                .addAllEnabledCapabilities(
+                    SUPPORTED_CAPABILITIES.reversed(),
+                ).build()
         listOf(wrongVersion, noVersion, notOffered, unsorted).forEach {
             assertFalse(ProtocolNegotiation.isValid(hello, challenge, it), it.toString())
         }
@@ -102,7 +113,11 @@ class AuthenticationTest {
         assertFalse(ProtocolNegotiation.isValidChallenge(challenge().toBuilder().clearSupportedOperations().build()))
         assertFalse(
             ProtocolNegotiation.isValidChallenge(
-                challenge().toBuilder().clearSupportedOperations().addAllSupportedOperations(listOf("tap", "exists")).build(),
+                challenge()
+                    .toBuilder()
+                    .clearSupportedOperations()
+                    .addAllSupportedOperations(listOf("tap", "exists"))
+                    .build(),
             ),
         )
         assertFalse(ProtocolNegotiation.isValidChallenge(challenge().toBuilder().setDriverNonce(ByteString.EMPTY).build()))
@@ -112,14 +127,15 @@ class AuthenticationTest {
 
     @Test
     fun protocolVersionsOrderByMajorThenMinor() {
-        assertEquals("5.1", PROTOCOL_VERSION.render())
+        assertEquals("5.2", PROTOCOL_VERSION.render())
         assertTrue(protocolVersion(2, 9) < protocolVersion(3, 0))
         assertTrue(protocolVersion(3, 1) > protocolVersion(3, 0))
-        assertEquals(listOf(PROTOCOL_VERSION), SUPPORTED_PROTOCOL_VERSIONS)
+        assertEquals(listOf(protocolVersion(5, 1), PROTOCOL_VERSION), SUPPORTED_PROTOCOL_VERSIONS)
     }
 
     private fun hello(versions: List<io.github.noamcohen48.tap.wire.v1.ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS): Hello =
-        Hello.newBuilder()
+        Hello
+            .newBuilder()
             .setHostBuildId(HOST_BUILD_ID)
             .setHostNonce(ProtocolAuthentication.nonce())
             .setSessionGeneration(1)
@@ -128,7 +144,8 @@ class AuthenticationTest {
             .build()
 
     private fun challenge(capabilities: List<String> = SUPPORTED_CAPABILITIES): Challenge =
-        Challenge.newBuilder()
+        Challenge
+            .newBuilder()
             .setAndroidApiLevel(34)
             .addAllCapabilities(capabilities)
             .setDriverApkBuildId(DRIVER_APK_BUILD_ID)

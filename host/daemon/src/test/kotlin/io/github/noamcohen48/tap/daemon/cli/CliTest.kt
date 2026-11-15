@@ -16,6 +16,17 @@ import kotlin.test.assertTrue
 
 class CliTest {
     @Test
+    fun `runtime retention is explicitly bounded and opt in`() {
+        for (value in listOf("0", "1000", "60000", "300000")) {
+            assertEquals(value, parseCommandLine(listOf("start", "--driver-idle-timeout-ms", value)).options["--driver-idle-timeout-ms"])
+        }
+        for (value in listOf("-1", "1", "999", "300001", "forever", "9223372036854775808")) {
+            assertFailsWith<UsageException> { parseCommandLine(listOf("serve", "--driver-idle-timeout-ms", value)) }
+        }
+        assertFailsWith<UsageException> { parseCommandLine(listOf("status", "--driver-idle-timeout-ms", "60000")) }
+    }
+
+    @Test
     fun `options are validated per command`() {
         assertEquals(
             CommandLine("start", mapOf("--port" to "0", "--state-dir" to "/tmp/tap", "--adb" to "/opt/adb")),
@@ -45,7 +56,10 @@ class CliTest {
         )
         assertEquals("option --fix is not valid for `tap stop`", refused("stop", "--fix"))
         assertEquals("`tap unquarantine` needs --serial SERIAL", refused("unquarantine"))
-        assertEquals(CommandLine("unquarantine", mapOf("--serial" to "phone")), parseCommandLine(listOf("unquarantine", "--serial", "phone")))
+        assertEquals(
+            CommandLine("unquarantine", mapOf("--serial" to "phone")),
+            parseCommandLine(listOf("unquarantine", "--serial", "phone")),
+        )
     }
 
     @Test
@@ -54,8 +68,13 @@ class CliTest {
             val stateDir = Files.createTempDirectory("tap-unquarantine-cli")
             io.github.noamcohen48.tap.host.SessionJournalStore(stateDir.resolve("sessions"), "phone").write(
                 io.github.noamcohen48.tap.host.SessionJournal(
-                    state = io.github.noamcohen48.tap.host.JournalState.QUARANTINED, serial = "phone", bootId = "b", sessionId = "s",
-                    generation = 2, devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT, quarantineReason = "BOOT_CHANGED: rebooted",
+                    state = io.github.noamcohen48.tap.host.JournalState.QUARANTINED,
+                    serial = "phone",
+                    bootId = "b",
+                    sessionId = "s",
+                    generation = 2,
+                    devicePort = io.github.noamcohen48.tap.host.DEVICE_PORT,
+                    quarantineReason = "BOOT_CHANGED: rebooted",
                 ),
             )
             val adb =

@@ -11,7 +11,7 @@ import tempfile
 import time
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeVar, overload
+from typing import TYPE_CHECKING, Literal, TypeVar, overload
 
 from . import _gen as pb
 from . import _deaths, _proto
@@ -108,7 +108,9 @@ class Device:
         self.serial: str = response.serial
         """The device's ADB serial, e.g. ``emulator-5554``."""
         self.generation: int = response.generation
-        """The server's session generation for this device; it changes when the driver is rebuilt."""
+        """The server's session generation; it advances on every fresh attachment, including reuse."""
+        self.driver_reused: bool | None = response.driver_reused if response.HasField("driver_reused") else None
+        """Whether this fresh attachment reused instrumentation; None for older servers or a resumed handle."""
         self.quarantine_reason: str | None = (
             response.quarantine_reason if response.HasField("quarantine_reason") else None
         )
@@ -133,17 +135,21 @@ class Device:
         wait_for_device: float = 0,
         inspect_quarantined: bool = False,
         capture_logs: bool = True,
+        driver_start: Literal["auto", "cold"] = "auto",
     ) -> Device:
         """Attach ``serial`` (used by ``TapConnection.attach_device``).
         The attachment holds the device's per-serial lock until ``detach``; if another device session holds
         it, attachment raises ``DeviceBusyError`` — at once, or after ``wait_for_device`` seconds.
         The driver is always the daemon's (bundled, or ``tap serve --driver-apk X
         --driver-test-apk Y``); ``skip_driver_install`` only skips reinstalling it."""
+        if driver_start not in ("auto", "cold"):
+            raise ValueError("driver_start must be 'auto' or 'cold'")
         timeouts = timeouts or Timeouts()
         request = pb.AttachRequest(
             client_connection_id=owner_connection.id,
             serial=serial,
             default_timeout_ms=int(timeouts.action * 1000),
+            driver_start=pb.DRIVER_START_COLD if driver_start == "cold" else pb.DRIVER_START_AUTO,
         )
         if wait_for_device > 0:  # absent = fail at once when another session holds it
             request.lease_timeout_ms = int(wait_for_device * 1000)

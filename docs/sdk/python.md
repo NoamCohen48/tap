@@ -151,10 +151,17 @@ session options, to `connection.attach_device(serial, ...)`:
 |---|---|
 | `timeouts` | a `Timeouts` for this device |
 | `skip_driver_install` | assume the server's driver is already installed (CI images with a pre-provisioned driver) |
+| `driver_start` | `"auto"` (default): verified clean process reuse when the server enables it, otherwise cold; `"cold"`: fresh instrumentation, stopped on detach. Independent of installation |
 | `wait_for_device` | seconds to wait for a device another session holds; zero (the default) fails at once with `DeviceBusyError` |
 
 The pytest plugin uses the defaults; override them from a script or a custom fixture. The
 driver itself is the server's: clients cannot pick one per attach.
+
+[Experimental runtime reuse](../guide/server.md#driver-runtime-reuse-experimental) reduces
+startup cost without sharing test sessions: generations, credentials and restoration remain
+per attachment. `device.driver_reused` reports whether a new attachment reused the process;
+`None` means provenance is unavailable (an older server or a resumed held-connection handle).
+Class/module/session device scope is different: it retains the entire attachment and its state.
 
 ## Held connections and screen snapshots
 
