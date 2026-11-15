@@ -23,12 +23,32 @@ open class DeviceQuarantinedException(
     cause: Throwable? = null,
 ) : TapHostException(message, cause)
 
-/** The session journal could not be read; it was preserved and replaced by a quarantine record. */
-class CorruptJournalException(
+/** The session journal could not be read; recovery preserves it and replaces it by a quarantine record. */
+open class CorruptJournalException(
     serial: String,
     message: String,
     cause: Throwable? = null,
 ) : DeviceQuarantinedException(serial, message, cause)
+
+/**
+ * The session journal is an open session's record written by another Tap engine (a newer release
+ * or another build): it has [fields] this engine does not know. They may hold something that
+ * session still owes the device, such as settings to put back, so recovery leaves the file as it
+ * is instead of quarantining it: the engine that wrote it can still recover the device, `doctor`
+ * reports it as quarantined, and `tap unquarantine` keeps a copy and closes it as it would an
+ * unreadable journal.
+ */
+class ForeignJournalException(
+    serial: String,
+    val fields: List<String>,
+    cause: Throwable? = null,
+) : CorruptJournalException(
+        serial,
+        "The session journal of $serial was written by another Tap engine " +
+            "(fields this one does not know: ${fields.joinToString().ifEmpty { "nested" }}); " +
+            "recover the device with that engine, or run `tap unquarantine $serial`",
+        cause,
+    )
 
 /**
  * This [DeviceSession] can no longer run operations (its driver connection was lost or poisoned).

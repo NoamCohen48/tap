@@ -339,6 +339,9 @@ suspend fun recoverJournal(
     val record =
         try {
             store.read()
+        } catch (foreign: ForeignJournalException) {
+            // Another engine's open session: its record stays as it is for that engine to recover.
+            throw foreign
         } catch (error: Throwable) {
             forceStopDriverAndVerify(adb, serial)
             val preserved = store.preserveCorrupt()

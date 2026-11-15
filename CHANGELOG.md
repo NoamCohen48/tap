@@ -73,6 +73,11 @@ name the components affected. Earlier releases used independent version lines. T
   same port; the error then reads "exited after 2.1 s without becoming ready" or "was not ready
   after 10.0 s", with what it printed, instead of an empty "for a reason other than port
   occupancy".
+- A session journal written by another Tap engine (a newer release, another build) no longer
+  quarantines the device as corrupt. A closed one is read without the fields this engine does
+  not know; an open one is refused with "written by another Tap engine (fields …)" and left on
+  disk for that engine to recover. `tap doctor` reports it as quarantined and
+  `tap unquarantine` keeps a copy and closes it.
 
 ### Clients and tools
 

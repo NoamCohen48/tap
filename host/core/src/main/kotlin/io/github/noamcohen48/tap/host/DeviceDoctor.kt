@@ -82,6 +82,8 @@ object DeviceDoctor {
         val record =
             try {
                 store.read()
+            } catch (foreign: ForeignJournalException) {
+                return Outcome.Quarantined(foreign.message ?: "written by another Tap engine")
             } catch (corrupt: CorruptJournalException) {
                 if (!fix) return Outcome.Findings(listOf(Finding("the session journal is unreadable (attach would quarantine it)")))
                 null
@@ -149,14 +151,18 @@ object DeviceDoctor {
         serial: String,
     ): UnquarantineOutcome {
         // An unreadable journal keeps the device out of service just as a quarantine does.
+        var unreadableReason = "the session journal is unreadable"
         val (record, corrupt) =
             try {
                 store.read() to false
             } catch (unreadable: CorruptJournalException) {
+                if (unreadable is ForeignJournalException) {
+                    unreadableReason = "the session journal was written by another Tap engine (${unreadable.fields.joinToString()})"
+                }
                 null to true
             }
         if (!corrupt && record?.state != JournalState.QUARANTINED && record?.inspectedQuarantine == null) return UnquarantineOutcome.NotQuarantined
-        val reason = record?.let { it.quarantineReason ?: it.inspectedQuarantine ?: NO_REASON } ?: "the session journal is unreadable"
+        val reason = record?.let { it.quarantineReason ?: it.inspectedQuarantine ?: NO_REASON } ?: unreadableReason
         val bootId = adb.bootId(serial)
         val cleaned = mutableListOf<String>()
         val remaining = mutableListOf<String>()
