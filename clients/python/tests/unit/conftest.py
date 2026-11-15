@@ -6,6 +6,7 @@ from __future__ import annotations
 import hashlib
 import queue
 import threading
+import time
 from collections.abc import Callable, Generator
 from concurrent import futures
 
@@ -178,6 +179,10 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         # Serials Unquarantine was called with, and quarantined serials with their reason.
         self.unquarantined: list[str] = []
         self.quarantined: dict[str, str] = {}
+        # The server's death record; ListAppDeaths filters it like the daemon.
+        self.deaths: list[pb.AppDeath] = []
+        self.death_requests: list[pb.ListAppDeathsRequest] = []
+        self.acknowledged: list[int] = []
         self.conditions: list = []
         self.foreground: tuple[str, str] | None = None
         # Device files by path; the headers and chunk sizes the uploads carried.
@@ -299,6 +304,35 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     def DeviceLogs(self, request, context):
         self._own("device_logs", request, context)
         return self.device_logs
+
+    def ListAppDeaths(self, request, context):
+        self._own("list_app_deaths", request, context)
+        self.death_requests.append(request)
+        # wait_ms: as the server, wait for any app's death after after_sequence, or until the
+        # device is gone (here: deny, which then fails the call).
+        until = time.monotonic() + request.wait_ms / 1000
+        while (
+            request.wait_ms and not self.deny
+            and not any(d.sequence > request.after_sequence for d in self.deaths) and time.monotonic() < until
+        ):
+            time.sleep(0.02)
+        self._own("list_app_deaths", request, context)
+        listed = [] if request.sequence_only else [
+            d for d in self.deaths
+            if d.sequence > request.after_sequence and (not request.HasField("package_name") or d.package_name == request.package_name)
+        ]
+        return pb.ListAppDeathsResponse(deaths=listed, last_sequence=max((d.sequence for d in self.deaths), default=0))
+
+    def AcknowledgeAppDeaths(self, request, context):
+        self._own("acknowledge_app_deaths", request, context)
+        self.acknowledged += request.sequences
+        for i, death in enumerate(self.deaths):
+            if death.sequence in request.sequences:
+                handled = pb.AppDeath()
+                handled.CopyFrom(death)
+                handled.handled = True
+                self.deaths[i] = handled
+        return pb.AcknowledgeAppDeathsResponse()
 
     def SetAnimations(self, request, context):
         self._own("set_animations", request, context)

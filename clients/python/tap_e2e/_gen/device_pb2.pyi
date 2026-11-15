@@ -244,6 +244,46 @@ class DriverLogResponse(_message.Message):
     lines: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, lines: _Optional[_Iterable[str]] = ...) -> None: ...
 
+class ListAppDeathsRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "after_sequence", "package_name", "sequence_only", "settle_ms", "wait_ms")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    AFTER_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
+    SEQUENCE_ONLY_FIELD_NUMBER: _ClassVar[int]
+    SETTLE_MS_FIELD_NUMBER: _ClassVar[int]
+    WAIT_MS_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    after_sequence: int
+    package_name: str
+    sequence_only: bool
+    settle_ms: int
+    wait_ms: int
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., after_sequence: _Optional[int] = ..., package_name: _Optional[str] = ..., sequence_only: _Optional[bool] = ..., settle_ms: _Optional[int] = ..., wait_ms: _Optional[int] = ...) -> None: ...
+
+class AcknowledgeAppDeathsRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "sequences")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    SEQUENCES_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    sequences: _containers.RepeatedScalarFieldContainer[int]
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., sequences: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class AcknowledgeAppDeathsResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ListAppDeathsResponse(_message.Message):
+    __slots__ = ("deaths", "last_sequence")
+    DEATHS_FIELD_NUMBER: _ClassVar[int]
+    LAST_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    deaths: _containers.RepeatedCompositeFieldContainer[_command_pb2.AppDeath]
+    last_sequence: int
+    def __init__(self, deaths: _Optional[_Iterable[_Union[_command_pb2.AppDeath, _Mapping]]] = ..., last_sequence: _Optional[int] = ...) -> None: ...
+
 class DeviceLogsRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]

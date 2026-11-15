@@ -2837,6 +2837,185 @@ class TapClientTest {
 
     // --- Fakes ----------------------------------------------------------------------------------
 
+    private fun death(
+        sequence: Long,
+        packageName: String = "com.example.shop",
+        watched: Boolean = true,
+        handled: Boolean = false,
+    ): io.github.noamcohen48.tap.api.v1.AppDeath =
+        io.github.noamcohen48.tap.api.v1.AppDeath
+            .newBuilder()
+            .setSequence(sequence)
+            .setKind(io.github.noamcohen48.tap.api.v1.AppDeath.Kind.KIND_CRASH)
+            .setPackageName(packageName)
+            .setProcessName(packageName)
+            .setPid(23554)
+            .setAtEpochMs(1_790_000_014_107)
+            .setExceptionClass("java.lang.IllegalStateException")
+            .setMessage("Out of stock")
+            .setStackTrace("FATAL EXCEPTION: main\n\tat com.example.shop.Cart.pay(Cart.kt:41)")
+            .setWatched(watched)
+            .setHandled(handled)
+            .build()
+
+    private fun crashedResult(death: io.github.noamcohen48.tap.api.v1.AppDeath): CommandResult =
+        CommandResult
+            .newBuilder()
+            .setError(
+                io.github.noamcohen48.tap.api.v1.Error
+                    .newBuilder()
+                    .setCode(ErrorCode.ERR_AUT_CRASHED)
+                    .setDetail("WAIT_TIMEOUT")
+                    .setMessage("com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock")
+                    .setAppDeath(death),
+            ).build()
+
+    @Test
+    fun `app deaths are listed and mapped, and an app's are its own`(): Unit =
+        runBlocking {
+            val connection = client().connect("deaths")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    fakeDevices.deaths += death(1)
+                    fakeDevices.deaths += death(2, packageName = "com.google.android.gms", watched = false)
+                    val listed = device.appDeaths()
+                    assertEquals(listOf(1L, 2L), listed.map { it.sequence })
+                    val first = listed.first()
+                    assertEquals(AppDeath.Kind.CRASH, first.kind)
+                    assertEquals(java.time.Instant.ofEpochMilli(1_790_000_014_107), first.at)
+                    assertEquals("com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock", first.summary)
+                    assertEquals("emulator-5554", first.serial)
+                    assertEquals(listOf(2L), device.appDeaths(after = 1).map { it.sequence })
+                    assertEquals(listOf("com.example.shop"), device.app("com.example.shop").deaths().map { it.packageName })
+                    assertEquals("com.example.shop", fakeDevices.deathRequests.last().packageName)
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
+    @Test
+    fun `a failure carries the death that replaced its code`(): Unit =
+        runBlocking {
+            val connection = client().connect("deaths")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    fakeDevices.executeResponder = { crashedResult(death(1, handled = true)) }
+                    val failure = assertFailsWith<CommandException> { device.screen.element(text("Pay")).tap() }
+                    assertEquals(ErrorCode.ERR_AUT_CRASHED.toModel(), failure.code)
+                    assertEquals(1L, failure.appDeath?.sequence)
+                    assertEquals("Out of stock", failure.appDeath?.message)
+                    assertEquals("emulator-5554", failure.appDeath?.serial)
+                    fakeDevices.executeResponder = null
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
+    @Test
+    fun `guard passes values through, and throws for a death during the block however it was learned`(): Unit =
+        runBlocking {
+            val connection = client().connect("deaths")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    assertEquals(42, device.guard { 42 })
+
+                    // A death that failed no command: thrown when the block ends.
+                    val silent = assertFailsWith<AppDiedException> { device.guard { fakeDevices.deaths += death(1) } }
+                    assertEquals(listOf(1L), silent.deaths.map { it.sequence })
+                    assertTrue("Cart.kt:41" in silent.message!!, silent.message)
+                    assertTrue(silent.message!!.startsWith("[emulator-5554] com.example.shop crashed"), silent.message)
+                    // Taken on the server: neither a later block nor the end-of-test check sees it again.
+                    assertEquals(listOf(1L), fakeDevices.acknowledged)
+                    assertEquals(Unit, device.guard { })
+
+                    // A command that failed because of it: that failure is the cause.
+                    fakeDevices.executeResponder = { crashedResult(death(2, handled = true).also { fakeDevices.deaths += it }) }
+                    val carried = assertFailsWith<AppDiedException> { device.guard { device.screen.element(text("Pay")).tap() } }
+                    assertEquals(2L, carried.death.sequence)
+                    assertIs<CommandException>(carried.cause)
+                    fakeDevices.executeResponder = null
+
+                    // The block's own failure, with a death: the death wins, the failure is suppressed.
+                    val own =
+                        assertFailsWith<AppDiedException> {
+                            device.guard {
+                                fakeDevices.deaths += death(3)
+                                error("Order placed was not shown")
+                            }
+                        }
+                    assertEquals("Order placed was not shown", own.suppressed.single().message)
+
+                    // An unwatched app, and a death a client already has, change nothing.
+                    device.guard {
+                        fakeDevices.deaths += death(4, packageName = "com.google.android.gms", watched = false)
+                        fakeDevices.deaths += death(5, handled = true)
+                    }
+                    // App.guard sees only its own app.
+                    assertEquals(7, device.app("com.example.other").guard { fakeDevices.deaths += death(6); 7 })
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
+    @Test
+    fun `allowDeaths takes the deaths and expectDeath requires one and takes only it`(): Unit =
+        runBlocking {
+            val connection = client().connect("deaths")
+            try {
+                tapScope {
+                    val device = connection.attachDevice("emulator-5554")
+                    val app = device.app("com.example.shop")
+                    assertEquals("done", app.allowDeaths { fakeDevices.deaths += death(1); "done" })
+                    assertEquals(listOf(1L), fakeDevices.acknowledged)
+                    // Exceptions come through as they are, and the deaths are still taken.
+                    fakeDevices.executeResponder = { crashedResult(death(2, handled = true).also { fakeDevices.deaths += it }) }
+                    assertFailsWith<CommandException> { app.allowDeaths { app.element(desc("crash")).tap() } }
+
+                    // The command that met the death does not fail the block.
+                    fakeDevices.executeResponder = { crashedResult(death(3, handled = true).also { fakeDevices.deaths += it }) }
+                    assertEquals(3L, app.expectDeath { app.element(desc("crash")).tap() }.sequence)
+                    // A carried death of another kind than expected is a failure.
+                    assertFailsWith<CommandException> { app.expectDeath(kind = AppDeath.Kind.ANR) { app.element(desc("crash")).tap() } }
+                    fakeDevices.executeResponder = null
+
+                    // A death logged a little after the block still counts; only it is taken.
+                    val later = launch { delay(300); fakeDevices.deaths += death(5); fakeDevices.deaths += death(6) }
+                    assertEquals(5L, app.expectDeath(timeout = 5.seconds) { }.sequence)
+                    later.join()
+                    assertEquals(listOf(6L), device.takeUnhandledDeaths(4).map { it.sequence }, "a second crash still fails the test")
+                    assertTrue(fakeDevices.deathRequests.any { it.settleMs == 300L }, "checks ask the server to settle")
+
+                    // awaitAppDeaths waits for the next death of the app, past another app's, and changes nothing.
+                    val mark = device.deathSequence()
+                    val dying = launch {
+                        delay(200); fakeDevices.deaths += death(7, packageName = "com.google.android.gms", watched = false)
+                        delay(200); fakeDevices.deaths += death(8)
+                    }
+                    assertEquals(listOf(8L), device.awaitAppDeaths(mark, 5.seconds, "com.example.shop").map { it.sequence })
+                    dying.join()
+                    assertEquals(emptyList(), device.awaitAppDeaths(8, 300.milliseconds))
+                    assertTrue(fakeDevices.deathRequests.any { it.waitMs > 0 })
+                    assertFalse(8L in fakeDevices.acknowledged)
+
+                    val none = assertFailsWith<AssertionError> { app.expectDeath(timeout = 300.milliseconds) { } }
+                    assertTrue("com.example.shop" in none.message!!, none.message)
+                    assertFailsWith<IllegalStateException> { app.expectDeath { error("not a death") } }
+                    device.detach()
+                }
+            } finally {
+                connection.close()
+            }
+        }
+
     private class FakeConnections : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
         enum class ObserveMode {
             HELLO_THEN_PARK,
@@ -3086,6 +3265,40 @@ class TapClientTest {
         override suspend fun deviceLogs(
             request: io.github.noamcohen48.tap.api.v1.DeviceLogsRequest,
         ): io.github.noamcohen48.tap.api.v1.DeviceLogsResponse = deviceLogs
+
+        /** The server's death record, as the test writes it; ListAppDeaths filters it like the daemon. */
+        val deaths = CopyOnWriteArrayList<io.github.noamcohen48.tap.api.v1.AppDeath>()
+        val deathRequests = CopyOnWriteArrayList<io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest>()
+
+        val acknowledged = CopyOnWriteArrayList<Long>()
+
+        override suspend fun acknowledgeAppDeaths(
+            request: io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsRequest,
+        ): io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsResponse {
+            acknowledged += request.sequencesList
+            deaths.replaceAll { if (it.sequence in request.sequencesList) it.toBuilder().setHandled(true).build() else it }
+            return io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsResponse.getDefaultInstance()
+        }
+
+        override suspend fun listAppDeaths(
+            request: io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest,
+        ): io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse {
+            deathRequests += request
+            // wait_ms: as the server, wait for any app's death after after_sequence.
+            val until = System.nanoTime() + request.waitMs * 1_000_000
+            while (request.waitMs > 0 && deaths.none { it.sequence > request.afterSequence } && System.nanoTime() < until) delay(20)
+            val listed =
+                if (request.sequenceOnly) {
+                    emptyList()
+                } else {
+                    deaths.filter { it.sequence > request.afterSequence && (!request.hasPackageName() || it.packageName == request.packageName) }
+                }
+            return io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
+                .newBuilder()
+                .addAllDeaths(listed)
+                .setLastSequence(deaths.maxOfOrNull { it.sequence } ?: 0)
+                .build()
+        }
 
         val conditions = CopyOnWriteArrayList<Any>()
 

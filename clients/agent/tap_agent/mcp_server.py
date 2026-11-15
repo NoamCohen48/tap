@@ -23,7 +23,7 @@ from mcp_types import (  # pyright: ignore[reportMissingImports]
 from pydantic import Field, StrictInt
 
 from . import render
-from .core import EXIT_NO_DAEMON, EXIT_USAGE, LOG_LIMIT, Agent, AgentError
+from .core import EXIT_APP_DIED, EXIT_NO_DAEMON, EXIT_USAGE, LOG_LIMIT, Agent, AgentError
 from .targets import SELECTOR_KEYS
 
 INSTRUCTIONS = """\
@@ -54,6 +54,10 @@ Target = Annotated[
 ]
 Device = Annotated[str, Field(description="Serial; needed only when the session has several devices.")]
 Settle = Annotated[bool, Field(description="Wait for the screen to settle, then return what changed.")]
+ExpectDeath = Annotated[
+    bool,
+    Field(description="The step must make a watched app crash or stop responding (within 10 s); a command failing because of it is no failure."),
+]
 Direction = Literal["up", "down", "left", "right"]
 Session = Annotated[str, Field(description="Session name; omit for the server's default session.")]
 
@@ -78,6 +82,8 @@ def _error(error: AgentError) -> CallToolResult:
         text += "\nThe tap daemon must be running: ask the user to run `tap start`, then retry."
     elif error.exit_code == EXIT_USAGE:
         text += "\n(invalid arguments)"
+    elif error.exit_code == EXIT_APP_DIED:
+        text += "\n(the step ran, but a watched app died: relaunch it before going on)"
     return CallToolResult(content=[TextContent(type="text", text=text)], is_error=True)
 
 
@@ -94,9 +100,15 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             agents[name] = build(name)
         return agents[name]
 
-    async def call(session: str, step: Callable[[Agent], str]) -> CallToolResult:
+    async def call(session: str, step: Callable[[Agent], str], *, expect_death: bool = False, report: bool = True) -> CallToolResult:
+        """Runs a tool's step; with ``report`` (every tool that uses a session) the watched app
+        deaths not reported yet follow its output (``Agent.reporting_deaths``)."""
+
+        def run(a: Agent) -> str:
+            return a.reporting_deaths(lambda: step(a), expect=expect_death) if report else step(a)
+
         try:
-            return _text(await anyio.to_thread.run_sync(functools.partial(step, agent(session))))
+            return _text(await anyio.to_thread.run_sync(functools.partial(run, agent(session))))
         except AgentError as error:
             return _error(error)
 
@@ -105,7 +117,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="devices", annotations=READ_ONLY)
     async def devices() -> CallToolResult:
         """List the devices ADB sees, their state and the session holding each."""
-        return await call("", lambda a: a.devices())
+        return await call("", report=False, step=lambda a: a.devices())
 
     @mcp.tool(name="attach")
     async def attach(
@@ -126,7 +138,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Attach a device to the session, creating the session if needed. Call this first."""
         return await call(
             session,
-            lambda a: a.attach(
+            report=False,
+            step=lambda a: a.attach(
                 serial,
                 idle=idle_minutes * 60,
                 wait_for_device=wait_for_device_seconds,
@@ -141,12 +154,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Put a quarantined device back in service, once you (or the user) checked it is in a good
         state, for example after attaching it with inspect_quarantined and detaching. Retries its
         cleanup first and says what is still off. Ask the user first when you did not check it."""
-        return await call("", lambda a: a.unquarantine(serial))
+        return await call("", report=False, step=lambda a: a.unquarantine(serial))
 
     @mcp.tool(name="sessions", annotations=READ_ONLY)
     async def sessions() -> CallToolResult:
         """List sessions, how long each has been idle, and their devices."""
-        return await call("", lambda a: a.sessions())
+        return await call("", report=False, step=lambda a: a.sessions())
 
     @mcp.tool(name="release")
     async def release(
@@ -154,7 +167,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         session: Session = "",
     ) -> CallToolResult:
         """End the session: detach its devices so others can use them."""
-        return await call(session, lambda a: a.release(export=export or None))
+        return await call(session, report=False, step=lambda a: a.release(export=export or None))
 
     @mcp.tool(name="detach")
     async def detach(session: Session = "", device: Device = "") -> CallToolResult:
@@ -164,7 +177,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="server_info", annotations=READ_ONLY)
     async def server_info() -> CallToolResult:
         """Daemon version, compatibility and configuration as SDK JSON; never starts it."""
-        return await call("", lambda a: a.server_info())
+        return await call("", report=False, step=lambda a: a.server_info())
 
     @mcp.tool(name="device_info", annotations=READ_ONLY)
     async def device_info(session: Session = "", device: Device = "") -> CallToolResult:
@@ -176,6 +189,24 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Read SDK operation support, blockers and prerequisites as JSON. Never starts an
         operation, grants permission or changes settings. Support does not guarantee success."""
         return await call(session, lambda a: a.capabilities(device or None, as_json=True))
+
+    @mcp.tool(name="deaths", annotations=READ_ONLY)
+    async def deaths(
+        package: Annotated[str, Field(description="Only this app's deaths.")] = "",
+        all_apps: Annotated[bool, Field(description="Also apps the session did not start or target.")] = False,
+        trace: Annotated[StrictInt | None, Field(ge=1, description="Return this death's full stack trace instead.")] = None,
+        as_json: Annotated[bool, Field(description="Structured entries.")] = False,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """App crashes and ANRs since the device was attached, oldest first (#sequence, app,
+        exception). Every step already reports new ones after its output; use this to look back,
+        or with trace for one death's full stack trace."""
+        return await call(
+            session,
+            report=False,
+            step=lambda a: a.deaths(device or None, package=package or None, all_apps=all_apps, trace=trace, as_json=as_json),
+        )
 
     @mcp.tool(name="log")
     async def log(
@@ -299,11 +330,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         duration: Annotated[float | None, Field(ge=0.001, le=30, description="Hold duration in seconds; implies long press.")] = None,
         timeout: Annotated[float | None, Field(ge=0.001, le=120, description="Command budget in seconds, including the whole gesture.")] = None,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Tap the one node matching target."""
-        return await call(session, lambda a: a.tap(target, device or None, long=long, settle=settle, double=double,
+        return await call(session, expect_death=expect_death, step=lambda a: a.tap(target, device or None, long=long, settle=settle, double=double,
                                                  count=count, interval=interval, duration=duration, timeout=timeout))
 
     @mcp.tool(name="fill")
@@ -313,11 +345,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Budget = None,
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Replace a field's text (accessibility set-text; no key events)."""
-        return await call(session, lambda a: a.fill(target, text, device or None, settle=settle, sensitive=sensitive, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.fill(target, text, device or None, settle=settle, sensitive=sensitive, timeout=timeout_seconds))
 
     @mcp.tool(name="type_text")
     async def type_text(
@@ -328,38 +361,43 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         focus_timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="Separate target focus wait; SDK default 10 seconds.")] = None,
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Type into current focus, or tap a target and await its focus through the SDK helper."""
-        return await call(session, lambda a: a.type(text, device or None, settle=settle, sensitive=sensitive, target=target or None, await_focus=await_focus, timeout=timeout_seconds, focus_timeout=focus_timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.type(text, device or None, settle=settle, sensitive=sensitive, target=target or None, await_focus=await_focus, timeout=timeout_seconds, focus_timeout=focus_timeout_seconds))
 
     @mcp.tool(name="clear")
-    async def clear(target: Target, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
+    async def clear(target: Target, timeout_seconds: Budget = None, settle: Settle = False,
+        expect_death: ExpectDeath = False, session: Session = "", device: Device = "") -> CallToolResult:
         """Clear a field's text."""
-        return await call(session, lambda a: a.clear(target, device or None, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.clear(target, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="scroll")
     async def scroll(
-        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = ""
+        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
+        expect_death: ExpectDeath = False, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One scroll gesture on a scrollable node; `down` reveals content below."""
-        return await call(session, lambda a: a.scroll(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.scroll(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
 
     @mcp.tool(name="swipe")
     async def swipe(
-        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = ""
+        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
+        expect_death: ExpectDeath = False, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One swipe across a node, the finger moving in `direction`."""
-        return await call(session, lambda a: a.swipe(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.swipe(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
 
     @mcp.tool(name="fling")
     async def fling(
-        target: Target, direction: Direction, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = ""
+        target: Target, direction: Direction, timeout_seconds: Budget = None, settle: Settle = False,
+        expect_death: ExpectDeath = False, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One fast swipe on a scrollable node towards a content edge, as for scroll; the content
         may keep moving afterwards (use settle)."""
-        return await call(session, lambda a: a.fling(target, direction, device or None, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.fling(target, direction, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="drag")
     async def drag(
@@ -367,11 +405,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         destination: Annotated[str, Field(description="Where to drop it: a ref (@e7) or selector terms, as for target.")],
         timeout_seconds: Budget = None,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Long-press the node matching target, move it onto the node matching destination and drop it."""
-        return await call(session, lambda a: a.drag(target, destination, device or None, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.drag(target, destination, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="pinch")
     async def pinch(
@@ -380,18 +419,20 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         percent: Percent = 80,
         timeout_seconds: Budget = None,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Two-finger pinch on a node (a map, an image)."""
-        return await call(session, lambda a: a.pinch(target, how, percent, device or None, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.pinch(target, how, percent, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="submit")
-    async def submit(target: Target, timeout_seconds: Budget = None, settle: Settle = False, session: Session = "", device: Device = "") -> CallToolResult:
+    async def submit(target: Target, timeout_seconds: Budget = None, settle: Settle = False,
+        expect_death: ExpectDeath = False, session: Session = "", device: Device = "") -> CallToolResult:
         """Run a text field's keyboard action (Search, Go, Send, Done, ... as the app set it up),
         exactly as the keyboard's action key does; press_key enter is not the same. The field must
         have input focus (tap it first). Android 11 (API 30)+."""
-        return await call(session, lambda a: a.submit(target, device or None, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.submit(target, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="accessibility_action")
     async def accessibility_action(
@@ -407,6 +448,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         custom: Annotated[bool, Field(description="name is a custom action's label (e.g. 'Archive').")] = False,
         timeout_seconds: Budget = None,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -414,7 +456,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         the actions it offers and its range. Use it for what a node offers instead of a gesture:
         expand/collapse a section, a list item's custom "Archive"/"Delete". An action the node does
         not offer fails before anything happens."""
-        return await call(session, lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="set_progress")
     async def set_progress(
@@ -422,12 +464,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         value: Annotated[float, Field(description="The value in the node's own units (see accessibility_action's range).")],
         timeout_seconds: Budget = None,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Set a slider (SeekBar, Slider, RatingBar) to an exact value through accessibility
         ACTION_SET_PROGRESS. A value outside the node's range fails before anything happens."""
-        return await call(session, lambda a: a.progress(target, value, device or None, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, step=lambda a: a.progress(target, value, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="keyboard")
     async def keyboard(
@@ -436,11 +479,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="state: report whether a soft keyboard shows; hide: hide it (Back, only when one shows)."),
         ] = "state",
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """The soft keyboard: is it showing, or hide it."""
-        return await call(session, lambda a: a.keyboard(action, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, step=lambda a: a.keyboard(action, device or None, settle=settle))
 
     @mcp.tool(name="set_location")
     async def set_location(
@@ -532,6 +576,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
         timeout_seconds: Annotated[float, Field(ge=0.001, le=120, description="Command/wait budget in seconds.")] = 10,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -540,7 +585,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         for the session."""
         return await call(
             session,
-            lambda a: a.notification(
+            expect_death=expect_death,
+            step=lambda a: a.notification(
                 action, title or None, text or None, device or None, contains=contains, package=package or None,
                 button=button or None, timeout=timeout_seconds, settle=settle,
             ),
@@ -550,11 +596,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def press_key(
         key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Press a key."""
-        return await call(session, lambda a: a.key(key, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, step=lambda a: a.key(key, device or None, settle=settle))
 
     @mcp.tool(name="open_panel")
     async def open_panel(
@@ -563,12 +610,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="The notification shade, or the quick settings panel."),
         ],
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Open a system panel, as a swipe down from the status bar would. Its nodes belong to
         com.android.systemui (target them with pkg=com.android.systemui); press_key back closes it."""
-        return await call(session, lambda a: a.panel(panel, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, step=lambda a: a.panel(panel, device or None, settle=settle))
 
     @mcp.tool(name="rotate")
     async def rotate(
@@ -577,12 +625,13 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="A geometry, an exact rotation from the natural one, or auto (back to the sensor)."),
         ],
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Rotate the display and keep it there. Returns where the display is afterwards: the app
         may pin its own orientation. The device's rotation settings are restored on release."""
-        return await call(session, lambda a: a.rotate(how, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, step=lambda a: a.rotate(how, device or None, settle=settle))
 
     @mcp.tool(name="screen")
     async def screen(
@@ -591,11 +640,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="state: report; on/off: wake or sleep; unlock: wake and dismiss a keyguard without a PIN."),
         ] = "state",
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Screen power and lock screen. A keyguard with a PIN, pattern or password is never unlocked."""
-        return await call(session, lambda a: a.screen(action, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, step=lambda a: a.screen(action, device or None, settle=settle))
 
     @mcp.tool(name="permission")
     async def permission(
@@ -609,13 +659,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
         ] = None,
         settle: Settle = False,
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Android's runtime-permission dialog: without a choice, wait for it and list the buttons
         (and location accuracies) it offers; with one, press that button."""
         return await call(
-            session, lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle, accuracy=accuracy)
+            session, expect_death=expect_death, step=lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle, accuracy=accuracy)
         )
 
     @mcp.tool(name="wait_for", annotations=READ_ONLY)
@@ -734,6 +785,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
                 "TYPE one of string, int, long, float, bool (e.g. item:long=42)."
             ),
         ] = [],
+        expect_death: ExpectDeath = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -744,7 +796,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release)."""
         return await call(
-            session, lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras, timeout=timeout_seconds)
+            session, expect_death=expect_death, step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras, timeout=timeout_seconds)
         )
 
     @mcp.tool(name="history")
@@ -757,7 +809,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """List or clean the saved step histories. Every session records its actions and waits
         by itself, from its first one until `release`; nothing has to be started. A live
         session's history cannot be cleaned. CLI/MCP share TAP_AGENT_DIR."""
-        return await call(session, lambda a: a.history(action, name or None, all_histories=all_histories))
+        return await call(session, report=False, step=lambda a: a.history(action, name or None, all_histories=all_histories))
 
     @mcp.tool(name="export", annotations=WRITES_FILES)
     async def export(
@@ -780,7 +832,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         call, so a step is matched to what it did. A stopped history exports without a daemon;
         `logs` / `calls` need the live session. Unknown/unfinished outcomes remain explicit;
         sensitive inputs are redacted. Not replay."""
-        return await call(session, lambda a: a.export(
+        return await call(session, report=False, step=lambda a: a.export(
             name or None, path or None, since=since or None, until=until or None, logs=logs, calls=calls,
             packages=packages, priority=priority, tags=tags, grep=grep or None, driver_lines=driver_lines,
         ))

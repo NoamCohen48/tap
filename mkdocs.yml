@@ -143,6 +143,7 @@ nav:
           - Multi-device tests: guide/multi-device.md
           - Errors: guide/errors.md
           - Device logs: guide/logs.md
+          - Crashes and ANRs: guide/app-deaths.md
           - Screenshots and artifacts: guide/artifacts.md
       - Coming from Maestro or Appium: guide/coming-from.md
   - SDKs:

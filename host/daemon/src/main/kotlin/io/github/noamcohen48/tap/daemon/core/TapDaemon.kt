@@ -697,6 +697,7 @@ class TapDaemon internal constructor(
         timeoutMs: Long,
         label: String,
     ) {
+        device.appDeaths.close()
         cleanupScope.launch {
             // Detached cleanup already runs in its own job; pass the full core close bound.
             val outcome = runCatching {
@@ -713,6 +714,7 @@ class TapDaemon internal constructor(
     /** Stop scrcpy before releasing this session's serial lock. An audio failure does not skip
      * driver cleanup; both diagnostics are preserved in the detach detail. */
     private suspend fun closeAttachedDevice(device: AttachedDevice, timeoutMs: Long, shutdown: Boolean): String? {
+        device.appDeaths.close()
         // The logcat child is reaped off the caller's thread; it never fails a detach.
         withContext(Dispatchers.IO) { device.closeLogs() }
         if (!shutdown) {
@@ -940,6 +942,7 @@ class TapDaemon internal constructor(
             registered.logcat = LogcatCapture(config.adb, serial, attachedAt, logs).also { it.start() }
             if (synchronized(lifecycleLock) { attachedDevicesById[registered.id] } == null) registered.closeLogs()
         }
+        registered.appDeaths.start()
         config.log(
             "attached device ${registered.id} attached on $serial (generation ${device.generation}) for client connection $ownerConnectionId",
         )
@@ -950,17 +953,19 @@ class TapDaemon internal constructor(
      * Returns the attached device, rejecting use after sticky reap quarantine so a poisoned device
      * cannot be driven through a direct command path that bypasses [AppLifecycle].
      */
+    /** [inUse] false: the call does not count as use of a held connection (a long wait that must not keep it alive). */
     suspend fun attachedDevice(
         id: String,
         clientConnectionId: String,
         requireDriver: Boolean = true,
+        inUse: Boolean = true,
     ): AttachedDevice {
         val found = synchronized(lifecycleLock) { attachedDevicesById[id] } ?: throw UnknownAttachedDeviceException(id)
         if (found.ownerConnectionId != clientConnectionId) throw NotOwnerException(id, clientConnectionId)
         // Audio lives outside the driver. Its owner may still collect a recording after TAP1
         // transport loss; only driver-dependent calls require a usable driver connection.
         if (requireDriver) found.deviceSession.checkUsable()
-        markInUse(clientConnectionId)
+        if (inUse) markInUse(clientConnectionId)
         return found
     }
 

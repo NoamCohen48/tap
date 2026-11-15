@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.junit5
 
+import io.github.noamcohen48.tap.sdk.AppDeath
+import io.github.noamcohen48.tap.sdk.AppDiedException
 import io.github.noamcohen48.tap.sdk.Device
 import io.github.noamcohen48.tap.sdk.DeviceBusyException
 import io.github.noamcohen48.tap.sdk.DeviceOptions
@@ -95,6 +97,7 @@ class TapExtension :
                     TestState(rootJob, devices, devices.mapValues { it.value.serial }, method)
                 }
             context.store.put(KEY, state)
+            if (checksAppDeaths(context)) context.store.put(DEATH_MARKS, DeathMarks(deathMarks(state.devices, method)))
             RunReports.current(context.uniqueId)?.let { recording ->
                 state.devices.forEach { (role, device) ->
                     runCatching {
@@ -114,14 +117,86 @@ class TapExtension :
         invocation: InvocationInterceptor.Invocation<Void>,
         invocationContext: ReflectiveInvocationContext<Method>,
         extensionContext: ExtensionContext,
-    ) = bound(invocation, extensionContext)
+    ) = checkingAppDeaths(extensionContext) { bound(invocation, extensionContext) }
 
     /** `@RepeatedTest`, `@ParameterizedTest` and other templates reach their method here. */
     override fun interceptTestTemplateMethod(
         invocation: InvocationInterceptor.Invocation<Void>,
         invocationContext: ReflectiveInvocationContext<Method>,
         extensionContext: ExtensionContext,
-    ) = bound(invocation, extensionContext)
+    ) = checkingAppDeaths(extensionContext) { bound(invocation, extensionContext) }
+
+    /**
+     * The end-of-test app death check (`tap.appDeaths`, [AllowAppDeath]): [beforeEach] marks each
+     * device's death sequence before the `@BeforeEach` methods and, after the test method, this
+     * asks for watched deaths no client has ([Device.takeUnhandledDeaths]). With any, a passing
+     * test fails with [AppDiedException]; a failing one with it instead, its own failure
+     * suppressed (the death is the likelier cause). A failed assumption stays a skip. A device
+     * that cannot answer is left out, never a failure. [afterEach] asks once more, for deaths
+     * during the `@AfterEach` methods.
+     */
+    private fun checkingAppDeaths(
+        context: ExtensionContext,
+        run: () -> Unit,
+    ) {
+        val state = context.store.get(KEY, TestState::class.java)
+        val marks = context.store.get(DEATH_MARKS, DeathMarks::class.java)
+        if (state == null || marks == null) return run()
+        checkAppDeaths(state.devices, state.method, marks.byRole, run)
+    }
+
+    /** Whether the end-of-test check runs for this test: on for the run and not allowed by [AllowAppDeath]. */
+    private fun checksAppDeaths(context: ExtensionContext): Boolean =
+        TapConfig.current.appDeaths != AppDeathMode.OFF && !allowsAppDeath(context)
+
+    /** Each device's latest death sequence; null for a device that cannot answer. */
+    private fun deathMarks(
+        devices: Map<String, Device>,
+        method: String,
+    ): Map<String, Long?> =
+        runBlocking(TapContext("junit:$method:deaths")) {
+            devices.mapValues { (_, device) -> runCatching { device.deathSequence() }.getOrNull() }
+        }
+
+    /** The watched deaths after [marks] no client has, taken; a device that cannot answer is left out. */
+    private fun unhandledDeaths(
+        devices: Map<String, Device>,
+        method: String,
+        marks: Map<String, Long?>,
+    ): List<AppDeath> =
+        runBlocking(TapContext("junit:$method:deaths")) {
+            withContext(NonCancellable) {
+                devices
+                    .flatMap { (role, device) ->
+                        val mark = marks[role] ?: return@flatMap emptyList()
+                        // Waits up to 300 ms after the latest input: a crash it caused is logged shortly after.
+                        runCatching { device.takeUnhandledDeaths(mark) }.getOrDefault(emptyList())
+                    }.sortedBy { it.at }
+            }
+        }
+
+    /** [checkingAppDeaths] over [devices]: runs [run], then the check from [marks] (taken now when null). */
+    internal fun checkAppDeaths(
+        devices: Map<String, Device>,
+        method: String,
+        marks: Map<String, Long?>? = null,
+        run: () -> Unit,
+    ) {
+        val from = marks ?: deathMarks(devices, method)
+        val failure = runCatching(run).exceptionOrNull()
+        if (failure is TestAbortedException) throw failure
+        val deaths = unhandledDeaths(devices, method, from)
+        if (deaths.isEmpty()) {
+            failure?.let { throw it }
+            return
+        }
+        throw AppDiedException(deaths).apply { failure?.let(::addSuppressed) }
+    }
+
+    /** [AllowAppDeath] on the test method, its class, an enclosing class (`@Nested`) or a superclass (inherited). */
+    private fun allowsAppDeath(context: ExtensionContext): Boolean =
+        context.requiredTestMethod.isAnnotationPresent(AllowAppDeath::class.java) ||
+            generateSequence(context.requiredTestClass) { it.enclosingClass }.any { it.isAnnotationPresent(AllowAppDeath::class.java) }
 
     override fun interceptBeforeEachMethod(
         invocation: InvocationInterceptor.Invocation<Void>,
@@ -167,9 +242,20 @@ class TapExtension :
 
     override fun afterEach(context: ExtensionContext) {
         val state = context.store.remove(KEY, TestState::class.java) ?: return
+        val marks = context.store.remove(DEATH_MARKS, DeathMarks::class.java)
         // JUnit collects whatever the @BeforeEach methods, the test and the @AfterEach methods
         // threw before this callback runs: the one record of the primary failure.
-        val failure = context.executionException.orElse(null)
+        val thrown = context.executionException.orElse(null)
+        // Deaths during the @AfterEach methods (and a @BeforeEach that failed): after a passing
+        // test they are the failure, after a failing one they are attached to it.
+        val died =
+            marks
+                ?.takeIf { thrown !is TestAbortedException }
+                ?.let { unhandledDeaths(state.devices, state.method, it.byRole) }
+                ?.takeIf { it.isNotEmpty() }
+                ?.let(::AppDiedException)
+        if (died != null && thrown != null) thrown.addSuppressed(died)
+        val failure = thrown ?: died
         // Stop test coroutines promptly; sessions stay usable for artifact capture below.
         state.rootJob.cancel(CancellationException("test finished"))
         try {
@@ -186,6 +272,10 @@ class TapExtension :
         } finally {
             // PER_CLASS keeps the devices for the next test; afterAll detaches them.
             val closeErrors = if (perClass(context)) emptyList() else closeAll(state)
+            if (thrown == null && died != null) {
+                closeErrors.forEach(died::addSuppressed)
+                throw died
+            }
             if (failure == null) {
                 closeErrors.firstOrNull()?.let { first ->
                     closeErrors.drop(1).forEach(first::addSuppressed)
@@ -539,8 +629,14 @@ class TapExtension :
     private companion object {
         const val KEY = "tap.devices"
         const val HELD = "tap.classDevices"
+        const val DEATH_MARKS = "tap.deathMarks"
 
         /** JVM-wide start index for [assignSerials]; advanced once per test. */
         val ROTATION = AtomicInteger(0)
     }
 }
+
+/** Each role's death sequence when the test started (null: the device could not answer), for the end-of-test check. */
+private class DeathMarks(
+    val byRole: Map<String, Long?>,
+)

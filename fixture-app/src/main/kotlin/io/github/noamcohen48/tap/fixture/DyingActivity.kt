@@ -7,7 +7,11 @@ import android.widget.Button
 import android.widget.LinearLayout
 import androidx.activity.ComponentActivity
 
-/** An app that dies on demand: a button that crashes it and one that hangs its main thread with input waiting. */
+/**
+ * An app that dies on demand: a button that crashes it, one that crashes it 2 s after the tap (so a
+ * test's next command, a wait, is running when it dies), and one that hangs its main thread with
+ * input waiting.
+ */
 class DyingActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -17,6 +21,13 @@ class DyingActivity : ComponentActivity() {
                 text = "Crash"
                 contentDescription = "crash_button"
                 setOnClickListener { throw IllegalStateException("Tap fixture crashed on purpose") }
+            }
+        val crashLater =
+            Button(this).apply {
+                id = View.generateViewId()
+                text = "Crash in 2 s"
+                contentDescription = "crash_later_button"
+                setOnClickListener { postDelayed({ throw IllegalStateException("Tap fixture crashed on purpose, later") }, 2_000) }
             }
         val hang =
             Button(this).apply {
@@ -32,6 +43,7 @@ class DyingActivity : ComponentActivity() {
             LinearLayout(this).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(crash)
+                addView(crashLater)
                 addView(hang)
             },
         )

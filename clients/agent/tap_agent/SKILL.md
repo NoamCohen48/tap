@@ -203,6 +203,36 @@ capture is discarded. Failed start/stop is never replayed. Stop retains a privat
 under `.tap/agent/` before an optional custom copy: if that copy fails, use the artifact named
 in the error, do not repeat stop. No automatic app stop, launch or restore.
 
+## Crashes and ANRs
+
+Every step ends with any crash or ANR of a watched app (one you launched or targeted) that no
+earlier step reported, also when the step itself succeeded; such a step exits 4 (MCP: an error
+result) even though its action ran:
+
+```
+tapped text=Pay
+! com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock
+    at com.example.shop.Cart.pay(Cart.kt:41)
+    …
+  … 12 more frames; full trace: .tap/agent/deaths/emulator-5554-0001-com.example.shop.txt
+  its screen is gone; `app launch com.example.shop` to continue
+```
+
+Read the trace file only when the top frames are not enough. A wait running when the app dies
+ends at once with `AUT_CRASHED` / `AUT_ANR` (detail `CANCELLED`); the error names the death and
+the frames follow it. After an ANR the app may still be stuck: stop it before launching again.
+A reported death explains nothing later: the next miss on the dead app is a plain `NOT_FOUND`.
+
+`--expect-death` (MCP `expect_death: true`) on an action means the step must crash the app, for
+crash reproductions: the death prints as `✓ … (expected)`, the command failing because of it is
+no failure, and no death within 10 s is one (exit 1).
+
+To hear of a crash between steps (while you read code, or the app runs on its own), start
+`tap-agent deaths --wait` in the background after attaching. It exits 4 with the death's line
+when a watched app dies, 0 when the session ends (or after `--timeout 30m`), and never keeps an
+idle session alive. It only notifies: the next step still reports the death with its frames. `deaths` lists every death since
+attach (`--all` adds unwatched apps, `--trace SEQ` prints one full trace, `--json`).
+
 ## Step history and export
 
 Nothing to start: every action and explicit wait of a session is recorded as a step from the

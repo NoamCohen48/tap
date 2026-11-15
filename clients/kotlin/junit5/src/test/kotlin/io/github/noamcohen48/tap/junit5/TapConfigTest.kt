@@ -22,6 +22,7 @@ class TapConfigTest {
         assertEquals(false, defaults.manageDaemon)
         assertEquals(CaptureMode.ON_FAILURE, defaults.capture)
         assertEquals(true, defaults.report)
+        assertEquals(AppDeathMode.FAIL, defaults.appDeaths)
 
         val set =
             mapOf(
@@ -30,6 +31,7 @@ class TapConfigTest {
                 "tap.manageDaemon" to "true",
                 "tap.capture" to "off",
                 "tap.report" to "off",
+                "tap.appDeaths" to "OFF",
             )
         val config = TapConfig.load(property = set::get, allProperties = { mapOf("tap.device.sender" to "b") })
         assertEquals(listOf("a", "b"), config.serials)
@@ -38,6 +40,8 @@ class TapConfigTest {
         assertEquals(mapOf("sender" to "b"), config.pinnedRoles)
         assertEquals(CaptureMode.OFF, config.capture)
         assertEquals(false, config.report)
+        assertEquals(AppDeathMode.OFF, config.appDeaths)
+        assertFailsWith<IllegalArgumentException> { TapConfig.load(property = mapOf("tap.appDeaths" to "warn")::get, allProperties = { emptyMap() }) }
         assertFailsWith<IllegalArgumentException> {
             TapConfig.load(property = mapOf("tap.report" to "always")::get, allProperties = { emptyMap() })
         }

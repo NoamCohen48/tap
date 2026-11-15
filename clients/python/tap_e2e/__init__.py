@@ -27,7 +27,9 @@ from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .steps import current_step, step
 from .logs import DeviceLog, LogAction, LogEntries, LogEntry, LogFollower, LogLine, LogPriority
 from .screen import Screen
+from ._deaths import AllowedDeaths, DeathGuard, ExpectedDeath
 from .errors import (
+    AppDiedError,
     AppLifecycleError,
     AppDataError,
     CommandError,
@@ -38,6 +40,8 @@ from .errors import (
     WaitTimeoutError,
 )
 from .models import (
+    AppDeath,
+    AppDeathKind,
     AppProcess,
     Artifact,
     AttachedDeviceEntry,
@@ -152,6 +156,12 @@ __all__ = [
     "AppDataAccess",
     "DatabaseBundle",
     "PrivateFileEntry",
+    "AppDeath",
+    "AppDeathKind",
+    "AppDiedError",
+    "AllowedDeaths",
+    "DeathGuard",
+    "ExpectedDeath",
     "AppLifecycleError",
     "AppProcess",
     "Artifact",
