@@ -8,10 +8,11 @@ from collections.abc import Iterator, Mapping, Sequence
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
-from . import _proto
+from . import _deaths, _proto
+from ._deaths import AllowedDeaths, DeathGuard, ExpectedDeath
 from .app_data import AppData
 from .client import mapped_errors
-from .models import AppProcess, Long, MatchMode, Notification, StabilitySignal, Toast
+from .models import AppDeath, AppDeathKind, AppProcess, Long, MatchMode, Notification, StabilitySignal, Toast
 from .element import Element, ElementWait
 from .selectors import Selector
 
@@ -67,6 +68,30 @@ class App:
             selector._in_package(self.package_name),
             self.device.timeouts.wait if timeout is None else timeout,
         )
+
+    def deaths(self, after: int = 0) -> list[AppDeath]:
+        """This app's crashes and ANRs since the attachment opened (``Device.app_deaths``),
+        after ``after``."""
+        return _deaths.list_deaths(self.device, after, self.package_name)[0]
+
+    def guard(self) -> DeathGuard:
+        """``Device.guard()`` for this app only: another app's death neither raises nor is
+        taken."""
+        return DeathGuard(self.device, self.package_name)
+
+    def allow_deaths(self) -> AllowedDeaths:
+        """``Device.allow_deaths()`` for this app only: another app's death still fails the test."""
+        return AllowedDeaths(self.device, self.package_name)
+
+    def expect_death(self, kind: AppDeathKind | None = None, timeout: float | None = None) -> ExpectedDeath:
+        """A block that should make this app crash or stop responding (``Device.expect_death``);
+        for crash-recovery and process-death tests::
+
+            with app.expect_death() as expected:
+                app.element(desc("crash")).tap()
+            assert expected.death.exception_class == "java.lang.IllegalStateException"
+        """
+        return ExpectedDeath(self.device, self.package_name, kind, self.device.timeouts.wait if timeout is None else timeout)
 
     def _target(self) -> pb.AppTarget:
         return pb.AppTarget(

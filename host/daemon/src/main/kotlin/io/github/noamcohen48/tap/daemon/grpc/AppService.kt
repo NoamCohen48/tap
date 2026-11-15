@@ -94,7 +94,11 @@ class AppService(
         return device.recorded({ setApp(logged) }) {
             // Before the call, so a crash on the way up counts and one before it does not.
             if (operation in STARTS_THE_APP) device.appDeaths.watch(target.packageName)
-            block(app)
+            try {
+                block(app)
+            } finally {
+                device.appDeaths.inputSent()
+            }
         }
     }
 

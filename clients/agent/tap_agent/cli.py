@@ -28,6 +28,7 @@ from .core import (
     WAIT_STATES,
     Agent,
     AgentError,
+    AppDiedStep,
     command_timeout,
 )
 from .targets import SELECTOR_KEYS, UsageError, parse_duration
@@ -46,7 +47,8 @@ Drive an Android device through a running Tap daemon (`tap start`), one step per
   tap-agent release
 
 A target is a ref from `snapshot` (@e3) or key=value terms joined by commas, all of which must
-match: {keys}. Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon.
+match: {keys}. Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon, 4 the step ran
+but a watched app crashed or stopped responding.
 """.format(keys=SELECTOR_KEYS)
 
 TARGET_HELP = "a ref (@e3), comma-joined selector terms, or a JSON selector (all/any, relations, flags, text modes)"
@@ -73,7 +75,13 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("-s", "--session", help="session name (default: $TAP_AGENT_SESSION or 'agent')")
     on_device = argparse.ArgumentParser(add_help=False, parents=[common])
     on_device.add_argument("-d", "--device", help="serial; needed only when the session has several devices")
-    settle = argparse.ArgumentParser(add_help=False)
+    expect = argparse.ArgumentParser(add_help=False)
+    expect.add_argument(
+        "--expect-death", action="store_true",
+        help="the step must make a watched app crash or stop responding (within 10 s after it); a command failing because of it is no failure",
+    )
+    # Every verb that can send input can expect the app to die of it.
+    settle = argparse.ArgumentParser(add_help=False, parents=[expect])
     settle.add_argument("--settle", action="store_true", help="wait for the screen to settle, then print what changed")
 
     budget = argparse.ArgumentParser(add_help=False)
@@ -130,6 +138,18 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", dest="as_json", action="store_true", help="the entries as JSON data instead of lines")
 
     p.add_argument("-o", "--out", help="driver / evidence: new local output file; never overwrite")
+
+    p = verb("deaths", "app crashes and ANRs since the device was attached (watched apps; --all for every app)", on_device)
+    p.add_argument("--package", help="only this app's")
+    p.add_argument("--all", dest="all_apps", action="store_true", help="also apps the session did not start or target")
+    p.add_argument("--trace", type=int, metavar="SEQ", help="print one death's full stack trace")
+    p.add_argument("--json", dest="as_json", action="store_true", help="structured entries")
+    p.add_argument(
+        "--wait", action="store_true",
+        help="block until a watched app dies (exit 4), the session ends or --timeout (exit 0); "
+        "run it in the background to be told; keeps no idle session alive",
+    )
+    p.add_argument("--timeout", type=parse_duration, help="with --wait: give up after this long (default: until the session ends)")
 
     p = verb("media-record", "explicit bounded video/audio recording; save bytes privately on stop", on_device)
     p.add_argument("action", choices=("start", "stop"))
@@ -306,7 +326,7 @@ def parser() -> argparse.ArgumentParser:
     p = verb("capture", "save screenshot, hierarchy, device info and driver log", on_device)
     p.add_argument("-o", "--out", help="directory (default .tap/agent/capture-<serial>-<time>)")
 
-    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device)
+    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device, expect)
     p.add_argument("action", choices=APP_ACTIONS)
     p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
@@ -350,6 +370,11 @@ def parser() -> argparse.ArgumentParser:
     return root
 
 
+# Verbs after which no app deaths are reported: they need no device or session (record, export
+# and the inventory work without one), end the session, or list deaths themselves.
+UNREPORTED = frozenset({"attach", "sessions", "release", "devices", "unquarantine", "server-info", "history", "export", "deaths"})
+
+
 def run(args: argparse.Namespace, agent: Agent) -> str:
     v = args.verb
     device = getattr(args, "device", None)
@@ -382,6 +407,14 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
             grep=args.grep, actions=args.actions, limit=args.limit, step=args.step, until=args.until, as_json=args.as_json, out=args.out,
             driver_lines=args.driver_lines,
         )
+    if v == "deaths":
+        if args.wait:
+            if args.trace is not None or args.as_json:
+                raise UsageError("--wait does not take --trace or --json")
+            return agent.wait_for_death(device, package=args.package, all_apps=args.all_apps, timeout=args.timeout)
+        if args.timeout is not None:
+            raise UsageError("--timeout needs --wait")
+        return agent.deaths(device, package=args.package, all_apps=args.all_apps, trace=args.trace, as_json=args.as_json)
     if v == "media-record":
         return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
     if v == "snapshot":
@@ -486,7 +519,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
     agent = Agent(args.session)
     try:
-        print(run(args, agent))
+        if args.verb in UNREPORTED:
+            print(run(args, agent))
+        else:
+            print(agent.reporting_deaths(lambda: run(args, agent), expect=getattr(args, "expect_death", False)))
         sys.stdout.flush()
         return EXIT_OK
     except BrokenPipeError:
@@ -494,6 +530,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         # the interpreter's own flush at exit does not fail again.
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return EXIT_OK
+    except AppDiedStep as died:
+        # The step ran: its output goes where a step's output goes, the exit code says the app died.
+        print(died)
+        return died.exit_code
     except AgentError as error:
         print(f"error: {error}", file=sys.stderr)
         return error.exit_code

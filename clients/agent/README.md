@@ -28,8 +28,14 @@ tap-agent release
 - `log` prints the device log with the session's steps, `log --step N` one step's part.
   `media-record start|stop` is video/audio capture.
   Converting an export into a test remains the user's job.
+- Every step ends with the crashes and ANRs of watched apps that no earlier step reported (top
+  frames inline, the full trace in a private file under `deaths/`); such a step exits 4.
+  `--expect-death` makes a step require one, `deaths` lists the server's record, and
+  `deaths --wait` blocks until the next one, for an agent to run in the background (it keeps no
+  idle session alive). An exported step lists the deaths it reported. Design: `.docs/app-deaths.md`.
 - `tap-agent skill` prints `SKILL.md`, the instructions to give an agent that uses the CLI.
 - `tap-agent mcp` serves the same steps as MCP tools over stdio, e.g. for Claude Code:
   `claude mcp add tap -- tap-agent mcp`.
 
-Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon. Design: `.docs/agent-surface.md`.
+Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon, 4 the step ran but a watched app
+crashed or stopped responding. Design: `.docs/agent-surface.md`.

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
 WAITS = frozenset({"wait", "settle", "toast"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
-EXCLUDED = frozenset({"close", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "screenshot", "capture", "log", "recording", "pull", "activity", "history", "export"})
+EXCLUDED = frozenset({"close", "reporting_deaths", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "screenshot", "capture", "log", "recording", "pull", "activity", "history", "export"})
 
 
 def _word(value: Any) -> Any:
@@ -271,6 +271,8 @@ def _wrap(method: Callable[..., str]) -> Callable[..., str]:
         warnings = []
         try:
             agent.records.finish(recording["id"], sequence, status, max(0, round((time.monotonic() - started) * 1000)), error_code(failure) if failure is not None else None)
+            # The app deaths noticed after this step are added to it (Agent.reporting_deaths).
+            agent._recorded = (recording["id"], sequence)
         except RecordError:
             warnings.append("the step's outcome could not be saved to the session history; input may already have executed; do not repeat it")
         finally:

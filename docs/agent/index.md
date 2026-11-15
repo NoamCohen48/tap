@@ -8,7 +8,9 @@
 Tap agent (`tap-agent`) lets a coding agent (Claude Code, Cursor, …) drive a device through the same `tap`
 server your tests use. The agent reads the screen as text, acts on it, checks the result, and
 hands you a log of what it did. That covers checking a change on a real device, reproducing a
-bug, or exploring an app before writing a test for it.
+bug, or exploring an app before writing a test for it. When the app crashes or stops
+responding, the step that noticed says so, with the top of the stack trace
+([When the app crashes](session.md#when-the-app-crashes)).
 
 It comes two ways, with the same steps and the same sessions: a **CLI** (one step per call,
 for agents that run shell commands) and an **MCP server** (the steps as tools). Both are built

@@ -14,11 +14,14 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, TypeVar, overload
 
 from . import _gen as pb
-from . import _proto
+from . import _deaths, _proto
+from ._deaths import AllowedDeaths, DeathGuard, ExpectedDeath
 from .app import App
 from .capabilities import DeviceCapabilities, _from_proto as _capabilities_from_proto
 from .errors import CommandError, TapError, WaitTimeoutError
 from .models import (
+    AppDeath,
+    AppDeathKind,
     AttachedDeviceEntry,
     Capture,
     DeviceInfo,
@@ -893,6 +896,77 @@ class Device:
             activities=response.activities,
             windows=response.windows,
         )
+
+    def app_deaths(self, after: int = 0, package_name: str | None = None) -> list[AppDeath]:
+        """The crashes and ANRs Android logged on this device since the attachment opened,
+        oldest first (the newest 256): those with a ``sequence`` above ``after``, of
+        ``package_name`` when given. Every app is listed; ``AppDeath.watched`` says which ones
+        count for this attachment. Reads the server's record, so it is cheap to call."""
+        return _deaths.list_deaths(self, after, package_name)[0]
+
+    def await_app_deaths(self, after: int, timeout: float, package_name: str | None = None) -> list[AppDeath]:
+        """Waits until a death after ``after`` is recorded (of ``package_name`` when given;
+        ``AppDeath.watched`` says whether it counts), at most ``timeout`` seconds, and returns the
+        deaths after ``after``, oldest first: empty when none came in time. Raises when the device
+        is detached meanwhile. The wait runs on the server and does not count as use of a held
+        connection, so it never keeps an idle session alive. Changes nothing: the deaths stay
+        unhandled."""
+        return _deaths.await_deaths(self, after, timeout, package_name)
+
+    def death_sequence(self) -> int:
+        """The latest ``AppDeath.sequence`` the server recorded on this attachment (0 = none):
+        pass it to ``app_deaths`` or ``take_unhandled_deaths`` as ``after`` to see only later
+        deaths."""
+        return _deaths.mark(self)
+
+    def take_unhandled_deaths(self, after: int) -> list[AppDeath]:
+        """The watched deaths after ``after`` that no client has yet (``AppDeath.handled``: no
+        command's error carried them, and no ``guard`` / ``allow_deaths`` / ``expect_death`` block
+        took them), and takes them, so a second call does not return them. It first waits until
+        0.3 s after the latest input, because Android logs a crash shortly after the input that
+        caused it. This is the end-of-test check the pytest plugin runs; another runner can run it
+        the same way."""
+        deaths = _deaths.open_deaths(self, after)
+        _deaths.acknowledge(self, deaths)
+        return deaths
+
+    def guard(self) -> DeathGuard:
+        """A context manager that raises ``AppDiedError`` if any watched app crashed or stopped
+        responding inside it: from the command that failed because of it (that ``CommandError``
+        is the ``AppDiedError``'s ``failure`` and cause), when the block ends without failing, or
+        in place of the block's own failure (chained the same way). Without a death, the block's
+        outcome comes through unchanged::
+
+            try:
+                with device.guard():
+                    app.element(text("Pay")).tap()
+                    app.wait(text("Paid")).visible()
+            except AppDiedError as died:
+                print(died.death.stack_trace)
+
+        A death the block raised for is handled (``AppDeath.handled``): no outer block or
+        end-of-test check reports it again, and it explains no later failure. The client learns of
+        a death at the next Tap call or when the block ends (up to 0.3 s after the latest input);
+        it cannot stop the block's own code at the moment of the crash. Inside pytest the
+        end-of-test check already fails a test whose app died; ``guard`` moves that failure to the
+        end of the block, for code that goes on after it, or outside a test."""
+        return DeathGuard(self, None)
+
+    def allow_deaths(self) -> AllowedDeaths:
+        """A context manager that lets watched apps die inside it: those deaths are handled, so
+        they fail no test and explain no later failure, and are its ``deaths`` once it ends.
+        Nothing else changes: the block's outcome, including a ``CommandError`` for a death, comes
+        through as it is. For monkey and stress sections."""
+        return AllowedDeaths(self, None)
+
+    def expect_death(self, kind: AppDeathKind | None = None, timeout: float | None = None) -> ExpectedDeath:
+        """A context manager whose block should make a watched app crash or stop responding
+        (``kind`` when given); its ``death`` is that death: the one a failing command in the block
+        carried, or the first logged during the block or within ``timeout`` seconds after it
+        (default the wait timeout). Raises ``AssertionError`` when none came. A command failing
+        because of the death does not fail the block; any other failure does. Only that death is
+        handled: another one during the block still fails the test."""
+        return ExpectedDeath(self, None, kind, self.timeouts.wait if timeout is None else timeout)
 
     def capture(self, timeout: float = 30.0) -> Capture:
         """Takes a screenshot, the hierarchy, the device info, the driver log and the device

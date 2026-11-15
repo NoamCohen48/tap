@@ -1058,6 +1058,92 @@ class Device internal constructor(
         }
     }
 
+    /**
+     * The crashes and ANRs Android logged on this device since the attachment opened, oldest first
+     * (the newest 256): those with a [AppDeath.sequence] above [after], of [packageName] when given.
+     * Every app is listed; [AppDeath.watched] says which ones count for this attachment. Reads the
+     * server's record (it follows the device's crash log), so it is cheap to call.
+     */
+    suspend fun appDeaths(
+        after: Long = 0,
+        packageName: String? = null,
+    ): List<AppDeath> = listAppDeaths(this, "Device.appDeaths", after, packageName).first
+
+    /**
+     * Waits until a death after [after] is recorded (of [packageName] when given; [AppDeath.watched]
+     * says whether it counts), at most [timeout], and returns the deaths after [after], oldest first:
+     * empty when none came in time. Fails when the device is detached meanwhile. The wait runs on
+     * the server and does not count as use of a held connection, so it never keeps an idle session
+     * alive. Changes nothing: the deaths stay unhandled.
+     */
+    suspend fun awaitAppDeaths(
+        after: Long,
+        timeout: Duration,
+        packageName: String? = null,
+    ): List<AppDeath> = awaitedDeaths(this, after, timeout, packageName, "Device.awaitAppDeaths")
+
+    /**
+     * The latest [AppDeath.sequence] the server recorded on this attachment (0 = none): pass it to
+     * [appDeaths] or [takeUnhandledDeaths] as `after` to see only later deaths.
+     */
+    suspend fun deathSequence(): Long = deathMark(this, "Device.deathSequence")
+
+    /**
+     * The watched deaths after [after] that no client has yet ([AppDeath.handled]: no command's
+     * error carried them, and no [guard] / [allowDeaths] / [expectDeath] block took them), and takes
+     * them, so a second call does not return them. It first waits until 300 ms after the latest
+     * input, because Android logs a crash shortly after the input that caused it. This is the
+     * end-of-test check the JUnit extension runs; another test framework can run it the same way.
+     */
+    suspend fun takeUnhandledDeaths(after: Long): List<AppDeath> =
+        openDeaths(this, after, null, "Device.takeUnhandledDeaths").also { acknowledge(this, "Device.takeUnhandledDeaths", it) }
+
+    /**
+     * Runs [block] and throws [AppDiedException] if any watched app crashed or stopped responding
+     * while it ran: from the command that failed because of it (its [CommandException] is the
+     * cause), when the block ends without failing, or in place of the block's own failure (which
+     * is then suppressed). Without a death, the block's value or failure comes through unchanged.
+     *
+     * ```kotlin
+     * try {
+     *     device.guard { app.element(text("Pay")).tap(); app.await(text("Paid")).visible() }
+     * } catch (died: AppDiedException) {
+     *     println(died.death.stackTrace)
+     * }
+     * ```
+     *
+     * A death the block threw for is handled ([AppDeath.handled]): no outer block or end-of-test
+     * check reports it again, and it explains no later failure. The client learns of a death at the
+     * next Tap call or at the end of the block (up to 300 ms after the latest input, because
+     * Android logs a crash shortly after the input that caused it); it cannot stop the block's own
+     * code at the moment of the crash.
+     *
+     * Inside a JUnit test the end-of-test check already fails a test whose app died; `guard` moves
+     * that failure to the end of the block, for code that goes on after it, or outside a test.
+     */
+    suspend fun <T> guard(block: suspend () -> T): T = guarded(this, null, "Device.guard", block)
+
+    /**
+     * Runs [block] and lets watched apps die during it: those deaths are handled, so they fail no
+     * test and explain no later failure. Nothing else changes: the block's value or exception
+     * comes through as it is, including a command's [CommandException] for a death. For monkey and
+     * stress sections; [appDeaths] lists what died.
+     */
+    suspend fun <T> allowDeaths(block: suspend () -> T): T = allowing(this, null, "Device.allowDeaths", block)
+
+    /**
+     * Runs [block], which should make a watched app crash or stop responding ([kind] when given),
+     * and returns that death: the one a failing command in the block carried, or the first logged
+     * during the block or within [timeout] after it. Fails with [AssertionError] when none came. A
+     * command failing because of the death does not fail the block; any other failure does. Only
+     * the returned death is handled: another one during the block still fails the test.
+     */
+    suspend fun expectDeath(
+        kind: AppDeath.Kind? = null,
+        timeout: Duration = timeouts.wait,
+        block: suspend () -> Unit,
+    ): AppDeath = expectedDeath(this, null, kind, timeout, "Device.expectDeath", block)
+
     /** [App.awaitVisible]. */
     internal suspend fun awaitAppVisible(
         packageName: String,

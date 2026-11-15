@@ -159,10 +159,58 @@ several nodes match; use a ref from `snapshot` or a narrower selector
 As in tests, every action needs exactly one match and fails before touching the device
 otherwise. The error names the code and a next step for the agent. A tap whose point another
 window covers (a dialog, the shade) fails as `NOT_INTERACTABLE` / `OBSCURED`. Exit codes: `0`
-ok, `1` the step failed, `2` usage, `3` no server running.
+ok, `1` the step failed, `2` usage, `3` no server running, `4` the step ran but a watched app
+crashed or stopped responding ([below](#when-the-app-crashes)).
 
 `screenshot` and `capture` (screenshot, hierarchy, device info, driver log) save evidence
 under `.tap/agent/` and print the paths.
+
+### When the app crashes
+
+The server keeps a record of every crash and ANR while the device is attached. Each step ends
+with the deaths of watched apps (launched by the session or named by a target) that no earlier
+step reported, whether the step itself failed or not:
+
+```console
+$ tap-agent tap text=Pay
+tapped text=Pay
+! com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock
+    at com.example.shop.Cart.pay(Cart.kt:41)
+    at com.example.shop.CheckoutActivity.onPay(CheckoutActivity.kt:88)
+    at android.view.View.performClick(View.java:7659)
+    at android.view.View.performClickInternal(View.java:7636)
+    at android.view.View.access$3600(View.java:829)
+  … 18 more frames; full trace: .tap/agent/deaths/emulator-5554-0001-com.example.shop.txt
+  its screen is gone; `app launch com.example.shop` to continue
+```
+
+The step's action ran, so its output stays on stdout, but it exits `4` (MCP: an error result):
+a script or an agent must not go on as if the app were alive. The full trace goes to an
+owner-only file so it stays out of the agent's context until it is needed. A wait that is
+running when the app dies ends at once with `AUT_CRASHED` or `AUT_ANR`; its error names the
+death, and the frames, trace file and hint follow. Once reported, a death explains no later
+failure.
+
+To reproduce a crash on purpose, add `--expect-death` (MCP `expect_death: true`): the step then
+needs a watched app to die, during it or within 10 s after it, prints that death as
+`✓ … (expected)`, and does not fail for the command the death ended. `deaths` lists the
+record (`--package`, `--all` for apps the session did not watch, `--trace SEQ`, `--json`), and
+each step in an `export` has an `app_deaths` list of the deaths it reported.
+
+To be told of a crash between steps, run `tap-agent deaths --wait` in the background (an agent
+that can run commands in the background is notified when it exits):
+
+```console
+$ tap-agent deaths --wait --timeout 30m
+#3 com.example.shop crashed (pid 23554): java.lang.IllegalStateException: Out of stock
+  `tap-agent deaths --trace 3` for its stack trace; the next step reports it
+```
+
+It exits `4` when a watched app dies (`--all` for any app, `--package` for one), and `0` when
+the session ends or the timeout passes (by default it waits until the session ends). It only
+notifies: the death stays for the next step to report and take. The wait runs on the server and
+does not count as use of the session, so a forgotten waiter never keeps the device held past
+the idle timeout. MCP has no background calls, so it is a CLI command only.
 
 ## Step history, export and release
 

@@ -35,7 +35,7 @@ import java.security.SecureRandom
 
 /** One attached device on a fake driver, behind in-process Device and App services. */
 internal class AttachedHarness private constructor(
-    private val driver: FakeDriverServer,
+    val driver: FakeDriverServer,
     private val client: DriverClient,
     val daemon: TapDaemon,
     val connectionId: String,
@@ -73,11 +73,26 @@ internal class AttachedHarness private constructor(
                     )
                 }
             val frame = withTimeout(2_000) { withContext(Dispatchers.IO) { driver.nextFrame() } }
-            driver.respond(frame.requestId, Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = frame.requestId, generation = GENERATION))
+            respond(frame.requestId, result)
             withTimeout(5_000) { call.await() }.result
         }
 
+    /** Answers the driver request [requestId] with [result], as the driver would. */
+    fun respond(
+        requestId: Long,
+        result: CommandResult.Builder,
+    ) = driver.respond(requestId, Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = requestId, generation = GENERATION))
+
+    /** The request id of the next `CANCEL` the driver receives. */
+    fun FakeDriverServer.nextCancel(): Long {
+        val frame = nextFrame()
+        check(frame.type == io.github.noamcohen48.tap.protocol.FrameType.CANCEL) { "Expected CANCEL, got ${frame.type}" }
+        return frame.requestId
+    }
+
     private suspend fun close() {
+        // Detaches (stopping the attachment's log follower) before the driver goes away.
+        runCatching { daemon.close(5_000) }
         channel.shutdownNow()
         server.shutdownNow()
         runCatching { client.close() }
@@ -105,6 +120,7 @@ internal class AttachedHarness private constructor(
             adb: Adb,
             apps: (String) -> AppLifecycle = { error("no app in this fake") },
             captureLogs: Boolean = false,
+            holdIdleMs: Long? = null,
             block: suspend AttachedHarness.() -> T,
         ): T {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
@@ -116,13 +132,16 @@ internal class AttachedHarness private constructor(
                         override suspend fun open(config: DeviceSessionConfig): DaemonDeviceSession = Session(client, apps)
                     }
                 val daemon = TapDaemon(config, opener)
-                val connection = daemon.connectClient("harness")
+                val connection = daemon.connectClient("harness", holdIdleMs)
+                // In a scope of its own: the attach is one call, not one that lasts the whole test.
                 val attached =
-                    daemon.attachDevice(
-                        connection.id,
-                        SERIAL,
-                        TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0, captureLogs = captureLogs),
-                    )
+                    coroutineScope {
+                        daemon.attachDevice(
+                            connection.id,
+                            SERIAL,
+                            TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0, captureLogs = captureLogs),
+                        )
+                    }
                 val name = InProcessServerBuilder.generateName()
                 val server =
                     InProcessServerBuilder

@@ -21,6 +21,16 @@ name the components affected. Earlier releases used independent version lines. T
   `read(until=...)` ends a read at a marker. `attach_device(capture_logs=False)` turns the
   capture off. See the [device logs guide](docs/guide/logs.md).
 
+- App crashes and ANRs are recorded as they happen. The server follows the device's crash log
+  for the whole attachment and keeps a record of each death (exception, message, process, pid,
+  time, stack trace), listed by the new `ListAppDeaths` RPC and carried by the failure it
+  explains (`Error.app_death`). A wait that is running when a watched app dies ends at once
+  (`AUT_CRASHED` / `AUT_ANR`, detail `CANCELLED`) instead of running to its timeout. An app is
+  watched from a call that starts it, as before, and now also from the first command whose
+  selector names it, so an app opened from the launcher or a notification counts too. A death a
+  client took (`AcknowledgeAppDeaths`) or a failure carried is `handled` and explains nothing
+  more. `ListAppDeaths` `settle_ms` waits for a crash the latest input may still cause, and
+  `wait_ms` blocks until the next death without keeping an idle held session alive.
 - Read per-device operation support with `device.capabilities()` in Kotlin/Python,
   `tap-agent capabilities [--json]`, or the read-only MCP `capabilities` tool. The report
   explains API restrictions, missing host scrcpy, network-ADB safety gates and remaining
@@ -102,6 +112,26 @@ name the components affected. Earlier releases used independent version lines. T
   the dump). An `unknown` or interrupted step no longer blocks later input, and a full history
   is followed by a new one. MCP: the `record` and `logs` tools are removed.
 
+- Kotlin: app crashes and ANRs as results. `device.appDeaths()` / `app.deaths()` list them,
+  `CommandException.appDeath` carries the one that failed a command, `guard { }` throws
+  `AppDiedException` for a death inside a block (also one that failed no command),
+  `allowDeaths { }` lets them happen, and `expectDeath(kind) { }` requires one. JUnit fails a
+  test whose watched app died, in the test or its `@BeforeEach` / `@AfterEach`, with no client
+  taking the death (`tap.appDeaths=fail`, the default; `off` or `@AllowAppDeath` to opt out).
+  Each `AppDeath` names its device's `serial`; `device.awaitAppDeaths(after, timeout)` waits for
+  the next one. See the new "Crashes and ANRs" guide page.
+- Python: the same for app crashes and ANRs: `device.app_deaths()` / `app.deaths()`,
+  `CommandError.app_death`, `with app.guard():` raising `AppDiedError`, `with
+  app.allow_deaths():`, `with app.expect_death(kind) as expected:`,
+  `device.await_app_deaths(after, timeout)`. The pytest plugin fails a test whose watched app
+  died unhandled, in the test or its fixtures (`tap_app_deaths=fail`, the default; `off` or
+  `@pytest.mark.tap_allow_app_death` to opt out).
+- Tap agent: every CLI/MCP step ends with the watched app crashes and ANRs no earlier step
+  reported (top frames inline, the full trace in a private file); such a step exits 4 (MCP: an
+  error result). `--expect-death` (MCP `expect_death`) makes a step require one, `deaths` (CLI
+  and MCP) lists the record and `deaths --wait` blocks until the next one (for a background
+  notice; it keeps no idle session alive), and each exported step lists the deaths it
+  reported (`app_deaths`, without message or trace).
 - Kotlin: `TapClient.unquarantine(serial)`, `DeviceOptions(inspectQuarantined = true)`,
   `Device.quarantineReason`, `DeviceEntry.retryOnAttach` / `underInspection`. Python:
   `TapClient.unquarantine(serial)`, `attach_device(serial, inspect_quarantined=True)`,

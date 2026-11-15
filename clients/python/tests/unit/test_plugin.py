@@ -23,6 +23,7 @@ from tap_e2e.pytest_plugin import (
     _capture_mode,
     _device_scope,
     _Held,
+    _app_deaths_mode,
     _mark_logs,
     _reusable,
     _rotate,
@@ -230,3 +231,115 @@ def test_test_markers_are_written_to_every_device_and_never_fail_the_test(fake):
     names = [request.name for request in fake.device_log.requests]
     assert len(names) == 4 and names[0] == names[1]
     assert names[0].startswith("test tests/test_pay.py::test_pay[a b]") and len(names[0]) == 200
+pytest_plugins = ["pytester"]
+
+
+def test_app_deaths_mode_parses_fail_and_off_only():
+    assert _app_deaths_mode("fail") is True
+    assert _app_deaths_mode(" OFF ") is False
+    with pytest.raises(pytest.UsageError, match="tap_app_deaths"):
+        _app_deaths_mode("warn")
+
+
+_DEATH_CONFTEST = '''
+import pytest
+from tap_e2e.models import AppDeath, AppDeathKind
+from tap_e2e.pytest_plugin import _STATE, TestDevices
+
+class StandIn:
+    """Answers the end-of-test check: deaths the test adds with ``die()`` are unhandled."""
+    serial = "serial-aaa"
+    def __init__(self):
+        self.pending = []
+    def death_sequence(self):
+        return 0
+    def take_unhandled_deaths(self, after):
+        taken, self.pending = self.pending, []
+        return taken
+    def die(self):
+        self.pending.append(AppDeath(1, AppDeathKind.CRASH, "com.shop", "com.shop", 7, 1.0,
+                                     "java.lang.IllegalStateException", "Out of stock", "", True, False, "serial-aaa"))
+
+@pytest.fixture
+def tap_devices(request):
+    device = StandIn()
+    allowed = request.node.get_closest_marker("tap_allow_app_death") is not None
+    marks = None if allowed or request.config.getini("tap_app_deaths") == "off" else {"device": 0}
+    request.node.stash[_STATE] = TestDevices({"device": device}, [device.serial], death_marks=marks)
+    return {"device": device}
+'''
+
+_DEATH_TESTS = '''
+import pytest
+def test_passes(tap_devices): pass
+def test_dies(tap_devices): tap_devices["device"].die()
+def test_dies_and_fails(tap_devices):
+    tap_devices["device"].die()
+    assert False, "own failure"
+@pytest.mark.tap_allow_app_death
+def test_allowed(tap_devices): tap_devices["device"].die()
+def test_dies_and_skips(tap_devices):
+    tap_devices["device"].die()
+    pytest.skip("no fixture app")
+'''
+
+
+def test_the_end_of_test_check_fails_a_test_whose_app_died_unhandled(pytester, monkeypatch):
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.delenv("TAP_APP_DEATHS", raising=False)
+    pytester.makeconftest(_DEATH_CONFTEST)
+    pytester.makepyfile(_DEATH_TESTS)
+    result = pytester.runpytest_subprocess("-p", "tap_e2e.pytest_plugin", "-q", "-o", "tap_report=off")
+    result.assert_outcomes(passed=2, failed=2, skipped=1)
+    output = result.stdout.str()
+    assert "AppDiedError: [serial-aaa] com.shop crashed (pid 7): java.lang.IllegalStateException: Out of stock" in output
+    # The failing test's own failure is chained under the death.
+    assert "own failure" in output and "The above exception was the direct cause" in output
+
+    off = pytester.runpytest_subprocess("-p", "tap_e2e.pytest_plugin", "-q", "-o", "tap_report=off", "-o", "tap_app_deaths=off")
+    off.assert_outcomes(passed=3, failed=1, skipped=1)
+
+
+_FIXTURE_DEATH_TESTS = '''
+import pytest
+from tap_e2e import text
+
+@pytest.fixture
+def crashes_on_setup(tap_device):
+    tap_device.screen.element(text("Crash")).tap()
+    return tap_device
+
+@pytest.fixture
+def crashes_on_teardown(tap_device):
+    yield tap_device
+    tap_device.screen.element(text("Crash")).tap()
+
+def test_setup_crash(crashes_on_setup): pass
+def test_teardown_crash(crashes_on_teardown): pass
+'''
+
+
+def test_the_check_covers_the_setup_and_teardown_of_the_tests_other_fixtures(pytester, monkeypatch, fake):
+    """The real device fixture over the fake server: every tap crashes a watched app."""
+
+    def crash(command: pb.Command) -> pb.CommandResult | None:
+        if not command.HasField("tap"):
+            return None
+        sequence = len(fake.devices.deaths) + 1
+        fake.devices.deaths.append(pb.AppDeath(
+            sequence=sequence, kind=pb.AppDeath.KIND_CRASH, package_name="com.shop", process_name="com.shop",
+            pid=7, exception_class="java.lang.IllegalStateException", message="Out of stock", watched=True,
+        ))
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = crash
+    monkeypatch.setenv("PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1")
+    monkeypatch.delenv("TAP_APP_DEATHS", raising=False)
+    monkeypatch.setenv("TAP_SERVER", fake.address)
+    monkeypatch.setenv("TAP_TOKEN", TOKEN)
+    monkeypatch.setenv("TAP_SERIALS", "emulator-5554")
+    pytester.makepyfile(_FIXTURE_DEATH_TESTS)
+    result = pytester.runpytest_subprocess("-p", "tap_e2e.pytest_plugin", "-q", "-o", "tap_report=off", "-o", "tap_capture=off")
+    # A crash in a fixture's setup is the test's; one in its teardown fails the passing test's teardown.
+    result.assert_outcomes(passed=1, failed=1, errors=1)
+    assert fake.devices.acknowledged == [1, 2]
