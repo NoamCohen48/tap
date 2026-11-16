@@ -35,6 +35,7 @@ internal class DumpNode(
     val showingHint: Boolean = false,
     val contentInvalid: Boolean = false,
     val error: String? = null,
+    val windowType: Int = 0,
 ) {
     var subtreeEnd: Int = index + 1
         internal set
@@ -168,6 +169,7 @@ internal object HierarchyParser {
                     depth = if (parent == null) 0 else parent.depth + 1,
                     window = window,
                     windowPackage = parent?.windowPackage ?: attributes["package"].orEmpty(),
+                    windowType = parent?.windowType ?: (attributes["window-type"]?.toIntOrNull() ?: 0),
                     packageName = attributes.present("package"),
                     className = attributes.present("class"),
                     resourceName = attributes.present("resource-id"),

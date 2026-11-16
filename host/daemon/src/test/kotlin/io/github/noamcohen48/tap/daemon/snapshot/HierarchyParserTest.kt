@@ -43,6 +43,20 @@ class HierarchyParserTest {
     }
 
     @Test
+    fun `window types inherit from roots and ordinals separate same package windows`() {
+        val xml =
+            wrap(
+                """<node package="p" window-type="1"><node text="Settings"/></node>""" +
+                    """<node package="p" window-type="2"><node text="Keyboard"/></node>""" +
+                    """<node package="com.android.systemui" window-type="3"/>""" +
+                    """<node package="p"/>""",
+            )
+        val nodes = ScreenSnapshots.screen(xml).nodes
+        assertEquals(listOf(1, 1, 2, 2, 3, 4), nodes.map { it.windowIndex })
+        assertEquals(listOf(1, 1, 2, 2, 3, 0), nodes.map { it.windowType })
+    }
+
+    @Test
     fun `attributes are read, entities unescaped, empty values absent`() {
         val ambiguity = Dumps.hierarchy("emulator-5554-AmbiguityActivity")
         val left = ambiguity.nodes.single { it.text?.startsWith("Left 1") == true }

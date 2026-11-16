@@ -492,6 +492,8 @@ def screen_node(node: pb.ScreenNode) -> ScreenNode:
         ref=node.ref,
         depth=node.depth,
         window_package=node.window_package,
+        window_index=node.window_index,
+        window_type=node.window_type,
         class_name=_optional(node, "class_name"),
         resource_name=_optional(node, "resource_name"),
         text=_optional(node, "text"),

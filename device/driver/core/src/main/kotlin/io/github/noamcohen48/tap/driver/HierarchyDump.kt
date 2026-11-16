@@ -14,7 +14,7 @@ import java.io.Writer
  * The diagnostic hierarchy dump: the XML `UiDevice.dumpWindowHierarchy` writes (uiautomator
  * 2.4 `AccessibilityNodeInfoDumper`: same elements, attributes, visible-children rule and
  * clipped bounds), plus the field state that dump leaves out: `showing-hint`,
- * `content-invalid` and `error`. Written independently, not copied, so the extra attributes
+ * `content-invalid`, `error` and `window-type`. Written independently, not copied, so the extra attributes
  * need no fork of UiAutomator. Diagnostic only: never on the selector or mutation path.
  */
 internal object HierarchyDump {
@@ -85,6 +85,7 @@ internal object HierarchyDump {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 add("display-id" to (node.window?.displayId ?: Display.DEFAULT_DISPLAY).toString())
             }
+            add("window-type" to (node.window?.type ?: 0).toString())
             add("showing-hint" to node.isShowingHintText.toString())
             add("content-invalid" to node.isContentInvalid.toString())
             add("error" to node.error?.toString().orEmpty())

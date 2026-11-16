@@ -161,9 +161,13 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("snapshot", "print the screen, one node per line with its ref", on_device)
     level = p.add_mutually_exclusive_group()
-    level.add_argument("-i", "--interactive", dest="level", action="store_const", const=render.INTERACTIVE, help="only nodes an action can target")
+    level.add_argument("-i", "--interactive", dest="level", action="store_const", const=render.INTERACTIVE, help="interactive controls with descendant context and labeled groups")
     level.add_argument("--all", dest="level", action="store_const", const=render.ALL, help="every node, layout containers too")
-    p.add_argument("--candidates", action="store_true", help="structured SDK snapshot with selector candidates instead of rendered lines")
+    p.add_argument("--candidates", action="store_true", help="complete structured SDK snapshot; incompatible with view filters")
+    p.add_argument("--package", help="only windows rooted in this package")
+    p.add_argument("--window", type=int, help="only this one-based window ordinal from the snapshot header")
+    p.add_argument("--hide-keyboard", action="store_true", help="hide input-method windows; unknown types remain visible")
+    p.add_argument("--hide-system-chrome", action="store_true", help="hide Android system-type windows, not system-owned apps")
 
     for name, help in (("inspect", "read one node's complete SDK state as JSON"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
         p = verb(name, help, on_device)
@@ -422,7 +426,9 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "media-record":
         return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
     if v == "snapshot":
-        return agent.snapshot(device, args.level or render.DEFAULT, candidates=args.candidates)
+        return agent.snapshot(device, args.level or render.DEFAULT, candidates=args.candidates,
+                              package=args.package, window=args.window, hide_keyboard=args.hide_keyboard,
+                              hide_system_chrome=args.hide_system_chrome)
     if v in ("inspect", "exists", "count"):
         return getattr(agent, v)(args.target, device, args.timeout)
     if v == "tap":

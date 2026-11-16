@@ -32,7 +32,7 @@ class HierarchyDumpTest {
             repeat(STILL_ATTEMPTS) {
                 device.waitForIdle()
                 val before = fixtureTree(upstreamDump(device))
-                val tap = fixtureTree(ByteArrayOutputStream().also { HierarchyDump.write(device, it) }.toString("UTF-8"))
+                val tap = fixtureTree(ByteArrayOutputStream().also { HierarchyDump.write(device, it) }.toString("UTF-8"), tapDump = true)
                 if (before != fixtureTree(upstreamDump(device))) return@repeat
                 assertFalse("Fixture must be present, not two empty trees", before.isEmpty())
                 assertEquals(before, tap)
@@ -47,8 +47,11 @@ class HierarchyDumpTest {
     private fun upstreamDump(device: UiDevice): String = ByteArrayOutputStream().also { device.dumpWindowHierarchy(it) }.toString("UTF-8")
 
     /** Compare structure and every attribute, not serializer whitespace. Ignore unrelated system
-     * windows (the clock can change between dumps); omit only Tap's three extra attributes. */
-    private fun fixtureTree(xml: String): List<Pair<Int, Map<String, String>>> {
+     * windows (the clock can change between dumps); omit only Tap's extra diagnostic attributes. */
+    private fun fixtureTree(
+        xml: String,
+        tapDump: Boolean = false,
+    ): List<Pair<Int, Map<String, String>>> {
         val parser = Xml.newPullParser().apply { setInput(StringReader(xml)) }
         val nodes = mutableListOf<Pair<Int, Map<String, String>>>()
         var fixtureWindow = false
@@ -56,14 +59,18 @@ class HierarchyDumpTest {
             if (parser.eventType != XmlPullParser.START_TAG || parser.name != "node") continue
             val attributes = (0 until parser.attributeCount).associate { parser.getAttributeName(it) to parser.getAttributeValue(it) }
             if (parser.depth == 2) fixtureWindow = attributes["package"] == PACKAGE
-            if (fixtureWindow) nodes += parser.depth to attributes.filterKeys { it !in EXTRA_ATTRIBUTES }
+            if (fixtureWindow) {
+                // Upstream has no type attribute; Tap's fixture window must be application type.
+                if (tapDump) assertEquals("1", attributes["window-type"])
+                nodes += parser.depth to attributes.filterKeys { it !in EXTRA_ATTRIBUTES }
+            }
         }
         return nodes
     }
 
     private companion object {
         const val PACKAGE = "io.github.noamcohen48.tap.fixture"
-        val EXTRA_ATTRIBUTES = setOf("showing-hint", "content-invalid", "error")
+        val EXTRA_ATTRIBUTES = setOf("showing-hint", "content-invalid", "error", "window-type")
         const val STILL_ATTEMPTS = 5
     }
 }

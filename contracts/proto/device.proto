@@ -404,6 +404,11 @@ message ScreenNode {
   bool content_invalid = 18;
   // The error the app set on the node (`getError`, e.g. `TextView.setError`).
   optional string error = 19;
+  // One-based window ordinal in this dump, not a persistent Android window ID.
+  int32 window_index = 20;
+  // AccessibilityWindowInfo type: 1 application, 2 input method, 3 system, etc.
+  // Zero means unknown (including dumps from older drivers). Never infer from package name.
+  int32 window_type = 21;
 }
 
 message ScreenSnapshotResponse {
