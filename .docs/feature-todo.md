@@ -14,6 +14,11 @@ include them without approval.
 
 ## Backlog
 
+- [ ] **Driver-side count waits.** Move explicit count waits from SDK polling into a single
+  driver command so raw history retains the expected count and overall timeout. No fundamental
+  blocker was found; settle count-cap/overflow semantics and timeout compatibility first.
+  Preserve stale-read handling, match-count semantics, cancellation and timeout diagnostics.
+  See [Count-wait investigation verdict](count-wait-verdict.md) for evidence and constraints.
 - [ ] **Private-data recovery tooling.** Add a read-only status API for interrupted database
   imports, then explicit restore/discard commands. Preserve retained recovery data; never
   silently repair, discard, restart, clear or replay a mutation. Today repair is manual or
@@ -63,6 +68,7 @@ include them without approval.
 - [Private app data](app-data.md)
 - [Device actions](device-actions.md)
 - [Framework gaps](framework-gaps.md)
+- [Count-wait investigation verdict](count-wait-verdict.md)
 - [ ] **Log parser pipeline.** The device log (`app-logs.md`) is lines of text; a test that
   wants "the HTTP calls the app made during this step" has to grep them. Add a pipeline of
   parsers over log entries that turn a library's own log format into typed records, starting
