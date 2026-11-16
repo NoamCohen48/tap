@@ -687,6 +687,10 @@ class ScreenNode:
     """The app marked the node's content invalid, e.g. a field that failed validation."""
     error: str | None = None
     """The error the app set on the node (``TextView.setError``), if any."""
+    window_index: int = 0
+    """One-based window ordinal in this dump, not a persistent window ID; zero if unknown."""
+    window_type: int = 0
+    """Android accessibility window type: 1 application, 2 keyboard, 3 system; zero if unknown."""
 
 
 @dataclass(frozen=True)

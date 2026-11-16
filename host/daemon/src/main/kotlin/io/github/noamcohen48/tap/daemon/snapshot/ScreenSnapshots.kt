@@ -36,6 +36,8 @@ internal object ScreenSnapshots {
             .newBuilder()
             .setDepth(node.depth)
             .setWindowPackage(node.windowPackage)
+            .setWindowIndex(node.window + 1)
+            .setWindowType(node.windowType)
             .apply {
                 node.className?.let { className = it }
                 node.resourceName?.let { resourceName = it }

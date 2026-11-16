@@ -57,20 +57,48 @@ MCP: `attach` with `inspect_quarantined`, then `unquarantine`. A device marked
 $ tap-agent app cold-launch com.android.settings
 cold-launched com.android.settings (pid 14853)
 $ tap-agent snapshot -i
-# com.android.settings
+# com.android.settings · window 1
 @e4  [ScrollView]  id=settings_homepage_container  scrollable
-@e8  [ImageView]  desc="Profile picture, double tap to open Google Account"  id=account_avatar
-@e12  [ViewGroup]  id=search_action_bar
-@e15  [ScrollView]  id=main_content_scrollable_container  scrollable
-@e21  [LinearLayout]  (by index)
+  @e8  [ImageView]  desc="Profile picture, double tap to open Google Account"  id=account_avatar
+  @e12  [ViewGroup]  context="Search settings"  id=search_action_bar
+  @e15  [ScrollView]  id=main_content_scrollable_container  scrollable
+    @e21  [LinearLayout]  context="Network & internet · Wi-Fi, mobile, data"  (by index)
 …
 ```
 
-A **snapshot** prints the visible screen, one node per line, grouped by window (`# package`).
-`-i` keeps only the nodes an action can target. Each line starts with a **ref**: `@e12` names
-a selector the server found to match exactly that node, and keeps naming it while the node stays
-on screen. `(by index)` marks a node that only its position among similar nodes singles out:
-it has no id, text or description of its own, an accessibility gap in the app.
+A **snapshot** prints a compact outline grouped by window (`# package · window N`).
+Indentation follows the nearest displayed ancestor; uninformative layout wrappers collapse.
+`-i` keeps interactive controls and labeled ancestor groups (marked `(group)`). Controls borrow
+passive descendant labels as `context="…"`, stopping at independently interactive children;
+an unlabeled nested switch can borrow its containing row's context. Scroll containers do not
+collect all their rows' labels. Context is deduplicated, bounded and excludes password values.
+
+**Context describes a control; it is not a selector.** Tap the row's `@ref`, not
+`text=Network & internet` inferred from its context. The text belongs to a child, not the row.
+Each ref names the server's existing selector, unchanged by presentation. `(no selector)` means
+the ref cannot be acted on; `(by index)` means its selector relies on position and may become
+fragile when the screen reorders. Printed labels and ids are not promises of unique selectors.
+
+Narrow the output without changing refs:
+
+```sh
+tap-agent snapshot -i --package com.android.settings
+tap-agent snapshot --window 1
+tap-agent snapshot -i --hide-keyboard --hide-system-chrome
+```
+
+`--package` matches the window-root package. `--window` uses the one-based ordinal in the
+header, valid only for that dump (not a persistent Android window ID). The MCP tool exposes
+`package`, `window`, `hide_keyboard` and `hide_system_chrome` with the same behavior.
+Suppression uses Android accessibility window types, not package-name guesses: application
+windows such as Settings and permission dialogs remain visible. System-type windows (including
+system panels) are hidden only when requested. Unknown types, including older drivers' dumps,
+remain visible. Defaults still show all windows. `--candidates` returns complete structured data
+and cannot be combined with view filters.
+
+Settle/action diffs use the same contextual rendering. A changed descendant also surfaces its
+containing control with `=` when its ref is unchanged. Removed labels conservatively repeat
+contextual controls in the affected window, because the removed list is only a partial tree.
 
 An empty field showing its hint prints `empty  hint="Name"`, rather than presenting the hint
 as a typed value. App validation state prints `invalid` and `error="Cannot be blank"`.

@@ -282,15 +282,23 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def snapshot(
         view: Annotated[
             Literal["default", "interactive", "all"],
-            Field(description="interactive: only nodes an action can target; all: layout containers too."),
+            Field(description="interactive: controls with descendant context and labeled groups; all: layout containers too."),
         ] = "default",
-        candidates: Annotated[bool, Field(description="Structured SDK snapshot with selector candidates; use default view.")] = False,
+        candidates: Annotated[bool, Field(description="Complete structured SDK snapshot with selector candidates; use default view without filters.")] = False,
+        package: Annotated[str, Field(description="Only windows rooted in this package.")] = "",
+        window: Annotated[StrictInt | None, Field(ge=1, description="One-based window ordinal from the snapshot header, not a persistent ID.")] = None,
+        hide_keyboard: Annotated[bool, Field(description="Hide input-method windows. Unknown window types remain visible.")] = False,
+        hide_system_chrome: Annotated[bool, Field(description="Hide system-type windows, not system-owned apps such as Settings.")] = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """The current screen with refs, or structured SDK data including selector candidates."""
+        """The current screen with refs and grouping. context= is descriptive descendant text,
+        not a selector: act on the container's @ref. Filters affect output only, never refs.
+        Unknown window types remain visible. Candidates returns complete structured SDK data."""
         level = {"default": render.DEFAULT, "interactive": render.INTERACTIVE, "all": render.ALL}[view]
-        return await call(session, lambda a: a.snapshot(device or None, level, candidates=candidates))
+        return await call(session, lambda a: a.snapshot(device or None, level, candidates=candidates,
+                                                       package=package or None, window=window,
+                                                       hide_keyboard=hide_keyboard, hide_system_chrome=hide_system_chrome))
 
     @mcp.tool(name="inspect", annotations=READ_ONLY)
     async def inspect(

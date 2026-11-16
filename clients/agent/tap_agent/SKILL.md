@@ -42,10 +42,18 @@ host, and a present executable alone does not prove capture will work.
 @e9  [TextView]  "Welcome"
 ```
 
-`-i` shows only nodes you can act on; `--all` adds layout containers. `(by index)` marks a
-node told apart only by its position (fragile), `(no selector)` one that cannot be targeted.
-Nodes under `# com.android.systemui` or another package are other windows (status bar,
-dialogs).
+`-i` shows interactive controls plus labeled ancestor `(group)` rows; `--all` adds layout
+containers. Indentation preserves displayed ancestry. A container's `context="…"` borrows
+passive descendant labels: it is descriptive, NOT the container's text or a selector. Tap the
+container's @ref, not a text selector inferred from context. `(by index)` means position-based
+(fragile); `(no selector)` means the ref cannot be targeted.
+
+Window headers include a one-based `window N` ordinal (not a persistent ID). Narrow snapshots
+with `--package PACKAGE` (window-root package), `--window N`, `--hide-keyboard` or
+`--hide-system-chrome`. MCP uses `package`, `window`, `hide_keyboard`, `hide_system_chrome`.
+Suppression uses Android window types, never package guesses; Settings and permission dialogs
+remain application windows. Unknown types remain visible. Filters affect presentation only,
+not refs, and cannot be combined with `--candidates`. Settle/action diffs also show context.
 
 ## Targets
 

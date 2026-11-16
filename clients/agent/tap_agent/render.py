@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from dataclasses import dataclass
 
 from tap_e2e import NodeChange, NodeFlag, ScreenNode, ScreenSnapshot
 
@@ -40,7 +40,7 @@ def shown(node: ScreenNode, level: str) -> bool:
     return level == DEFAULT and bool(node.text or node.content_description or node.content_invalid or node.error)
 
 
-def node_line(node: ScreenNode) -> str:
+def node_line(node: ScreenNode, context: str = "") -> str:
     """``@e3  [Button] "Log in"  id=login_button  focused``."""
     parts = [f"@{node.ref}"]
     if node.class_name:
@@ -58,6 +58,8 @@ def node_line(node: ScreenNode) -> str:
         parts.append("invalid")
     if node.error:
         parts.append(f"error={_quote(node.error)}")
+    if context:
+        parts.append(f"context={_quote(context)}")
     short_id = _short_id(node)
     if short_id:
         parts.append(f"id={short_id}")
@@ -79,44 +81,171 @@ def node_line(node: ScreenNode) -> str:
     return "  ".join(parts)
 
 
-def _with_windows(nodes: Iterable[ScreenNode], prefix: str = "") -> list[str]:
-    lines: list[str] = []
-    window = None
+@dataclass(frozen=True)
+class SnapshotFilter:
+    """Presentation-only filters. Unknown window types remain visible."""
+
+    package: str | None = None
+    window: int | None = None
+    hide_keyboard: bool = False
+    hide_system_chrome: bool = False
+
+    def accepts(self, node: ScreenNode, window: int) -> bool:
+        return (
+            (self.package is None or node.window_package == self.package)
+            and (self.window is None or window == self.window)
+            and not (self.hide_keyboard and node.window_type == 2)
+            and not (self.hide_system_chrome and node.window_type == 3)
+        )
+
+
+def _labels(node: ScreenNode) -> list[str]:
+    # Never borrow password values, hints-as-values, or validation error messages.
+    if node.password:
+        return []
+    return list(dict.fromkeys(
+        value for value in (None if node.showing_hint else node.text, node.content_description) if value
+    ))
+
+
+@dataclass
+class _Row:
+    node: ScreenNode
+    window: int
+    parent: int | None
+    labels: list[str]
+    context: str = ""
+    indent: int = 0
+    visible: bool = False
+    changed: bool = False
+
+
+def _rows(nodes: tuple[ScreenNode, ...], level: str, filters: SnapshotFilter) -> list[_Row]:
+    rows: list[_Row] = []
+    stack: list[int] = []
+    window = 0
     for node in nodes:
-        if node.window_package != window:
-            window = node.window_package
-            lines.append(f"# {window}")
-        lines.append(prefix + node_line(node))
-    return lines
+        if not rows or node.depth == 0 or node.window_package != rows[-1].node.window_package or (
+            node.window_index and node.window_index != rows[-1].window
+        ):
+            window = node.window_index or window + 1
+            stack.clear()
+        while stack and rows[stack[-1]].node.depth >= node.depth:
+            stack.pop()
+        rows.append(_Row(node, window, stack[-1] if stack else None, _labels(node),
+                         changed=node.change is not NodeChange.UNCHANGED))
+        stack.append(len(rows) - 1)
+
+    # Fold only passive descendants into the nearest interactive control. A scrollable
+    # list must not borrow every row's labels. Cap accumulation as well as printed length.
+    for row in reversed(rows):
+        if row.parent is not None:
+            parent = rows[row.parent]
+            parent.changed |= row.changed
+            if not row.node.interactive and not parent.node.password and NodeFlag.SCROLLABLE not in parent.node.flags:
+                own = _labels(parent.node)
+                parent.labels = list(dict.fromkeys(own + row.labels + parent.labels))[:8]
+
+    for row in rows:
+        node = row.node
+        own = _labels(node)
+        borrowed = [label for label in row.labels if label not in own] if node.interactive else []
+        # A separate, unlabeled switch can use its containing row's descriptive context,
+        # but the row never borrows the switch's value or label.
+        if node.interactive and not node.password and NodeFlag.SCROLLABLE not in node.flags and not own and not borrowed and row.parent is not None:
+            ancestor = row.parent
+            while ancestor is not None:
+                parent = rows[ancestor]
+                if parent.node.interactive:
+                    if NodeFlag.SCROLLABLE not in parent.node.flags:
+                        borrowed = parent.labels
+                    break
+                ancestor = parent.parent
+        row.context = " · ".join(borrowed)
+        row.visible = filters.accepts(node, row.window) and shown(node, level)
+
+    # Keep labeled ancestors as non-actionable grouping in interactive mode.
+    for row in rows:
+        if not row.visible:
+            continue
+        ancestor = row.parent
+        while ancestor is not None:
+            parent = rows[ancestor]
+            if _labels(parent.node) and filters.accepts(parent.node, parent.window):
+                parent.visible = True
+            ancestor = parent.parent
+    for row in rows:
+        ancestor = row.parent
+        while ancestor is not None:
+            parent = rows[ancestor]
+            if parent.visible:
+                row.indent = parent.indent + 1
+                break
+            ancestor = parent.parent
+    return rows
 
 
-def snapshot_text(snapshot: ScreenSnapshot, level: str = DEFAULT) -> str:
-    """The snapshot as lines, grouped under a ``# <package>`` line per window."""
-    nodes = [n for n in snapshot.nodes if shown(n, level)]
-    if not nodes:
-        return "(no visible nodes)"
-    return "\n".join(_with_windows(nodes))
+def _header(row: _Row) -> str:
+    # Old servers have no ordinals; preserve their existing header format.
+    suffix = f" · window {row.window}" if row.node.window_index else ""
+    return f"# {row.node.window_package}{suffix}"
 
 
-def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False) -> str:
-    """What changed since the device's previous snapshot: ``+`` added, ``-`` removed (``=``
-    unchanged, with ``full`` or current validation errors). The whole snapshot when there was
-    no previous one. Validation state is not ref identity, so invalid nodes are always shown."""
-    if all(n.change is NodeChange.NONE for n in snapshot.nodes) and not snapshot.removed:
-        return snapshot_text(snapshot, level)
+def snapshot_text(snapshot: ScreenSnapshot, level: str = DEFAULT, *, filters: SnapshotFilter = SnapshotFilter()) -> str:
+    """Ref-addressed outline. ``context`` describes a control, never its selector."""
     lines: list[str] = []
     window = None
-    for node in snapshot.nodes:
-        if not shown(node, level) or (
-            node.change is NodeChange.UNCHANGED and not full and not (node.content_invalid or node.error)
-        ):
+    for row in _rows(snapshot.nodes, level, filters):
+        if not row.visible:
             continue
-        if node.window_package != window:
-            window = node.window_package
-            lines.append(f"# {window}")
+        if row.window != window:
+            window = row.window
+            lines.append(_header(row))
+        group = "  (group)" if level == INTERACTIVE and not row.node.interactive else ""
+        lines.append("  " * row.indent + node_line(row.node, row.context) + group)
+    return "\n".join(lines) if lines else "(no visible nodes)"
+
+
+def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False, *, filters: SnapshotFilter = SnapshotFilter()) -> str:
+    """Contextual diff: changed descendants also surface their containing control.
+
+    Removed labels cannot be reparented from the partial removed list; contextual controls
+    in the affected window are conservatively repeated with ``=`` instead.
+    """
+    if all(n.change is NodeChange.NONE for n in snapshot.nodes) and not snapshot.removed:
+        return snapshot_text(snapshot, level, filters=filters)
+    removed_labels = {(n.window_index, n.window_package) for n in snapshot.removed if _labels(n)}
+    lines: list[str] = []
+    window = None
+    rows = _rows(snapshot.nodes, level, filters)
+    selected: set[int] = set()
+    for i, row in enumerate(rows):
+        node = row.node
+        context_changed = node.interactive and NodeFlag.SCROLLABLE not in node.flags and (
+            row.changed or (node.window_index, node.window_package) in removed_labels
+        )
+        if not row.visible or (node.change is NodeChange.UNCHANGED and not full and not (
+            node.content_invalid or node.error or context_changed
+        )):
+            continue
+        selected.add(i)
+        ancestor = row.parent
+        while ancestor is not None:
+            if rows[ancestor].visible:
+                selected.add(ancestor)
+            ancestor = rows[ancestor].parent
+    for i, row in enumerate(rows):
+        if i not in selected:
+            continue
+        node = row.node
+        if row.window != window:
+            window = row.window
+            lines.append(_header(row))
         mark = "=" if node.change is NodeChange.UNCHANGED else "+"
-        lines.append(f"{mark} {node_line(node)}")
-    removed = [n for n in snapshot.removed if shown(n, level)]
+        group = "  (group)" if level == INTERACTIVE and not node.interactive else ""
+        lines.append(f"{mark} " + "  " * row.indent + node_line(node, row.context) + group)
+    # Removed is a partial forest: never reconstruct descendant context from it.
+    removed = [n for n in snapshot.removed if shown(n, level) and filters.accepts(n, n.window_index)]
     if removed:
         lines.append("# removed")
         listed = removed if full else removed[:MAX_REMOVED]

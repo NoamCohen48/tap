@@ -33,6 +33,56 @@ def _node(ref: str, value: str, change=pb.NODE_CHANGE_UNSPECIFIED) -> pb.ScreenN
     )
 
 
+def _context_screen(fake):
+    row = pb.ScreenNode(ref="e1", depth=0, window_index=1, window_type=1,
+                        window_package="com.android.settings", interactive=True,
+                        selector=res("settings_row")._proto, flags=[pb.FLAG_ENABLED])
+    label = pb.ScreenNode(ref="e2", depth=1, window_index=1, window_type=1,
+                          window_package="com.android.settings", text="Network & internet")
+    keyboard = pb.ScreenNode(ref="e3", depth=0, window_index=2, window_type=2,
+                             window_package="keyboard", text="Keyboard", interactive=True)
+    chrome = pb.ScreenNode(ref="e4", depth=0, window_index=3, window_type=3,
+                           window_package="com.android.systemui", text="Status bar", interactive=True)
+    _screen(fake, row, label, keyboard, chrome)
+    fake.devices.refs["e1"] = row.selector
+    return row.selector
+
+
+def test_context_snapshot_filters_and_ref_action_use_original_selector(fake, agent):
+    agent.attach("emulator-5554")
+    selector = _context_screen(fake)
+    result = agent.snapshot(level="interactive", hide_keyboard=True, hide_system_chrome=True)
+    assert result == '# com.android.settings · window 1\n@e1  context="Network & internet"'
+    assert "Keyboard" in agent.snapshot(window=2)
+    assert "Keyboard" not in agent.snapshot(package="com.android.settings")
+    agent.tap("@e1")
+    assert fake.devices.commands[-1].tap.selector == selector
+
+
+def test_cli_snapshot_context_and_filters(fake, monkeypatch, capsys):
+    monkeypatch.setenv("TAP_SERVER", fake.address)
+    monkeypatch.setenv("TAP_TOKEN", TOKEN)
+    assert cli.main(["attach", "emulator-5554", "-s", "context"]) == 0
+    capsys.readouterr()
+    _context_screen(fake)
+    assert cli.main(["snapshot", "-i", "-s", "context", "--package", "com.android.settings",
+                     "--window", "1", "--hide-keyboard", "--hide-system-chrome"]) == 0
+    assert capsys.readouterr().out == '# com.android.settings · window 1\n@e1  context="Network & internet"\n'
+
+
+@pytest.mark.anyio
+async def test_mcp_snapshot_context_and_filters(fake, server):
+    async with Client(server, mode="legacy") as client:
+        await client.call_tool("attach", {"serial": "emulator-5554"})
+        _context_screen(fake)
+        result = await client.call_tool("snapshot", {"view": "interactive", "package": "com.android.settings",
+                                                    "window": 1, "hide_keyboard": True, "hide_system_chrome": True})
+        assert not result.is_error
+        assert result.content[0].text == '# com.android.settings · window 1\n@e1  context="Network & internet"'
+        result = await client.call_tool("snapshot", {"candidates": True, "hide_keyboard": True})
+        assert result.is_error and "without filters" in result.content[0].text
+
+
 def test_cold_start_policy_is_forwarded_and_never_replaces_an_active_attachment(fake, agent):
     agent.attach("emulator-5554", driver_start="cold")
     assert fake.devices.attach_requests[-1].driver_start == pb.DRIVER_START_COLD

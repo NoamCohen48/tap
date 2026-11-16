@@ -737,13 +737,21 @@ class Agent:
 
     # --- the screen -----------------------------------------------------------------------------
 
-    def snapshot(self, device: str | None = None, level: str = render.DEFAULT, *, candidates: bool = False) -> str:
-        """Ref-addressed screen; candidates returns structured SDK data instead of rendered lines."""
-        if candidates and level != render.DEFAULT:
-            raise AgentError("candidates returns complete structured data; use the default view", EXIT_USAGE)
+    def snapshot(self, device: str | None = None, level: str = render.DEFAULT, *, candidates: bool = False,
+                 package: str | None = None, window: int | None = None,
+                 hide_keyboard: bool = False, hide_system_chrome: bool = False) -> str:
+        """Contextual ref-addressed outline, optionally filtered by window-root package or
+        one-based window ordinal. Hiding keyboard/system windows uses Android window types;
+        unknown types stay visible. Filters never change refs or selectors. ``context`` is
+        descriptive, not a target predicate. Candidates returns unfiltered structured SDK data."""
+        filters = render.SnapshotFilter(package, window, hide_keyboard, hide_system_chrome)
+        if window is not None and (isinstance(window, bool) or not isinstance(window, int) or window < 1):
+            raise AgentError("window must be a positive one-based ordinal", EXIT_USAGE)
+        if candidates and (level != render.DEFAULT or filters != render.SnapshotFilter()):
+            raise AgentError("candidates returns complete structured data; use the default view without filters", EXIT_USAGE)
         def step() -> str:
             snapshot = self._device(device).screen_snapshot(selector_candidates=candidates)
-            return json_text(snapshot) if candidates else render.snapshot_text(snapshot, level)
+            return json_text(snapshot) if candidates else render.snapshot_text(snapshot, level, filters=filters)
         return self._run(step)
 
     def settle(self, device: str | None = None, full: bool = False, timeout: float = SETTLE_TIMEOUT, *, package: str | None = None, stable_for: float = SETTLE_STABLE_FOR, signal: str = "tree") -> str:
@@ -1043,6 +1051,7 @@ class Agent:
                 return str(save_private(path, content))
             logs = d.logs
             if action == "mark":
+                assert value is not None  # Validated before entering this closure.
                 # Both records get it: the device log (to read from) and the step history (to export from).
                 history = self.records.ensure(self.session, d.owner_connection.id)
                 earlier = [marker["cursor"] for marker in self.records.markers(self.session, d.serial) if marker["name"] == value]
@@ -1054,6 +1063,7 @@ class Agent:
                     text += f"\n(this name was already marked at cursor {earlier[-1]}: --since {_shell(value)} now means this one; use --since @{earlier[-1]} for that one)"
                 return text
             if action == "redact":
+                assert value is not None  # Validated before entering this closure.
                 logs.redact(value)
                 return "redacting matches in the whole log, lines already captured included, until the device is detached"
             steps = self.records.steps(self.session)

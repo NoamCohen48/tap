@@ -39,6 +39,13 @@ device at a time) and ignore the per-serial lock.
   Three daemon changes remove the need for one, and the CLI and MCP become thin, stateless
   shells over RPCs.
 
+## Live snapshot validation
+
+[Targeted API 29/API 34 live results](agent-snapshots-live-validation.md) compare the previous
+and contextual renderer on identical Settings snapshots, navigate by row refs, and measure
+keyboard/system-window suppression. Both devices passed the acceptance workflow; remaining
+limits (clipped labels, positional refs, opt-in filtering) are recorded with the evidence.
+
 ## Decision
 
 1. **Held connections** (daemon). A connection is a lease with two possible renewal rules:
@@ -76,6 +83,20 @@ device at a time) and ignore the per-serial lock.
      unknown (`FAILURE_REASON_UNKNOWN_REF`) — it never silently names another node.
    - The response marks each node `ADDED`/`UNCHANGED` against the previous snapshot and lists
      the removed ones, which is the `--settle` diff.
+   - Agent presentation reconstructs the preorder tree before choosing visible rows. Interactive
+     containers include bounded, deduplicated passive descendant `context`, never promoted to
+     their own text or selector. Independent interactive descendants stop label borrowing;
+     labeled ancestor groups and indentation retain relationships. Unlabeled nested controls
+     may borrow their containing control's context. Scroll containers do not absorb row labels.
+   - `ScreenNode.window_index` is a one-based dump ordinal (not a persistent ID);
+     `window_type` comes from the driver's additive diagnostic `window-type` attribute,
+     inherited from each root. CLI/MCP package/window filters and optional keyboard/system-type
+     suppression are presentation-only, after full capture and ref alignment. Unknown types
+     remain visible; package ownership never classifies Settings or permission dialogs as chrome.
+     Structured candidates remains complete and rejects presentation filters.
+   - Diffs repeat unchanged controls whose descendant context changed. Since `removed` is a
+     partial forest, removing a label conservatively repeats controls in that window, without
+     reconstructing potentially false ancestry from removed nodes.
 
 3. **Per-connection event log** (daemon, plan §19; `event_log.proto`). Every `Execute` except
    the diagnostic `device_info` / `dump_hierarchy`, and every app call that changes the device
