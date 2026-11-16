@@ -261,6 +261,14 @@ object CommandValidation {
                 if (location.hasAltitudeM() && !location.altitudeM.isFinite()) invalidRequest("altitude_m must be finite")
             }
 
+            OpCase.SNAPSHOTS -> {
+                if (command.snapshots.selector.pickCase == Selector.PickCase.FIRST ||
+                    command.snapshots.selector.pickCase == Selector.PickCase.AT
+                ) {
+                    invalidRequest("snapshots does not accept first/at; use snapshot for a single match")
+                }
+            }
+
             OpCase.WAIT_STATE -> {
                 val wait = command.waitState
                 if (!wait.hasCondition()) invalidSelector(ErrorDetail.EMPTY_NODE, "wait_state needs a condition")

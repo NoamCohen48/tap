@@ -84,6 +84,9 @@
             android:name=".ControlsActivity"
             android:exported="true" />
         <activity
+            android:name=".CollectionActivity"
+            android:exported="true" />
+        <activity
             android:name=".FormActivity"
             android:exported="true"
             android:windowSoftInputMode="stateHidden" />

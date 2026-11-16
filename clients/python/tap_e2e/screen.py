@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 from .element import Element, ElementWait
+from .elements import Elements
 from .selectors import Selector
 
 if TYPE_CHECKING:
@@ -35,6 +36,14 @@ class Screen:
         """A lazy element: ``selector`` as is, matched in every visible window. Nothing is
         looked up until an action or query runs."""
         return Element(self.device, selector)
+
+    def elements(self, selector: Selector) -> Elements:
+        """A lazy read-only collection in every visible window, without a package predicate.
+
+        ``snapshots()`` / ``texts()`` each read all exposed matches in one device command;
+        no lookup until a read runs. ``first()`` / ``at()`` are not accepted.
+        """
+        return Elements(self.device, selector)
 
     def wait(self, selector: Selector, timeout: float | None = None) -> ElementWait:
         """A wait on ``selector`` in every visible window; ``timeout`` (seconds) defaults to

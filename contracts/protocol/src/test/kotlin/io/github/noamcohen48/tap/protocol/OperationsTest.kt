@@ -25,6 +25,7 @@ import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.ElementSnapshotList
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
@@ -52,6 +53,7 @@ import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
+import io.github.noamcohen48.tap.api.v1.Snapshots
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
@@ -166,6 +168,7 @@ class OperationsTest {
                 "exists" to OutcomeCase.BOOL,
                 "count" to OutcomeCase.COUNT,
                 "snapshot" to OutcomeCase.SNAPSHOT,
+                "snapshots" to OutcomeCase.SNAPSHOTS,
                 "wait_permission_prompt" to OutcomeCase.PERMISSION_PROMPT,
                 "get_clipboard" to OutcomeCase.TEXT,
                 "await_toast" to OutcomeCase.TOAST,
@@ -322,6 +325,8 @@ class OperationsTest {
 
         override fun snapshot(command: Snapshot): ElementSnapshot = record("snapshot", ElementSnapshot.newBuilder().setText("x").build())
 
+        override fun snapshots(command: Snapshots): ElementSnapshotList = record("snapshots", ElementSnapshotList.getDefaultInstance())
+
         override fun waitVisible(command: WaitVisible) = record("wait_visible", Unit)
 
         override fun waitGone(command: WaitGone) = record("wait_gone", Unit)
@@ -417,6 +422,7 @@ class OperationsTest {
                 "exists" to Commands.exists(Selectors.text("Sign in")),
                 "count" to Commands.count(Selectors.text("Row", MatchMode.MATCH_STARTS_WITH)),
                 "snapshot" to Commands.snapshot(Selectors.of(Nodes.resource("status"))),
+                "snapshots" to Commands.snapshots(Selectors.of(Nodes.resource("title"))),
                 "wait_visible" to Commands.waitVisible(Selectors.text("Welcome")),
                 "wait_gone" to Commands.waitGone(Selectors.resource("spinner")),
                 "wait_state" to Commands.waitState(button, Nodes.flag(NodeFlag.FLAG_ENABLED)),

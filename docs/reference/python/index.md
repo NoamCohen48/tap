@@ -12,7 +12,7 @@ from tap_e2e import TapError, CommandError, WaitTimeoutError, AppLifecycleError,
 | Page | What is on it |
 |---|---|
 | [Device](device.md) | `Device`, one attached device; `Timeouts` |
-| [Element](element.md) | `Element`, a lazy selector bound to a device; `ElementWait` |
+| [Elements](element.md) | `Element`, a lazy selector bound to a device; `ElementWait`; `Elements`, bulk read-only values |
 | [Selectors](selectors.md) | `text`, `res`, `desc`, … and the `Selector` they build; match modes |
 | [App](app.md) | `App`, from `device.app(package_name)` |
 | [Private app data](app-data.md) | `AppData`, `AppDataAccess`, `PrivateFileEntry`, `DatabaseBundle` |

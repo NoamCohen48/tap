@@ -8,17 +8,17 @@ thin Python SDK adapter, not a second gRPC client or a raw Execute endpoint.
 
 `clients/agent/api-coverage.json` classifies the implemented server API and operational SDK
 surface. `tests/test_api_coverage.py` compares it with generated protobuf descriptors, public
-methods/properties on nine Python SDK classes, CLI parser fields and MCP schemas. The existing
+methods/properties on ten Python SDK classes, CLI parser fields and MCP schemas. The existing
 reference check also requires every verb/tool in its generated documentation group.
 
 Current inventory (including the owner-approved [named step recordings](agent-step-recordings.md)
 follow-up: raw `export` is now `history`, named `record`/`export` is client-owned, media is
 `media-record`):
 
-- **52 of 56 RPCs** reached through SDK-backed tools/helpers; the other four are deliberately
+- **59 of 64 RPCs** reached through SDK-backed tools/helpers; the other five are deliberately
   excluded below. This is practical reachability, not identical RPC signatures.
-- **42 of 42 Execute operations** mapped to tools, without exposing Execute itself.
-- **52 CLI verbs / 50 MCP tools**, including two local-only CLI verbs (`mcp`, `skill`). Field-name
+- **45 of 45 Execute operations** mapped to tools, without exposing Execute itself.
+- **55 CLI verbs / 53 MCP tools**, including two local-only CLI verbs (`mcp`, `skill`). Field-name
   parity accounts explicitly for names/units (`--idle` versus minutes, CLI duration strings
   versus MCP seconds), views, session-wide discovery and optional-string normalization.
 - SDK aliases are grouped: element text/flags come from inspection, triple-tap from count=3,
@@ -54,12 +54,31 @@ or identical semantics; the adapter regression tests exercise those separately.
   that retained file, never repeats stop. Existing outputs are refused; failure never restarts
   recording or an app. Standalone logs/hierarchy also go to new 0600 files, never inline.
 
+## Bulk collection reads
+
+The owner-approved collection follow-up adds CLI `elements TARGET [--texts] [--timeout …]`
+and the read-only MCP `elements` tool, both through `Agent.elements` and Python `Elements`.
+Default output is a JSON array of existing `ElementSnapshot` values, including checkbox and
+other state; `texts` projects raw text while preserving duplicates, empty strings and nulls.
+Every call uses one fresh `snapshots` command, not count/index loops or diagnostic dumps.
+Written selectors retain package and relational predicates. Refs and positional picks are
+rejected before looking up a session/device. No refs are returned and no node survives the
+read; collection queries are excluded from action/wait step recordings.
+
+The SDK contract applies unchanged: service window order then post-order per window, not
+necessarily visual order; exposed nodes only, not a virtualized dataset; sequential reads,
+not atomic UI transactions; no automatic scrolling, waiting or retry. Staleness or match/byte
+overflow (1000 matches / 1 MiB serialized snapshot list) fails the whole read, never partial
+success or truncation. Fake-daemon CLI/MCP tests cover scope, state/text presence, fresh/empty
+results, one-command execution, invalid targets/budgets, error propagation and read-only hints.
+The agent suite passed 311 tests (four device checks skipped); the device matrix was not run.
+
 ## Intentionally excluded
 
 - `ClientConnectionService.Observe`: test-client liveness; agents use held sessions.
 - `AppService.AwaitIdle` / SDK awaitIdle: synchronization remains work in progress. Ordinary
   element/state/tree/pixel waits are independent and supported.
-- `WatchService.Watch` and `WatchVideo`: passive shared observation belongs to tap-watcher.
+- `WatchService.Watch`, `WatchVideo` and `WatchLog`: passive shared observation belongs to tap-watcher.
   Recording an agent-owned device is a different, explicitly requested capability.
 
 No implicit lifecycle, root, shell/SQL endpoint, mutation replay or data restoration was added.

@@ -9,6 +9,7 @@ enum class Capability {
     EXISTS,
     COUNT,
     SNAPSHOT,
+    SNAPSHOTS,
     WAIT_VISIBLE,
     WAIT_GONE,
     WAIT_APP_VISIBLE,

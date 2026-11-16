@@ -20,6 +20,7 @@ import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.ElementSnapshotList
 import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
@@ -57,6 +58,7 @@ import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
+import io.github.noamcohen48.tap.api.v1.Snapshots
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
@@ -129,7 +131,7 @@ val Command.isMutation: Boolean
             OpCase.OPEN_NOTIFICATION, OpCase.DISMISS_NOTIFICATION,
             -> true
 
-            OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT,
+            OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT, OpCase.SNAPSHOTS,
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.WAIT_STATE, OpCase.WAIT_APP_VISIBLE, OpCase.WAIT_SCREEN_STABLE,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST,
             OpCase.AWAIT_NOTIFICATION, OpCase.LIST_NOTIFICATIONS, OpCase.OP_NOT_SET, null,
@@ -146,6 +148,7 @@ val Command.targetSelector: Selector?
             OpCase.EXISTS -> exists.selector
             OpCase.COUNT -> count.selector
             OpCase.SNAPSHOT -> snapshot.selector
+            OpCase.SNAPSHOTS -> snapshots.selector
             OpCase.WAIT_VISIBLE -> waitVisible.selector
             OpCase.WAIT_GONE -> waitGone.selector
             OpCase.WAIT_STATE -> waitState.selector
@@ -265,6 +268,9 @@ object Commands {
     fun count(selector: Selector): Command = Command.newBuilder().setCount(Count.newBuilder().setSelector(selector)).build()
 
     fun snapshot(selector: Selector): Command = Command.newBuilder().setSnapshot(Snapshot.newBuilder().setSelector(selector)).build()
+
+    /** All current matches in accessibility order; no first/at pick, waiting or scrolling. */
+    fun snapshots(selector: Selector): Command = Command.newBuilder().setSnapshots(Snapshots.newBuilder().setSelector(selector)).build()
 
     fun waitVisible(selector: Selector): Command =
         Command.newBuilder().setWaitVisible(WaitVisible.newBuilder().setSelector(selector)).build()
@@ -546,6 +552,8 @@ interface CommandHandler {
 
     fun snapshot(command: Snapshot): ElementSnapshot
 
+    fun snapshots(command: Snapshots): ElementSnapshotList
+
     fun waitVisible(command: WaitVisible)
 
     fun waitGone(command: WaitGone)
@@ -671,6 +679,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.EXISTS -> result.setBool(handler.exists(exists))
         OpCase.COUNT -> result.setCount(handler.count(count))
         OpCase.SNAPSHOT -> result.setSnapshot(handler.snapshot(snapshot))
+        OpCase.SNAPSHOTS -> result.setSnapshots(handler.snapshots(snapshots))
         OpCase.WAIT_VISIBLE -> result.setDone(done).also { handler.waitVisible(waitVisible) }
         OpCase.WAIT_GONE -> result.setDone(done).also { handler.waitGone(waitGone) }
         OpCase.WAIT_STATE -> result.setDone(done).also { handler.waitState(waitState) }

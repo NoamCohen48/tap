@@ -421,6 +421,10 @@
     "allDeclaredFields": true
   },
   {
+    "name": "io.github.noamcohen48.tap.api.v1.ElementSnapshotList",
+    "allDeclaredFields": true
+  },
+  {
     "name": "io.github.noamcohen48.tap.api.v1.Error",
     "allDeclaredFields": true
   },
@@ -934,6 +938,10 @@
   },
   {
     "name": "io.github.noamcohen48.tap.api.v1.Snapshot",
+    "allDeclaredFields": true
+  },
+  {
+    "name": "io.github.noamcohen48.tap.api.v1.Snapshots",
     "allDeclaredFields": true
   },
   {

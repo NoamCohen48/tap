@@ -14,6 +14,7 @@ from .app_data import AppData
 from .client import mapped_errors
 from .models import AppDeath, AppDeathKind, AppProcess, Long, MatchMode, Notification, StabilitySignal, Toast
 from .element import Element, ElementWait
+from .elements import Elements
 from .selectors import Selector
 
 # Size of each streamed ``InstallRequest.chunk``.
@@ -30,7 +31,7 @@ class App:
     """One app on a device: its elements, its lifecycle and the waits on it. Obtain with
     ``device.app(package_name)``, which performs no I/O.
 
-    ``element`` and ``wait`` add the package as one more selector predicate, so only this app's
+    ``element``, ``elements`` and ``wait`` add the package as a selector predicate, so only this app's
     nodes match (in any of its windows); ``device.screen`` matches anywhere. Lifecycle calls are
     executed by the server over ADB and verified against a postcondition; failures are
     ``AppLifecycleError``.
@@ -59,6 +60,14 @@ class App:
         """A lazy element: ``selector`` restricted to this package's nodes. Nothing is looked
         up until an action or query runs."""
         return Element(self.device, selector._in_package(self.package_name))
+
+    def elements(self, selector: Selector) -> Elements:
+        """A lazy read-only collection restricted to this package's nodes.
+
+        ``snapshots()`` / ``texts()`` each read all exposed matches in one device command;
+        no lookup until a read runs. ``first()`` / ``at()`` are not accepted.
+        """
+        return Elements(self.device, selector._in_package(self.package_name))
 
     def wait(self, selector: Selector, timeout: float | None = None) -> ElementWait:
         """A wait on ``selector`` restricted to this package's nodes; ``timeout`` (seconds)

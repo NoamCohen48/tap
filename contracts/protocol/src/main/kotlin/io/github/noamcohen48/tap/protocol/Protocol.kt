@@ -122,6 +122,10 @@ const val MAX_STABLE_FOR_MS = 30_000L
 /** `Count` stops counting here; a screen with more matches reports this value. */
 const val MAX_MATCH_COUNT = 1_000
 
+/** Bulk reads reject overflow rather than returning a truncated collection. */
+const val MAX_SNAPSHOT_MATCHES = 1_000
+const val MAX_SNAPSHOT_LIST_BYTES = 1_048_576
+
 /** Android key codes the host may name symbolically; any non-negative code is accepted. */
 const val KEYCODE_HOME = 3
 const val KEYCODE_BACK = 4

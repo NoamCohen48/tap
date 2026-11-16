@@ -7,9 +7,11 @@ import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.DeviceInfo
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.ElementSnapshotList
+import io.github.noamcohen48.tap.protocol.MAX_SNAPSHOT_MATCHES
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 
-/** Read-only element and device queries (`exists`, `count`, `snapshot`, `device_info`). */
+/** Read-only element and device queries (`exists`, `count`, `snapshot`, `snapshots`, `device_info`). */
 internal class QueryCommands(
     private val device: UiDevice,
     private val objects: UiObjectAccess,
@@ -42,6 +44,17 @@ internal class QueryCommands(
         } finally {
             element.recycle()
         }
+    }
+
+    /** One fresh match set; no stale retries or partial results. */
+    fun snapshots(context: CommandContext, target: CompiledSelector): ElementSnapshotList {
+        context.checkpoint()
+        return bulkSnapshots(
+            objects.matches(target, MAX_SNAPSHOT_MATCHES + 1),
+            ::snapshotOf,
+            ::recycleQuietly,
+            context::checkpoint,
+        )
     }
 
     /** [snapshot] of an element the caller already resolved and recycles. */

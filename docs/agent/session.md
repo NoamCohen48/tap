@@ -103,6 +103,35 @@ contextual controls in the affected window, because the removed list is only a p
 An empty field showing its hint prints `empty  hint="Name"`, rather than presenting the hint
 as a typed value. App validation state prints `invalid` and `error="Cannot be blank"`.
 
+## Read a collection
+
+For an app exposing product titles, prices or checkboxes, `elements` reads every match in one
+bulk device command. It returns a JSON array of SDK element snapshots, not diagnostic tree
+nodes or refs. Use `--texts` to project raw text:
+
+```sh
+tap-agent elements id=title,pkg=com.shop --texts
+tap-agent elements '{"id":"price","ancestor":{"id":"products"},"pkg":"com.shop"}' --texts
+tap-agent elements checkable=true,pkg=com.shop --timeout 3s
+```
+
+Full state includes `checkable`, `checked`, `enabled` and `selected`; read it once to compare
+several properties together. The read-only MCP tool is `elements`, with `target`, `texts`
+(default false), `timeout_seconds`, `session` and `device`. A target is a written selector,
+including existing package/relational predicates; snapshot refs, `first` and `index` are
+rejected. Without `pkg` it searches the whole screen, as other selector tools do.
+
+Results follow accessibility order: service-reported window order, then post-order inside
+each window (matching children before their matching parent). This is not necessarily visual
+or backing-dataset order. Virtualized lists expose only current accessibility nodes; no
+auto-scroll or implicit wait occurs. Every call resolves afresh, retains no handles and reads
+sequentially, not as an atomic UI transaction. The timeout bounds the read, not a wait for
+content or stability. No matches returns `[]`. Text projection keeps duplicates, empty strings
+and nulls; Android may report an empty field's hint as text (`showing_hint` in full state).
+Staleness or overflow (more than 1000 matches / a snapshot list over 1 MiB) fails the whole
+operation; there are no partial or silently truncated values. Like `inspect`, full state may
+include sensitive text. Reads do not create recorded action/wait steps.
+
 ## Act, and see what changed
 
 ```console

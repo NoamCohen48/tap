@@ -31,6 +31,14 @@ def test_opens_the_home_screen(tap_device):
 TAP_SERIALS=emulator-5554 pytest
 ```
 
+## Collection reads
+
+`app.elements(selector)` and `device.screen.elements(selector)` return a lazy, read-only
+`Elements` collection. Each `texts()` or `snapshots()` call reads all current exposed matches
+in one device command; `snapshots()` includes checkbox and other element state. See
+[Reading a collection](../guide/elements.md#reading-a-collection-python) for examples, scope,
+ordering, limits and consistency guarantees.
+
 ## Fixtures and marker
 
 | Fixture | What it is |

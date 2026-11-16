@@ -34,6 +34,9 @@ snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pa
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen; an
 action with settle=true waits for the screen to settle and returns what changed (+ added,
 - removed), so a fresh snapshot is rarely needed. An action needs exactly one matching node.
+elements reads all current selector matches as a JSON array (or texts=true for raw text),
+including checkbox state, in one bulk read without a diagnostic snapshot. It accepts written
+selectors with pkg and relations, not refs or first/index. It returns values, not refs.
 The session lives in the daemon and ends after 15 idle minutes or on release.
 log reads the device log: the app's lines with your steps and Tap's actions between them; mark
 a name (log action=mark) before a flow and read since it afterwards. Every action and wait is
@@ -329,6 +332,24 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     ) -> CallToolResult:
         """Count matching nodes now, using SDK count semantics."""
         return await call(session, lambda a: a.count(target, device or None, timeout_seconds))
+
+    @mcp.tool(name="elements", annotations=READ_ONLY)
+    async def elements(
+        target: Annotated[str, Field(description=(
+            "Written selector terms or a JSON selector string, with optional pkg and relations; "
+            'e.g. id=title,pkg=com.shop or {"id":"title","ancestor":{"id":"products"}}. '
+            "No snapshot refs, first or index."
+        ))],
+        texts: Annotated[bool, Field(description="Project raw text values; preserve duplicates, empty strings and nulls. Otherwise return full SDK element state, including checkable/checked/enabled/selected.")] = False,
+        timeout_seconds: Budget = None,
+        session: Session = "",
+        device: Device = "",
+    ) -> CallToolResult:
+        """All currently exposed matches as a JSON array in one fresh bulk device read, [] if
+        none. Accessibility order, not necessarily visual order; no refs, dump, auto-scroll,
+        implicit wait or atomic-UI guarantee. Staleness/overflow (1000 matches / 1 MiB) fails
+        the whole read, never partial results. Text may be a hint, as in SDK element reads."""
+        return await call(session, lambda a: a.elements(target, device or None, timeout_seconds, texts=texts))
 
     @mcp.tool(name="tap")
     async def tap(

@@ -32,7 +32,7 @@
   },
   "operations": {
     "device_info": ["device_info", "condition"], "press_key": ["press_key"], "dump_hierarchy": ["capture"],
-    "exists": ["exists", "scroll_until"], "count": ["count", "wait_for"], "snapshot": ["inspect", "wait_for", "accessibility_action"],
+    "exists": ["exists", "scroll_until"], "count": ["count", "wait_for"], "snapshot": ["inspect", "wait_for", "accessibility_action"], "snapshots": ["elements"],
     "wait_visible": ["wait_for"], "wait_gone": ["wait_for"], "wait_state": ["wait_for"], "wait_app_visible": ["app"], "wait_screen_stable": ["settle"],
     "tap": ["tap", "type_text"], "long_tap": ["tap"], "double_tap": ["tap"], "multi_tap": ["tap"], "hold": ["tap"], "tap_outside_panel": ["tap"],
     "set_text": ["fill"], "type_text": ["type_text"], "clear_text": ["clear"], "swipe": ["swipe"], "scroll": ["scroll", "scroll_until"], "drag": ["drag"], "pinch": ["pinch"], "fling": ["fling"],
@@ -51,6 +51,7 @@
       {"methods": ["ensure_usable", "available_serials", "broken", "usable"], "tools": [], "reason": "Client usability/filtering helpers; devices exposes inventory, no raw connection escape hatch."}
     ],
     "App": [
+      {"methods": ["elements"], "tools": ["elements"], "reason": "pkg restricts bulk reads to this app's nodes."},
       {"methods": ["deaths", "guard", "allow_deaths"], "tools": ["deaths"], "reason": "A session is always guarded: every step reports and takes the watched deaths since the previous one; deaths looks back."},
       {"methods": ["expect_death"], "tools": ["tap", "app"], "reason": "--expect-death / expect_death on any step that can send input."},
       {"methods": ["element", "wait", "is_installed", "install", "uninstall", "force_stop", "clear_data", "grant_permission", "is_permission_granted", "set_locales", "locales", "revoke_permission", "launch", "await_visible", "foreground", "background", "open_link", "cold_launch", "process", "is_running"], "tools": ["app", "tap", "wait_for"]},
@@ -77,11 +78,15 @@
       {"methods": ["tap", "triple_tap", "long_tap", "double_tap", "tap_outside_panel", "ime_action", "perform_action", "perform_custom_action", "set_progress", "drag_to", "pinch_open", "pinch_close", "fling", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until"], "tools": ["tap", "submit", "accessibility_action", "set_progress", "drag", "pinch", "fling", "fill", "type_text", "clear", "swipe", "scroll", "scroll_until"]},
       {"methods": ["wait", "descendant", "child", "first", "at"], "tools": ["wait_for", "tap"], "reason": "Targets support equivalent relational JSON and explicit first/index."}
     ],
+    "Elements": [
+      {"methods": ["snapshots", "texts"], "tools": ["elements"], "reason": "One bulk read, SDK value objects rendered as JSON; texts is a projection."}
+    ],
     "ElementWait": [
       {"methods": ["visible", "one", "gone", "enabled", "disabled", "checked", "unchecked", "focused", "text_equals", "text_contains", "count"], "tools": ["wait_for"]},
       {"methods": ["until"], "tools": ["wait_for"], "reason": "The condition is written in the shared target grammar, without a ref, pick or pkg."}
     ],
     "Screen": [
+      {"methods": ["elements"], "tools": ["elements"], "reason": "Without pkg, bulk reads search the whole screen."},
       {"methods": ["element", "wait"], "tools": ["tap", "wait_for"], "reason": "Whole-screen default, no implicit app scope."}
     ],
     "Selector": [
@@ -101,6 +106,7 @@
     "State/count waits use SDK host polling; visible/gone/one and app/tree/pixel waits keep their existing SDK behavior, not synchronization.",
     "Lifecycle commands expose timeout only where the SDK has an explicit parameter. Uninstall, permissions, locale and other fixed-budget SDK calls retain those budgets; unsupported app timeout arguments fail locally.",
     "Scroll-until bounds iterations and time, not end-of-list detection. Input acceptance does not prove an app-specific effect.",
+    "Collection reads return only exposed accessibility nodes in accessibility order, not a backing dataset or atomic UI transaction; no refs, positional picks, auto-scroll or silent truncation.",
     "Media recordings use the existing host scrcpy capture, API/timing limits and checksum verification; no implicit app lifecycle. Start readiness and recorder shutdown-budget limits remain deferred. Stop saves privately before an optional custom copy; local errors never trigger replay.",
     "No arbitrary shell, SQL, root, coordinates, XPath, persistent node handles or raw Execute RPC. Agent sessions are held, never observed. Watcher internals and awaitIdle remain excluded."
   ]

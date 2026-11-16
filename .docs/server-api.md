@@ -30,7 +30,7 @@ upgraded alongside a breaking daemon.
 ## Device capability discovery
 
 `DeviceService.GetDeviceCapabilities` takes the owning `client_connection_id` and
-`attached_device_id`. `capabilities.proto` defines 90 operation IDs, typed status/reason /
+`attached_device_id`. `capabilities.proto` defines 91 operation IDs, typed status/reason /
 requirement enums and entries sorted by ID, including unsupported operations. A known ID
 missing from a response maps to UNKNOWN in the SDKs; future numeric IDs remain in entries
 with their raw IDs preserved. This additive RPC does not change the compatibility epoch or
@@ -55,6 +55,22 @@ inspection failure is UNKNOWN. Presence alone leaves recording CONDITIONAL: comp
 scrcpy, device encoders and capture access are not probed. Element action requirements and
 permission choices are not inferred from Android version alone. See `device-capabilities.md`
 and the public [guide](../docs/guide/capabilities.md).
+
+## Bulk element reads
+
+`Command.snapshots` (field 51, `Snapshots`) is an additive read-only command through
+`DeviceService.Execute`. Its selector must not use `first` / `at` (`INVALID_REQUEST`).
+`CommandResult.snapshots` (field 19, `ElementSnapshotList`) contains repeated `elements` using
+existing `ElementSnapshot` values, including `checkable`, `checked`, `enabled` and `selected`.
+Capability discovery lists `CAPABILITY_SNAPSHOTS` (91).
+
+Each call resolves afresh once, in the same scope and accessibility order as singular reads:
+service window order, then post-order inside each window, not visual or backing-dataset order.
+No matches returns an empty list. There is no auto-scroll, wait for matches, hierarchy dump,
+persistent handle or atomic-UI guarantee. Staleness fails the entire read with
+`STALE_BEFORE_INPUT`; no partial success or internal retry. More than 1000 matches or a list
+over 1048576 serialized bytes returns `PAYLOAD_TOO_LARGE`, never a truncated list. The timeout
+bounds the read rather than waiting for content to appear.
 
 ## Counted touch commands
 

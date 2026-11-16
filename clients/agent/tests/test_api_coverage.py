@@ -8,7 +8,16 @@ import json
 from pathlib import Path
 
 import pytest
-from tap_e2e import App, AppData, Device, Element, Selector, TapClient, TapConnection
+from tap_e2e import (
+    App,
+    AppData,
+    Device,
+    Element,
+    Elements,
+    Selector,
+    TapClient,
+    TapConnection,
+)
 from tap_e2e import _gen as pb
 from tap_e2e.element import ElementWait
 from tap_e2e.screen import Screen
@@ -20,7 +29,7 @@ from .test_reference import _generator
 
 ROOT = Path(__file__).resolve().parents[3]
 REGISTRY = json.loads((ROOT / "clients/agent/api-coverage.json").read_text())
-SDK = (TapClient, TapConnection, Device, App, AppData, Element, ElementWait, Screen, Selector)
+SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector)
 
 
 @pytest.fixture(scope="module")

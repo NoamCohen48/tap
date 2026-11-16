@@ -241,6 +241,7 @@ result type.
 | `exists` | `Exists` | `selector` | `bool` = at least one match now |
 | `count` | `Count` | `selector` | `count` = matches on the screen, capped at 1 000 (ignores the match limit) |
 | `snapshot` | `Snapshot` | `selector` (exactly one match) | `snapshot` = class, package, resource name, text (as Android reports it: an empty field's hint), `showing_hint`, description, hint, visible bounds, state flags, child count, the `StandardAction`s and custom action labels the node offers, and a range node's `range` {type, min, max, current} |
+| `snapshots` | `Snapshots` | `selector` (no `first` / `at`; otherwise `INVALID_REQUEST`) | `snapshots` = `ElementSnapshotList.elements`, all exposed matches from one lookup in accessibility order, empty list on no match. At most 1000 matches and 1048576 serialized list bytes; overflow is `PAYLOAD_TOO_LARGE`, never truncation. No implicit wait or scroll. A stale lookup/read fails the whole command (`STALE_BEFORE_INPUT`), with no partial result or internal retry. Values are read sequentially, not an atomic UI transaction; no node survives the call |
 | `wait_visible` | `WaitVisible` | `selector`, `exactly_one` (default false) | `done` once one or more nodes match (exactly one with `exactly_one`); `WAIT_TIMEOUT` with detail `NO_MATCH`, or `AMBIGUOUS` (only with `exactly_one`), and `match_count` from the last non-stale poll (no detail when every poll was stale) |
 | `wait_gone` | `WaitGone` | `selector` | `done` once no match exists; `WAIT_TIMEOUT` with detail `STILL_PRESENT` and `match_count` counted once after the deadline (absent if that count was stale or zero) |
 | `wait_state` | `WaitState` | `selector`, `condition` (a required `Node`: any selector predicate) | `done` once the one node the selector resolves to (its `first` / `at` applied first) satisfies `condition`, evaluated on that node alone by the traversal predicate (an absent property never matches; ancestors up to 32 levels). No match and a stale read keep polling; several matches without a pick are `AMBIGUOUS` at once. After the deadline one lookup supplies `WAIT_TIMEOUT` / `STATE_NOT_REACHED` with `last_state` (the node's `ElementSnapshot`) and `condition_holds` (each operand of a top-level `all_of` / `any_of`, or the whole condition), or `NO_MATCH` when it finds no node. The condition gets the selector checks (`EMPTY_NODE` when absent, `EMPTY_VALUE`, `INVALID_REGEX`, depth); the selector and the condition share the 256-node limit |
@@ -341,7 +342,7 @@ data in the `internal` oneof:
 Response {
   result: CommandResult {
     duration_ms, request_id, session_generation     filled in by the driver
-    outcome: done | bool | count | text | snapshot | device_info | permission_prompt | toast
+    outcome: done | bool | count | text | snapshot | snapshots | device_info | permission_prompt | toast
              | notification | notifications | error
   }
   internal: artifact (ArtifactInfo, screenshot) | sync (SyncState, sync_bootstrap/sync_poll)

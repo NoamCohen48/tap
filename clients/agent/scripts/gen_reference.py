@@ -38,8 +38,9 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "`snapshot` is the main way to see the screen: text, one node per line, grouped by window, "
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
-        "`screenshot`, which an agent has to look at.",
-        ["snapshot", "inspect", "exists", "count", "settle", "wait", "activity", "screenshot", "capture", "log", "deaths", "media-record"],
+        "`screenshot`, which an agent has to look at. `elements` reads a collection as JSON values "
+        "in one bulk call, without a diagnostic snapshot; `--texts` projects raw text.",
+        ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "log", "deaths", "media-record"],
     ),
     (
         "Acting on elements",

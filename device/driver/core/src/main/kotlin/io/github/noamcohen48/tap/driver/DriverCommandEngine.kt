@@ -17,6 +17,7 @@ import io.github.noamcohen48.tap.api.v1.DoubleTap
 import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.ElementSnapshotList
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
@@ -44,6 +45,7 @@ import io.github.noamcohen48.tap.api.v1.SetOrientation
 import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
+import io.github.noamcohen48.tap.api.v1.Snapshots
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
 import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
@@ -286,6 +288,8 @@ internal class DriverCommandEngine(
         override fun count(command: Count): Int = queries.count(context, selectors[command.selector])
 
         override fun snapshot(command: Snapshot): ElementSnapshot = queries.snapshot(selectors[command.selector])
+
+        override fun snapshots(command: Snapshots): ElementSnapshotList = queries.snapshots(context, selectors[command.selector])
 
         override fun waitVisible(command: WaitVisible) =
             waits.waitVisible(context, selectors[command.selector], exactlyOne = command.exactlyOne)
