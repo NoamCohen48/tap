@@ -86,14 +86,51 @@ under `tap-artifacts/<run-id>/tests/<test-id>/<attempt>/`, with
 [run metadata, lifecycle events and a checksummed manifest](../guide/artifacts.md#run-records).
 Each pytest worker writes its own run directory.
 
+## Device-matrix execution
+
+Listing several serials normally **distributes** tests: each test runs once, not once per
+device. Choose matrix execution explicitly to check every test on every listed device:
+
+```bash
+TAP_SERIALS=emulator-5554,85e49002 pytest --tap-execution=matrix -v
+```
+
+With `test_login(tap_device)` and `test_logout(tap_device)`, this collects four executions:
+
+```text
+test_auth.py::test_login[device=emulator-5554]
+test_auth.py::test_login[device=85e49002]
+test_auth.py::test_logout[device=emulator-5554]
+test_auth.py::test_logout[device=85e49002]
+```
+
+`--collect-only` lists the same IDs without contacting or starting the server. Matrix mode
+requires an explicit, nonempty list of unique serials (`tap_serials` / `TAP_SERIALS`); it never
+substitutes another device when the named one is busy or unavailable. Busy devices wait up to
+`tap_acquire_timeout`; unavailable devices produce setup errors. Role criteria still apply:
+incompatible pairs are collected and skipped with a reason. A skip is not successful coverage.
+
+Tests using `tap_device`, `tap_devices`, or fixtures that depend on them are multiplied;
+ordinary tests run once. Existing pytest parametrization combines with the device axis.
+Single custom roles work too (`phone=<serial>` IDs). Multi-role tests are rejected in matrix
+mode because sender/receiver combinations need a different policy; run those separately with
+`--tap-execution=distribute` (for example in separate test modules).
+
+Device identity appears in failure sections and JUnit XML `tap.device.<role>` properties,
+including setup failures before attachment. The serial-bearing node IDs distinguish run
+records and failure artifacts. Scoped attachments are reused only for the same target serial.
+Neither execution policy starts parallel workers; pytest's normal execution order applies.
+
 ## Configuration
 
 Each option is an ini value (`pytest.ini`, `pyproject.toml` `[tool.pytest.ini_options]`,
-`setup.cfg`) or an environment variable; the environment wins.
+`setup.cfg`) or an environment variable; the environment wins. For execution policy,
+`--tap-execution` overrides both.
 
 | ini | Environment | Meaning | Default |
 |---|---|---|---|
-| `tap_serials` | `TAP_SERIALS` | comma-separated serials; roles map to them in order, starting one device further on per test | any device the server lists |
+| `tap_serials` | `TAP_SERIALS` | comma-separated serials; distribution rotates role assignment, matrix runs each test on each serial | any device the server lists (matrix requires an explicit list) |
+| `tap_execution` | `TAP_EXECUTION` | `distribute` = each test once; `matrix` = each single-role device test on every listed serial; `--tap-execution` overrides this | `distribute` |
 | `tap_artifacts` | `TAP_ARTIFACTS` | run records and failure artifacts root | `tap-artifacts` |
 | `tap_report` | `TAP_REPORT` | `on` = structured run records; `off` = legacy failure-artifact layout only | `on` |
 | `tap_device_scope` | `TAP_DEVICE_SCOPE` | `function` = attach before each test, detach after it; `class` / `module` / `session` = keep the devices for the next test of the same class / module / run ([Reusing devices](#reusing-devices)) | `function` |
