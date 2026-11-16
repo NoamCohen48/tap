@@ -5,6 +5,9 @@ Configuration (ini option, or environment variable):
     tap_serials   / TAP_SERIALS    comma-separated serials to use; roles map to them in
                                    order, starting one device further on for each test
                                    (wrapping). Unset = whatever the server's device list offers.
+    tap_execution / TAP_EXECUTION distribute (default) runs each test once; matrix runs each
+                                   single-role device test on every explicit tap_serials serial.
+                                   --tap-execution overrides both. Collection needs no server.
     tap_artifacts / TAP_ARTIFACTS  run records and failure artifact root (default tap-artifacts)
     tap_report    / TAP_REPORT     on (default) writes structured run records; off keeps legacy
                                    failure-artifact paths only
@@ -33,7 +36,8 @@ also says which devices may play it: ``@pytest.mark.tap_devices(left={"min_api":
 right={"emulator": False})`` (``device={...}`` for the single default role). Criteria:
 ``min_api``, ``max_api``, ``emulator`` (True / False), ``manufacturer`` (case-insensitive) and
 ``model_contains`` (case-insensitive), all from ``DeviceEntry.properties``. A test needing more
-roles than available devices, or a role no available device can play, is skipped. The starting device rotates from test to test, and a
+roles than available devices, or a role no available device can play, is skipped. In distribution
+mode the starting device rotates from test to test, and a
 single-role test moves on to the next device when one is held by another session (waiting only
 when all are). Before each test one device per role is attached in sorted
 serial order so concurrent multi-device tests cannot deadlock; after it, a failed test's
@@ -89,6 +93,11 @@ DEFAULT_ACQUIRE_TIMEOUT = 300.0
 
 def pytest_addoption(parser: pytest.Parser) -> None:
     parser.addini("tap_serials", "comma-separated device serials")
+    parser.addini("tap_execution", "distribute or matrix", default="distribute")
+    parser.getgroup("tap").addoption(
+        "--tap-execution", choices=("distribute", "matrix"), default=None,
+        help="distribute tests once (default), or run each device test on every configured serial",
+    )
     parser.addini("tap_report", "on or off: write structured run records", default="on")
     parser.addini(
         "tap_artifacts", "failure artifact directory", default="tap-artifacts"
@@ -120,6 +129,7 @@ def pytest_addoption(parser: pytest.Parser) -> None:
 
 
 def pytest_configure(config: pytest.Config) -> None:
+    TapConfig.from_pytest(config)  # Validate policies before collection, without contacting devices.
     config.addinivalue_line(
         "markers",
         "tap_devices(*roles, **role_criteria): device roles this test needs (default: one "
@@ -134,7 +144,7 @@ def pytest_configure(config: pytest.Config) -> None:
 @dataclass
 class TapConfig:
     """The plugin's settings, read from ``pytest.ini`` (``tap_*`` keys) or ``TAP_*`` environment
-    variables; the environment wins.
+    variables; the environment wins, except ``--tap-execution`` overrides both.
 
     Attributes:
         serials: Devices to use, in order (``tap_serials`` / ``TAP_SERIALS``, comma-separated).
@@ -153,6 +163,8 @@ class TapConfig:
             ``TAP_REPORT``: ``on`` or ``off``, default ``on``).
         device_scope: How long attached devices are kept: ``function`` (default), ``class``,
             ``module`` or ``session`` (``tap_device_scope`` / ``TAP_DEVICE_SCOPE``).
+        execution: ``distribute`` (default) runs each test once; ``matrix`` runs each single-role
+            device test on every explicit serial. CLI overrides environment, then ini.
         app_deaths: Fail a test whose watched app crashed or stopped responding unhandled
             (``tap_app_deaths`` / ``TAP_APP_DEATHS``: ``fail``, the default, or ``off``).
     """
@@ -166,6 +178,7 @@ class TapConfig:
     device_scope: str = "function"
     report: bool = True
     """Write tap-run/1 metadata, lifecycle JSONL and artifact manifests (tap_report / TAP_REPORT)."""
+    execution: str = "distribute"
     app_deaths: bool = True
     """Run the end-of-test app death check (tap_app_deaths / TAP_APP_DEATHS)."""
 
@@ -180,8 +193,20 @@ class TapConfig:
             for s in option("tap_serials", "TAP_SERIALS").split(",")
             if s.strip()
         ]
+        execution = str(
+            config.getoption("tap_execution")
+            or option("tap_execution", "TAP_EXECUTION", "distribute")
+        ).strip().lower()
+        if execution not in ("distribute", "matrix"):
+            raise pytest.UsageError("tap_execution must be distribute or matrix")
+        if execution == "matrix":
+            if not serials:
+                raise pytest.UsageError("matrix execution requires explicit tap_serials / TAP_SERIALS")
+            if len(set(serials)) != len(serials):
+                raise pytest.UsageError("matrix execution requires unique serials (duplicate tap_serials)")
         return cls(
             serials=serials,
+            execution=execution,
             report=_report_mode(option("tap_report", "TAP_REPORT", "on")),
             artifacts=pathlib.Path(
                 option("tap_artifacts", "TAP_ARTIFACTS", "tap-artifacts")
@@ -202,6 +227,29 @@ class TapConfig:
             device_scope=_device_scope(option("tap_device_scope", "TAP_DEVICE_SCOPE", "function")),
             app_deaths=_app_deaths_mode(option("tap_app_deaths", "TAP_APP_DEATHS", "fail")),
         )
+
+
+def pytest_generate_tests(metafunc: pytest.Metafunc) -> None:
+    if "tap_devices" not in metafunc.fixturenames:
+        return
+    config = TapConfig.from_pytest(metafunc.config)
+    if config.execution != "matrix":
+        return
+    roles, _ = _declared(metafunc.definition)
+    if len(roles) != 1:
+        raise pytest.UsageError(
+            f"{metafunc.definition.nodeid}: matrix execution supports one role; "
+            "use distribute for multi-role tests"
+        )
+    metafunc.parametrize(
+        "_tap_matrix_serial", config.serials, indirect=True,
+        ids=[f"{roles[0]}={serial}" for serial in config.serials],
+    )
+
+
+@pytest.fixture
+def _tap_matrix_serial(request: pytest.FixtureRequest) -> str | None:
+    return getattr(request, "param", None)
 
 
 _DEVICE_SCOPES = ("function", "class", "module", "session")
@@ -260,6 +308,7 @@ def _reusable(
     key: str | None,
     roles: list[str],
     criteria: dict[str, DeviceCriteria] | None = None,
+    serial: str | None = None,
 ) -> dict[str, Device] | None:
     """The held devices when they belong to ``key``, serve ``roles`` and all still answer
     (``info()``, a few ms); otherwise None, after detaching whatever was held. A detach failure of
@@ -268,7 +317,10 @@ def _reusable(
     held = config.stash.get(_HELD, None)
     if held is None:
         return None
-    if held.key == key and held.roles == roles and held.criteria == (criteria or {}):
+    if (
+        held.key == key and held.roles == roles and held.criteria == (criteria or {})
+        and (serial is None or all(device.serial == serial for device in held.devices.values()))
+    ):
         try:
             for device in held.devices.values():
                 device.info()
@@ -485,8 +537,19 @@ def tap_connection(
     connection = tap_client.connect(
         f"pytest {os.getpid()} {request.config.rootpath.name}"
     )
-    yield connection
-    connection.close()
+    try:
+        yield connection
+    finally:
+        # Session fixtures close before the trylast teardown hook on the final item.
+        # Release scoped attachments while their connection/channel is still alive.
+        held = request.config.stash.get(_HELD, None)
+        request.config.stash[_HELD] = None
+        try:
+            errors = _detach_all(held.devices) if held is not None else []
+            if errors:
+                raise errors[0]
+        finally:
+            connection.close()
 
 
 @dataclass(frozen=True)
@@ -653,6 +716,7 @@ def tap_devices(
     request: pytest.FixtureRequest,
     tap_connection: TapConnection,
     tap_config: TapConfig,
+    _tap_matrix_serial: str | None,
 ) -> Generator[dict[str, Device], None, None]:
     """The test's devices by role, attached before the test and detached after it.
 
@@ -661,11 +725,16 @@ def tap_devices(
     when there are fewer devices than roles. If the test fails, failure artifacts are saved for
     every device under ``tap_artifacts/<run id>/tests/<test id>/<attempt>/``, indexed in the
     run manifest. Reporting-off keeps the legacy ``tap_artifacts/<nodeid>/`` layout.
+    With ``--tap-execution=matrix``, each single-role test is parametrized over explicit
+    serials at collection and attaches only its named device (no fallback).
     """
     roles, criteria = _declared(request.node)
     # Roles → serials is decided here (declaration order over a rotated device list); the
     # server only knows serials.
-    available = tap_config.serials or tap_connection.available_serials()
+    available = (
+        [_tap_matrix_serial] if _tap_matrix_serial is not None
+        else (tap_config.serials or tap_connection.available_serials())
+    )
     if len(roles) > len(available):
         where = (
             f"tap_serials lists {tap_config.serials}"
@@ -674,7 +743,7 @@ def tap_devices(
         )
         pytest.skip(f"{request.node.name} needs {len(roles)} devices but {where}")
     key = _scope_key(request.node, tap_config.device_scope)
-    reused = _reusable(request.config, key, roles, criteria)
+    reused = _reusable(request.config, key, roles, criteria, _tap_matrix_serial)
     start = next(_ROTATION)
     if reused is not None:
         devices = reused
@@ -777,6 +846,18 @@ def pytest_runtest_makereport(item: pytest.Item, call: pytest.CallInfo):
         if call.when == "teardown":
             _finish_attempt(item)
     state = item.stash.get(_STATE, None)
+    identities = {role: device.serial for role, device in state.devices.items()} if state else {}
+    callspec = getattr(item, "callspec", None)
+    serial = callspec.params.get("_tap_matrix_serial") if callspec is not None else None
+    if serial is not None and not identities:
+        roles, _ = _declared(item)
+        identities = {roles[0]: serial}
+    for role, identity in identities.items():
+        report.user_properties.append((f"tap.device.{role}", identity))
+    if report.failed and identities:
+        report.sections.append((
+            "Tap devices", "\n".join(f"{role}: {identity}" for role, identity in identities.items())
+        ))
     if state is not None and call.when in ("setup", "call"):
         state.reports[call.when] = report
         if report.failed and call.excinfo is not None:

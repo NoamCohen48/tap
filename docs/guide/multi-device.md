@@ -53,6 +53,27 @@ moves on to the next device when one is held by another session right now, and w
 every candidate is busy. Multi-role tests rotate the same way but open their assignment in
 sorted serial order, waiting for each device, so they cannot deadlock.
 
+## Distribution versus a device matrix
+
+The rotation above is **distribution**: each test runs once on one assignment. Two tests and
+two devices still produce two executions, not four. Naming roles means a test uses several
+devices together; that is different from repeating a test separately on every device.
+
+For a pytest device matrix, opt in explicitly:
+
+```bash
+TAP_SERIALS=emulator-5554,85e49002 pytest --tap-execution=matrix -v
+```
+
+Two single-role tests now produce **four executions**, with IDs such as
+`test_login[device=emulator-5554]` and `test_login[device=85e49002]`. Each execution is pinned
+to its named serial, never reassigned; incompatible role criteria produce visible skips,
+not successful coverage. Matrix mode requires explicit unique serials and supports one role
+per test. Tests without device fixtures still run once. Use `--tap-execution=distribute` to
+retain rotating assignment, including multi-role tests. Neither policy implies parallelism.
+See [Device-matrix execution](../sdk/python.md#device-matrix-execution) for collection,
+configuration and report details. This mode is pytest-only; JUnit behavior is unchanged.
+
 ## Without the test runner
 
 From the client you do the same by hand: `connection.available_serials()` to look, then
