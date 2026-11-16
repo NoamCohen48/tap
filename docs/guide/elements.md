@@ -1,7 +1,8 @@
 # Elements and text
 
 !!! info "Examples are in Python"
-    Kotlin has the same methods in camelCase (`set_text` → `setText`, `long_tap` → `longTap`),
+    Except for the Python-only collection reads below, Kotlin has the same methods in camelCase
+    (`set_text` → `setText`, `long_tap` → `longTap`),
     called inside `tapTest { }`. [Kotlin + JUnit 5](../sdk/kotlin.md#elements-and-text) shows
     this page's examples in Kotlin.
 
@@ -26,6 +27,54 @@ the deadline of the *whole* command on the device, including the lookup; nothing
 
 `exists()` and `count()` accept any number of matches; `snapshot()` and every action below need
 exactly one ([Selectors](selectors.md#exactly-one-or-say-otherwise)).
+
+## Reading a collection (Python)
+
+Use `app.elements(selector)` for one app's nodes, or `device.screen.elements(selector)` for
+matches across windows. The collection is lazy and read-only: each `texts()` or `snapshots()`
+call resolves afresh in **one device command**, not a loop over `count()` and `at()`.
+
+```python
+from decimal import Decimal
+from tap_e2e import checkable, res
+
+# Restrict matches to descendants of the product list, not duplicate IDs elsewhere.
+titles = app.elements(res("product_list").descendant(res("title")))
+assert titles.texts() == ["Socks", "Shirt", "Coat"]
+
+raw_prices = app.elements(res("product_list").descendant(res("price"))).texts()
+prices = []
+for value in raw_prices:
+    assert value is not None
+    prices.append(Decimal(value))  # Parse your app's currency format yourself.
+assert prices == sorted(prices)
+
+# Read several state properties together from one result.
+options = app.elements(res("preferences").descendant(checkable())).snapshots()
+assert [(item.text, item.checked, item.enabled) for item in options] == [
+    ("Email", True, True),
+    ("SMS", False, True),
+]
+```
+
+`snapshots()` returns a list of immutable `ElementSnapshot` values, including `checkable`,
+`checked`, `enabled` and `selected`. `texts()` projects their raw text, keeping duplicates,
+empty strings and `None` for nodes without text. An empty field may report its hint as text;
+use `snapshots()` to inspect `showing_hint`. No matches returns `[]`. A collection selector
+must not use `first()` or `at()`; use `element()` for a single match.
+
+**Order and scope:** results follow accessibility order: service-reported window order, then
+post-order within each window (matching children before their matching parent). This is not
+necessarily visual order; explicitly sort snapshots by bounds if your assertion requires
+that. Reads use the same visibility rules as singular queries. Virtualized lists expose only
+their current accessibility nodes, not the whole backing dataset; Tap does not auto-scroll.
+
+**Consistency:** one call resolves one match set and reads it sequentially. It is not an atomic
+UI transaction, and separate calls can see different content. A stale lookup/read fails the
+whole command with `STALE_BEFORE_INPUT`, without partial results or an internal retry. No
+persistent node handles survive the call. `timeout` bounds the read, not a wait for matches or
+stability. More than 1000 matches or a serialized snapshot list over 1 MiB fails with
+`PAYLOAD_TOO_LARGE`; results are never silently truncated.
 
 ## Taps
 

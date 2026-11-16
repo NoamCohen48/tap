@@ -55,6 +55,30 @@ Suppression uses Android window types, never package guesses; Settings and permi
 remain application windows. Unknown types remain visible. Filters affect presentation only,
 not refs, and cannot be combined with `--candidates`. Settle/action diffs also show context.
 
+## Reading collections
+
+Use `elements TARGET` to read all currently exposed matches as a JSON array in one fresh bulk
+read, rather than parsing a diagnostic snapshot or looping over count/index:
+
+```sh
+tap-agent elements id=title,pkg=com.shop --texts
+tap-agent elements '{"id":"price","ancestor":{"id":"products"},"pkg":"com.shop"}' --texts
+tap-agent elements checkable=true,pkg=com.shop --timeout 3s
+```
+
+Default output is full SDK element state, including `checkable`, `checked`, `enabled` and
+`selected`; `--texts` projects raw text, preserving duplicates, empty strings and nulls. An
+empty field may report its hint as text; inspect `showing_hint` in the full state. MCP:
+`elements(target=..., texts=true, timeout_seconds=3)` for text, omit `texts` for state.
+
+Use written selectors with optional pkg/relations, not snapshot refs or first/index. Results
+are value-only and retain no node identity. Ordering is accessibility window order, then
+post-order within each window, not necessarily visual order. Only currently exposed nodes
+are included, not an entire virtualized dataset; no auto-scroll or implicit wait. Reads are
+sequential, not atomic UI transactions. Empty matches return `[]`; staleness or overflow
+(1000 matches / 1 MiB snapshot list) fails the whole read, never truncates or returns partial
+values. Full state may contain sensitive text, as `inspect` does.
+
 ## Targets
 
 - A ref from the latest snapshot: `@e3`. A ref keeps naming the same node while it stays on

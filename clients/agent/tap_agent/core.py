@@ -558,6 +558,33 @@ class Agent:
         """The number of matches now, using the SDK's count semantics."""
         return self._query(target, device, "count", timeout)
 
+    def elements(
+        self, target: str, device: str | None = None, timeout: float | None = None, *, texts: bool = False,
+    ) -> str:
+        """All matching SDK snapshots as a JSON array; ``texts`` projects raw text instead.
+
+        One fresh bulk device read, no diagnostic dump, scroll, wait or persistent handles.
+        Accepts written selectors (including pkg and relations), not refs or first/index.
+        Results follow accessibility order, not necessarily visual order. Only currently
+        exposed nodes are read, sequentially rather than as an atomic UI transaction. Empty
+        matches return []; staleness or overflow (1000 matches / 1 MiB) fails the whole read.
+        Texts preserve duplicates, empty strings and null; hints match SDK text semantics.
+        """
+        timeout = command_timeout(timeout)
+
+        def step() -> str:
+            parsed = parse_target(target)
+            if parsed.ref or parsed.selector is None:
+                raise UsageError("elements needs a written selector, not a snapshot ref")
+            if parsed.selector.to_proto().WhichOneof("pick") in ("first", "at"):
+                raise UsageError("elements does not accept first/index; use inspect for one node")
+            element, _ = self._element(self._device(device), parsed)
+            collection = element.device.screen.elements(element.selector)
+            values = collection.texts(timeout) if texts else collection.snapshots(timeout)
+            return json_text(values)
+
+        return self._run(step)
+
     def _query(self, target: str, device: str | None, operation: str, timeout: float | None) -> str:
         timeout = command_timeout(timeout)
 

@@ -24,6 +24,7 @@ from .capabilities import (
 )
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
+from .elements import Elements
 from .steps import current_step, step
 from .logs import DeviceLog, LogAction, LogEntries, LogEntry, LogFollower, LogLine, LogPriority
 from .screen import Screen
@@ -192,6 +193,7 @@ __all__ = [
     "LogPriority",
     "DriverLog",
     "Element",
+    "Elements",
     "ConditionPart",
     "ElementSnapshot",
     "NarrowingPart",

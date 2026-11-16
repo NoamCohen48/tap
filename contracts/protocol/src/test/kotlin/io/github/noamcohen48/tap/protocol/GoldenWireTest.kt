@@ -9,6 +9,7 @@ import io.github.noamcohen48.tap.api.v1.DeviceNotification
 import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisplayRotation
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
+import io.github.noamcohen48.tap.api.v1.ElementSnapshotList
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.MatchMode
@@ -254,6 +255,23 @@ class GoldenWireTest {
                         ),
                     ),
                 ) to Request::parseFrom
+            ),
+            "request-snapshots" to (
+                envelope(Requests.of(Commands.snapshots(Selectors.androidResource(AUT, "title")))) to Request::parseFrom
+            ),
+            "response-snapshots-empty" to (
+                result { setSnapshots(ElementSnapshotList.getDefaultInstance()) } to Response::parseFrom
+            ),
+            "response-snapshots" to (
+                result {
+                    setSnapshots(
+                        ElementSnapshotList.newBuilder()
+                            .addElements(ElementSnapshot.newBuilder().setText("Email").setCheckable(true).setChecked(true).setEnabled(true))
+                            .addElements(ElementSnapshot.newBuilder().setText("SMS").setCheckable(true).setEnabled(true))
+                            .addElements(ElementSnapshot.newBuilder().setText(""))
+                            .addElements(ElementSnapshot.getDefaultInstance()),
+                    )
+                } to Response::parseFrom
             ),
             "response-done" to (Responses.done().stamped(31, 12, 3) to Response::parseFrom),
             "response-bool" to (result { setBool(true) } to Response::parseFrom),

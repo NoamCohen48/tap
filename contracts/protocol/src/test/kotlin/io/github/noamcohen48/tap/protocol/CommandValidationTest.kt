@@ -50,6 +50,17 @@ class CommandValidationTest {
     }
 
     @Test
+    fun bulkReadsRejectPicksAndMissingSelectors() {
+        CommandValidation.validate(Commands.snapshots(button))
+        for (picked in listOf(button.pickFirst(), button.pickAt(0))) {
+            assertInvalid(ErrorCode.ERR_INVALID_REQUEST) { CommandValidation.validate(Commands.snapshots(picked)) }
+        }
+        assertInvalid(ErrorCode.ERR_INVALID_SELECTOR, ErrorDetail.EMPTY_NODE) {
+            CommandValidation.validate(Commands.snapshots(Selector.getDefaultInstance()))
+        }
+    }
+
+    @Test
     fun rejectsAnUnsetOperationAsUnsupported() {
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Command.getDefaultInstance()) }
         assertInvalid(ErrorCode.ERR_UNSUPPORTED) { CommandValidation.validate(Request.getDefaultInstance()) }

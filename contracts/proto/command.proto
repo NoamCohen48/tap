@@ -427,8 +427,16 @@ message Command {
     TimedPress hold = 48;
     WaitState wait_state = 49;
     TapOutsidePanel tap_outside_panel = 50;
+    Snapshots snapshots = 51;
   }
 }
+
+// Read all currently exposed matches in one lookup, in accessibility order (window order,
+// then post-order within each window), not visual or dataset order. No implicit scrolling or
+// waiting. The selector must not have first/at. Empty matches succeed with an empty list.
+// Reads are not an atomic UI transaction. A stale read fails the whole command; no partial
+// results. More than 1000 matches or an ElementSnapshotList over 1 MiB is PAYLOAD_TOO_LARGE.
+message Snapshots { Selector selector = 1; }
 
 // ---- results ------------------------------------------------------------------------------------
 
@@ -467,6 +475,11 @@ message ElementSnapshot {
   repeated string custom_actions = 20;
   // A range node's (SeekBar, Slider, RatingBar, ProgressBar) RangeInfo.
   optional Range range = 21;
+}
+
+// Immutable values in the match order of `snapshots`; no persistent node identities.
+message ElementSnapshotList {
+  repeated ElementSnapshot elements = 1;
 }
 
 message Range {
@@ -645,5 +658,6 @@ message CommandResult {
     DeviceNotification notification = 16; // await_notification
     NotificationList notifications = 17; // list_notifications
     OutsideTouch outside_touch = 18; // tap_outside_panel
+    ElementSnapshotList snapshots = 19;
   }
 }

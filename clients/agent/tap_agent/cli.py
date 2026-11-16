@@ -174,6 +174,10 @@ def parser() -> argparse.ArgumentParser:
         p.add_argument("target", help=TARGET_HELP)
         p.add_argument("--timeout", type=_command_duration, help="read budget, at most 120s")
 
+    p = verb("elements", "read all matching nodes as a JSON array in one bulk read", on_device, budget)
+    p.add_argument("target", help="written selector with optional pkg and relations; no refs, first or index")
+    p.add_argument("--texts", action="store_true", help="return raw text values instead of element state; preserve nulls and empty strings")
+
     p = verb("tap", "tap a node", on_device, settle)
     p.add_argument("target", help=TARGET_HELP)
     kind = p.add_mutually_exclusive_group()
@@ -431,6 +435,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
                               hide_system_chrome=args.hide_system_chrome)
     if v in ("inspect", "exists", "count"):
         return getattr(agent, v)(args.target, device, args.timeout)
+    if v == "elements":
+        return agent.elements(args.target, device, args.timeout, texts=args.texts)
     if v == "tap":
         return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double,
                          outside_panel=args.outside_panel, allow_reach_below=args.allow_reach_below,

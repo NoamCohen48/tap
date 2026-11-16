@@ -68,6 +68,11 @@ suite("describe", () => {
     expect(describe(bare).why).toEqual(["✗ enabled"]);
   });
 
+  it("names a bulk read's collection selector", () => {
+    const event = command({ case: "snapshots", value: { selector: resource("title") } });
+    expect(summary(describe(event))).toBe('Snapshots res("title")');
+  });
+
   it("names the panel's node of a tap outside it", () => {
     const event = command({ case: "tapOutsidePanel", value: { selector: resource("dialog_title") } });
     expect(summary(describe(event))).toBe('Tap outside panel res("dialog_title")');

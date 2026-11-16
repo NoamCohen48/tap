@@ -37,5 +37,26 @@ tap-agent release
 - `tap-agent mcp` serves the same steps as MCP tools over stdio, e.g. for Claude Code:
   `claude mcp add tap -- tap-agent mcp`.
 
+## Collection reads
+
+`elements TARGET` returns a JSON array of current SDK element snapshots, including checkbox
+state (`checkable`, `checked`), `enabled` and `selected`. `--texts` returns just raw text:
+
+```sh
+tap-agent elements id=title,pkg=com.shop --texts
+tap-agent elements '{"id":"price","ancestor":{"id":"products"},"pkg":"com.shop"}' --texts
+tap-agent elements checkable=true,pkg=com.shop --timeout 3s
+```
+
+The read-only MCP `elements` tool takes the same target, `texts` (default false),
+`timeout_seconds`, session and device. Each call uses one fresh bulk read, without a diagnostic
+snapshot or persistent handles. Use written selectors, not snapshot refs, `first` or `index`.
+Results follow accessibility window order, then post-order inside each window—not necessarily
+visual order. Only exposed nodes are included; no auto-scroll, implicit wait or atomic-UI
+transaction. No matches returns `[]`; texts preserve duplicates, empty strings and nulls.
+Android may report an empty field's hint as text (`showing_hint` in snapshots). A stale read or
+overflow (more than 1000 matches / a snapshot list over 1 MiB) fails the whole operation, never
+returns a partial/truncated list. Like `inspect`, full state can include sensitive text.
+
 Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon, 4 the step ran but a watched app
 crashed or stopped responding. Design: `.docs/agent-surface.md`.

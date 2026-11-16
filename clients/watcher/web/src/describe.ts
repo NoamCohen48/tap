@@ -110,6 +110,7 @@ function command(value: Command): Pick<Described, "verb" | "target" | "input"> {
     case "exists":
     case "count":
     case "snapshot":
+    case "snapshots":
     case "waitGone":
       return { verb, target: selector(op.value.selector), input: "" };
     case "waitVisible":

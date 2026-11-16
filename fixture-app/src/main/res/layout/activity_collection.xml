@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="16dp">
+
+    <!-- The same title ID outside the list must not leak into a container-scoped read. -->
+    <TextView
+        android:id="@+id/product_title"
+        android:layout_width="match_parent"
+        android:layout_height="48dp"
+        android:text="Outside the list" />
+
+    <LinearLayout
+        android:id="@+id/products"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@id/product_title"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:text="Socks" />
+            <TextView
+                android:id="@+id/product_price"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="4.50" />
+            <CheckBox
+                android:id="@+id/product_selected"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:checked="true"
+                android:contentDescription="Select socks" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@id/product_title"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:text="Shirt" />
+            <TextView
+                android:id="@id/product_price"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="9.99" />
+            <CheckBox
+                android:id="@id/product_selected"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:contentDescription="Select shirt" />
+        </LinearLayout>
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="64dp"
+            android:orientation="horizontal">
+            <TextView
+                android:id="@id/product_title"
+                android:layout_width="0dp"
+                android:layout_height="match_parent"
+                android:layout_weight="1"
+                android:gravity="center_vertical"
+                android:text="Coat" />
+            <TextView
+                android:id="@id/product_price"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:gravity="center_vertical"
+                android:text="30.00" />
+            <CheckBox
+                android:id="@id/product_selected"
+                android:layout_width="64dp"
+                android:layout_height="match_parent"
+                android:checked="true"
+                android:enabled="false"
+                android:contentDescription="Select coat" />
+        </LinearLayout>
+    </LinearLayout>
+</LinearLayout>

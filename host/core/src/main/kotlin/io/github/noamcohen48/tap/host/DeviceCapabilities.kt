@@ -32,6 +32,7 @@ object DeviceCapabilities {
             "exists" to CAPABILITY_EXISTS,
             "count" to CAPABILITY_COUNT,
             "snapshot" to CAPABILITY_SNAPSHOT,
+            "snapshots" to CAPABILITY_SNAPSHOTS,
             "wait_visible" to CAPABILITY_WAIT_VISIBLE,
             "wait_gone" to CAPABILITY_WAIT_GONE,
             "wait_app_visible" to CAPABILITY_WAIT_APP_VISIBLE,

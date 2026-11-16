@@ -55,7 +55,7 @@ internal class UiObjectAccess(
         }
 
     /**
-     * Up to [limit] matches in accessibility order, for diagnostics; the caller recycles them. A
+     * Up to [limit] matches in accessibility order, for bulk reads and diagnostics; the caller recycles them. A
      * stale tree throws `StaleObjectException`.
      */
     fun matches(
@@ -103,9 +103,15 @@ internal class UiObjectAccess(
         return when (compiled) {
             is CompiledSelector.Native -> {
                 val found = device.findObjects(compiled.by)
-                val all = if (compiled.mayRepeat) distinct(found) else found
-                all.drop(limit).forEach(UiObject2::recycle)
-                all.take(limit)
+                try {
+                    val all = if (compiled.mayRepeat) distinct(found) else found
+                    all.drop(limit).forEach(UiObject2::recycle)
+                    all.take(limit)
+                } catch (error: Throwable) {
+                    // Equality refreshes nodes during de-duplication and can itself go stale.
+                    found.forEach(::recycleQuietly)
+                    throw error
+                }
             }
 
             is CompiledSelector.Traversal -> {
