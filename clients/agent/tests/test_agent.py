@@ -617,18 +617,20 @@ def test_an_export_has_the_servers_record_of_each_call(fake, agent, tmp_path):
     fake.devices.responder = lambda command: pb.CommandResult(error=pb.Error(code=pb.ERR_NOT_FOUND))
     with pytest.raises(AgentError):
         agent.tap("text=Nope")
-    document = json.loads(agent.export(calls=True))
-    assert document["format"] == "tap-agent-recording/2" and document["session"] == "agent" and document["calls"]["dropped"] == 0
-    cold, tapped, missing = document["calls"]["events"]
+    document = json.loads(agent.history(as_json=True))
+    assert document["format"] == "tap-history/1" and document["event_capture"][0]["dropped"] == 0
+    assert all(step["session"] == "agent" for step in document["steps"])
+    cold, tapped, missing = document["events"]
     assert cold["app"] == {"operation": "cold_launch", "package_name": "com.example"} and cold["ok"]
     # The ref is logged as the selector it named.
     assert tapped["command"]["tap"]["selector"] == {"node": {"resource": {"name": "login"}}}
     assert missing["error"] == {"code": "ERR_NOT_FOUND"} and not missing["ok"]
-    # Each call names the step that made it; an app call the fake daemon logs carries none.
-    assert [tapped["step"], missing["step"]] == [step["id"] for step in document["steps"][1:]]
+    assert [cold["step"], tapped["step"], missing["step"]] == [step["id"] for step in document["steps"]]
     out = tmp_path / "log" / "session.json"
-    assert agent.export(out=out, calls=True) == f"exported step history {document['name']!r} (3 steps) to {out}"
-    assert json.loads(out.read_text())["calls"]["events"] == document["calls"]["events"]
+    assert not out.exists(), "history returns stdout data, not a file"
+    out.parent.mkdir()
+    out.write_text(agent.history(as_json=True))  # Explicit caller-side redirection/storage.
+    assert json.loads(out.read_text())["events"] == document["events"]
 
 def test_condition_reads_back_and_app_locale(fake, agent):
     agent.attach("emulator-5554")
@@ -713,10 +715,10 @@ def test_files_push_pull_and_media(fake, agent, tmp_path):
 EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
-    "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app", "export",
+    "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count", "elements",
-    "detach", "server_info", "device_info", "capabilities", "log", "media_record", "scroll_until", "history",
+    "detach", "server_info", "device_info", "capabilities", "log", "media_record", "scroll_until", "record", "history",
     "unquarantine", "deaths", "wait_event", "watch",
 }
 
@@ -783,7 +785,7 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         result = await client.call_tool("app", {"action": "open-link", "package": "com.example", "argument": "example://x"})
         assert not result.is_error and result.content[0].text.startswith("opened example://x")
         result = await client.call_tool("history", {})
-        assert not result.is_error and "live" in result.content[0].text and "session 'agent'" in result.content[0].text
+        assert not result.is_error and "tap" in result.content[0].text and "→" in result.content[0].text
 
 
 def test_launch_extras_are_typed_and_checked(fake, agent, capsys):

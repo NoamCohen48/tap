@@ -3,7 +3,7 @@
   "note": "Covered means a practical SDK-backed tool, not identical signatures or raw RPC access. SDK helper aliases are grouped. Empty tool lists require an explicit client-only/deferred reason.",
   "rpcs": {
     "tap.v1.ClientConnectionService": {
-      "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"], "Events": ["export"]
+      "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"]
     },
     "tap.v1.DeviceService": {
       "ListDevices": ["devices"], "Unquarantine": ["unquarantine"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
@@ -14,7 +14,8 @@
       "GetForegroundActivity": ["foreground_activity"], "PushFile": ["push_file"], "PullFile": ["pull_file"], "AddMedia": ["add_media"]
     },
     "tap.v1.DeviceLogService": {
-      "ReadLog": ["log"], "MarkLog": ["log"], "RedactLog": ["log"]
+      "ReadLog": ["log", "history", "record"], "MarkLog": ["log"], "RedactLog": ["log"],
+      "StartLogRecording": ["record"], "StopLogRecording": ["record"], "ListLogRecordings": ["record"], "DeleteLogRecording": ["record"], "ListRetainedLogs": ["history", "record"]
     },
     "tap.v1.AppService": {
       "Install": ["app"], "Uninstall": ["app"], "IsInstalled": ["app"], "ForceStop": ["app"], "ClearData": ["app"], "GrantPermission": ["app"], "RevokePermission": ["app"], "IsPermissionGranted": ["app"], "SetLocales": ["app"], "GetLocales": ["app"], "Launch": ["app"], "ColdLaunch": ["app"], "Foreground": ["app"], "OpenLink": ["app"], "Process": ["app"], "IsRunning": ["app"]
@@ -24,11 +25,7 @@
     }
   },
   "excluded_rpcs": {
-    "tap.v1.DeviceLogService.StartLogRecording": "Daemon/SDK retention control; no agent adapter yet.",
-    "tap.v1.DeviceLogService.StopLogRecording": "Daemon/SDK retention control; no agent adapter yet.",
-    "tap.v1.DeviceLogService.ListLogRecordings": "Daemon/SDK retention control; no agent adapter yet.",
-    "tap.v1.DeviceLogService.DeleteLogRecording": "Daemon/SDK retention control; no agent adapter yet.",
-    "tap.v1.DeviceLogService.ListRetainedLogs": "Daemon/SDK retained-log discovery; no agent adapter yet.",
+    "tap.v1.ClientConnectionService.Events": "Bounded live SDK diagnostic ring; history and record export read durable archives instead.",
     "tap.v1.ClientConnectionService.Observe": "Observed test-client liveness is infrastructure; agents use held connections.",
     "tap.v1.AppService.AwaitIdle": "Synchronization is work in progress and intentionally deferred; state/tree/pixel waits are independent.",
     "tap.v1.WatchService.Watch": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
@@ -48,15 +45,16 @@
   },
   "sdk": {
     "LogRecordings": [
-      {"methods": ["archives", "read_archive", "start", "stop", "list", "delete", "read", "export", "history"], "tools": [], "reason": "Daemon/SDK retention controls; no agent adapter yet."}
+      {"methods": ["archives", "read_archive", "start", "stop", "list", "delete", "read", "export", "history"], "tools": ["record", "history"], "reason": "Protected ranges and durable redacted event/log exports share one model and renderer."}
     ],
     "TapClient": [
-      {"methods": ["log_recordings"], "tools": [], "reason": "Daemon/SDK retained evidence; no agent adapter yet."},
+      {"methods": ["log_recordings"], "tools": ["record", "history"], "reason": "Protected log ranges and retained ordinary logs survive the original connection."},
       {"methods": ["info", "devices", "unquarantine", "connect", "connections"], "tools": ["server_info", "devices", "unquarantine", "attach", "sessions"], "reason": "connect uses held mode only"},
       {"methods": ["create", "resume", "close"], "tools": [], "reason": "Client transport/handle lifecycle; Agent constructs and closes its SDK client, never starts a daemon."}
     ],
     "TapConnection": [
-      {"methods": ["attach_device", "attached_devices", "close", "event_log", "events"], "tools": ["attach", "sessions", "release", "export"]},
+      {"methods": ["attach_device", "attached_devices", "close"], "tools": ["attach", "sessions", "release"]},
+      {"methods": ["event_log", "events"], "tools": [], "reason": "The live bounded event ring is SDK diagnostics; agent history uses durable redacted archives."},
       {"methods": ["ensure_usable", "available_serials", "broken", "usable"], "tools": [], "reason": "Client usability/filtering helpers; devices exposes inventory, no raw connection escape hatch."}
     ],
     "App": [

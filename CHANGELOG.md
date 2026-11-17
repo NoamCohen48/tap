@@ -8,12 +8,16 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
-- Device logs survive detach and daemon restart in a private, redacted disk store. Configure
-  global rolling retention with `tap config logging-policy show|rolling` (default one hour /
-  256 MiB, 1 GiB hard storage budget, 256 MiB free-disk reserve). Python
-  `client.log_recordings` and Kotlin `client.logRecordings` protect named ranges and discover
-  retained ordinary evidence. Gaps, storage failures and interrupted captures stay explicit.
-  No input replay or inferred assertions. See the [device logs guide](docs/guide/logs.md).
+- Redacted device logs and RPC events survive release/daemon restart under one retention
+  policy: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve
+  (`tap config logging-policy`). Python `client.log_recordings` and Kotlin
+  `client.logRecordings` protect named ranges and export `tap-history/1` directly after a
+  script, without a CLI or a live original connection. `tap-agent history` reads paginated
+  activity; `record start|stop|list|export|clean` protects and reads the same evidence plus
+  high-level intent. Default output is readable stdout text; `--json` selects JSON, `--logs`
+  adds device logs. Stable step/time bounds, shared disk usage, missing intent, capture gaps
+  and unknown outcomes stay explicit. No standalone agent export, release-time file export,
+  mutation replay or inferred assertions. See [history and recordings](docs/agent/export.md).
 
 ## 0.2.0
 

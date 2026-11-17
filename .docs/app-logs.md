@@ -1,5 +1,9 @@
 # Device log: streamed logcat with Tap's actions, markers and redaction
 
+Retention update: [History, recordings and daemon logging policy](history-and-logging-policy.md)
+adds redacted disk storage, configurable rolling limits and named protected ranges. It supersedes
+the original in-memory-only retention and removal of `record start|stop` described below.
+
 Status: implemented (2026-11-14). Unit suites pass (driver engine, protocol, host core, daemon,
 Kotlin SDK, Python client, `tap-agent`); **not yet run on the device matrix**, so the ordering of
 the driver's action lines among an app's own lines is by design, not yet measured.
@@ -23,10 +27,12 @@ markers; Appium exposes `logcat` log types and broadcasts them):
    `attach_device(capture_logs=False)`) turns it off; the device-log calls then fail and failure
    capture falls back to the ring buffers. Not a separate "start logging" call: the lines a test
    wants are usually the ones before it knew it wanted them.
-2. **Kept in memory, bounded, per attachment.** Newest 16 MiB of entry text, forgotten at
-   detach. Not written to the state directory: nothing unredacted ever leaves the daemon
-   process, and a reader that wants the log on disk saves what it reads (the failure artifacts
-   do). A read reports how many entries before its starting point were already forgotten.
+2. **Bounded, redacted durable retention.** The daemon persists entries under the global
+   logging policy (default 1 h / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve).
+   `record start` protects its current attachment range from ordinary eviction; explicit stop
+   closes the range and cleanup removes protection. Detach/restart do not deliberately erase
+   retained logs. The 16 MiB in-memory hot buffer remains for followers and failure previews.
+   A read reports unavailable entries, including holes around protected data.
 3. **One ordered stream of four entry kinds**: logcat lines, Tap's actions, markers, and gaps
    (the capture was interrupted). Each has a cursor (1, 2, 3, … per attachment), so a reader
    continues exactly where it stopped.
@@ -49,12 +55,13 @@ markers; Appium exposes `logcat` log types and broadcasts them):
 6. **An action line never carries an argument.** The operation and the selector only: typed
    text, clipboard and file contents must not reach the device log, where every app with
    `READ_LOGS` and every bug report can see them.
-7. **Redaction on read, in the daemon.** Built-in patterns for the usual secret shapes
+7. **Redaction before persistence and on read, in the daemon.** Built-in patterns for the usual secret shapes
    (authorization and cookie headers, `password=` / `token=` style pairs, bearer tokens, JWTs),
    the text of every `sensitive` `set_text` / `type_text` of the attachment, and patterns the
-   caller adds (`RedactLog`). On read rather than on capture, so a pattern added after the secret
-   was logged still hides it, and so filters (`message_regex`) cannot be used to probe for a
-   redacted value. `DeviceLogs` and the failure artifacts go through the same redactor.
+   caller adds (`RedactLog`). Late rules rewrite retained segments and still apply before
+   message filters; a failed rewrite is explicit and blocks retained reads. Unrecognized
+   values may have been on disk before a later rule, and prior copies cannot be securely erased.
+   `DeviceLogs` and the failure artifacts go through the same redactor.
    Redaction is best effort by nature: it hides what matches, and a secret in a shape nobody
    described is still there.
 8. **Filtering by app is by uid.** logcat prints the uid with `-v uid`; the daemon resolves
@@ -91,36 +98,42 @@ markers; Appium exposes `logcat` log types and broadcasts them):
 
 Owner approved (2026-11-14): the agent's step recording and the device log are one history.
 
-- **Always on.** There is no `record start|stop`. `step_capture` calls `records.ensure(session,
+- **Always on.** `record start|stop` select/protect ranges; they do not enable ordinary capture.
+  `step_capture` calls `records.ensure(session,
   connection id)` before each action or wait: the history starts with the first step, belongs to
   that held connection and stops at `release`. A different connection id (timeout, daemon
   restart) stops the old one ("connection ended") and starts the next; a full one (10 000 steps
-  / 32 MiB) rotates ("full"). The newest 20 stopped histories are kept.
+  / 32 MiB) rotates ("full"). The newest 20 stopped ordinary histories are kept; named ranges
+  protect every partition and export them together.
 - **Step id.** Each step gets a 16-hex id, stored with the step and sent as `tap-step` on every
   call the step makes (`tap_e2e.step`), so `LogAction.step` and `LoggedEvent.step` point back at
   it. `log` prints `── step N <verb>  [id]` headers and `log --step N|id` reads one step.
 - **Closed ranges and data.** `log --until NAME` cuts the read at the newest marker with that
   name (client-side; with no start it reads everything kept), and `log --json` returns the
-  entries in the shape `export --logs` uses, plus the steps they name.
+  entries in the shape history exports use, plus the steps they name.
 - **Markers on both.** `log mark NAME` calls `MarkLog` and stores the marker in the history
-  (after which step, device, cursor). `export --since/--until` cuts the steps by markers.
+  (after which step, device, cursor). History pagination uses stable step cursors or times.
 - **Two stores, merged when read.** The steps stay in the agent's SQLite store (they survive
-  release and need no daemon); the log lines stay in the daemon (16 MiB, redacted on read, gone
-  at detach). `export --logs` / `--calls` merge the device log and the event log into the export
-  while the session lives; after release only the steps remain.
-- **Verbs.** `record` and `logs` are removed. `history` lists/cleans saved histories; the old raw
-  event history is `export --calls`; `logs driver` → `log driver`; `logs device` → `log
-  evidence` (it also holds crashes, ANRs and activity/window state, so the device log does not
-  replace it); `logs hierarchy` is dropped (`capture` saves the dump, `snapshot` reads the screen).
+  release and need no daemon); redacted logs stay in the daemon's durable store under policy.
+  `history --logs` and `record export NAME --logs` read retained ranges after release/restart.
+  Durable RPC events share that store and protection; exports never depend on the live bounded
+  diagnostic ring. Last acknowledged log status is saved
+  with named step history so offline export preserves known incompleteness.
+- **Verbs.** `record start|stop|list|export|clean` manages named protection; `history` reads
+  paginated activity, not a storage catalog. Default output is readable stdout text; `--json`
+  changes presentation, `--logs` includes device logs. No standalone export or history cleanup.
+  `log driver` and `log evidence` remain explicit diagnostic artifacts; `media-record` is separate.
 - **No blocking.** An `unknown` or interrupted step used to refuse further recorded input until
-  the recording was stopped. With no stop command that would dead-end a session, so later steps
-  are recorded and the export says `complete: false`.
-- Format `tap-agent-recording/2` (step `id`, `markers`, optional `range`, `log`, `calls`); the
-  catalog migrates a version 1 store in place.
+  the recording was stopped. Later steps are now recorded and the export says `complete: false`;
+  recording controls do not reintroduce mutation replay or a successful-looking outcome.
+- Format `tap-history/1` (step intent, markers, durable events, optional logs and explicit
+  completeness/gaps); the catalog migrates old stores and retains stable global step cursors.
 
 ## Limits and what is deferred
 
-- 16 MiB per attachment is a fixed constant, not a setting.
+- The live 16 MiB hot buffer is fixed; durable retention is configured by `tap config logging-policy`.
+- Package-name filtering needs a live attachment; retained reads do not invent historical uid ownership.
+- Known storage failure stops durable capture; reattach after fixing space/policy. Existing evidence stays.
 - A follower more than 8 192 entries behind is ended and must read again from its cursor.
 - Host-side actions (app and device calls) are placed by the daemon's clock, not the device's.
 - logcat's own buffers can still drop lines under extreme load before the daemon reads them;

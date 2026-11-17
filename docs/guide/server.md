@@ -191,7 +191,8 @@ never silently replaced by success. The private files live under `history-logs/`
 directory; policy settings are in `logging-policy.properties`. Keep the directory private and
 inspect redacted evidence before sharing. Media and exported copies are separate artifacts.
 
-See [Device logs](logs.md#retention-and-protected-recordings) for SDK controls.
+See [Device logs](logs.md#retention-and-protected-recordings) for SDK controls and
+[Agent recordings](../agent/export.md#named-recordings) for intentional reproduction capture.
 
 ## Client and server versions
 

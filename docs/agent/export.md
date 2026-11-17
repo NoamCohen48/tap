@@ -1,200 +1,146 @@
-# Record steps and turn them into tests
+# History and recordings
 
-A session records its steps by itself: every action and explicit wait, from the first one until
-`release`. **`export`** writes that step history as JSON, **`log`** shows the device log with
-the steps in it, and **`media-record`** captures video/audio. None of these automatically
-replays input or generates test code.
+Tap retains redacted activity automatically. A **recording** protects a named range of that
+same activity; an **export** reads it. Neither starts a second capture or replays anything.
 
-## The step history
+## Read history
 
 ```sh
-tap-agent attach emulator-5554
-tap-agent app cold-launch com.example.app
-tap-agent log mark login                   # a marker, in the device log and the history
-tap-agent wait id=email
-tap-agent fill id=email person@example.com
-tap-agent fill id=password example-value --sensitive
-tap-agent tap id=login --settle
-tap-agent wait text=Welcome
-tap-agent log mark logged-in
-tap-agent export                           # JSON on stdout
-tap-agent export --since login --until logged-in --logs -o login.json
+tap-agent history
+tap-agent history --logs
+tap-agent history --json > history.json
+tap-agent history --from 120 --until 180 --limit 50
+tap-agent history --from 2026-11-17T09:00:00Z --until 2026-11-17T10:00:00Z --logs
+```
+
+The default is the latest 200 retained agent steps, printed oldest first as readable text.
+`--json` returns `tap-history/1`. `--logs` includes retained device logs; durable RPC events
+are included without an extra flag when available. Nothing writes an implicit export file.
+Use shell redirection if you want a file, and protect it appropriately.
+
+Bounds accept a positive step cursor or an ISO timestamp with a timezone. `--from` is
+inclusive; `--until` is exclusive. Cursors are stable across sessions and pruning, not page
+row numbers or transient snapshot refs. Follow the returned `next` cursor with `--from`, or
+`older` with `--until`. A page is a bounded view, not proof that omitted activity never happened.
+Only actions and explicit waits are high-level steps; internal polls and diagnostic snapshots
+are not promoted into invented user intent.
+
+## Protect a range
+
+Attach every device you want included before starting:
+
+```sh
+tap-agent record start checkout
+tap-agent tap text=Pay,pkg=com.shop
+tap-agent wait text=Receipt,pkg=com.shop
+tap-agent record stop checkout
 tap-agent release
-tap-agent export -o session.json           # still there after release
+tap-agent record export checkout
+tap-agent record export checkout --logs --json > checkout.json
 ```
 
-Nothing starts or stops the recording. The history begins with the session's first step and
-stops when the session is released (or its held connection ends); exporting does not stop it.
-Without a name, `export` chooses the session's live history, otherwise its most recent stopped
-one. `history` lists the saved histories with their name, state (`live`, or `stopped` and why:
-`released`, `connection ended`, `full`), step count, start and stop times (local, as the name),
-markers as `name@cursor` and session; an export's `state` is the same `live` or `stopped`,
-and `export NAME` exports an older one. A history whose session ended on the server without a
-release (an idle timeout, a daemon restart) is stopped as `connection ended` the next time
-`history` or `export` asks the server. The newest 20 stopped histories are kept; older ones are
-removed when a new history starts.
+`record start NAME` protects subsequent agent steps, durable RPC events and the attached
+devices' logs from ordinary rolling eviction. `record stop NAME` freezes the range; it does
+not release devices. Exporting a live range is allowed and does not stop it, but it is an
+incomplete snapshot. Stopping while calls are in flight leaves an explicit evidence gap;
+their later receipts cannot silently enter the stopped range.
 
-### Markers, the device log and the server's calls
-
-`log mark NAME` writes a marker into the [device log](../guide/logs.md) and into the history.
-`export --since NAME` exports the steps after the newest marker with that name and
-`--until NAME` the steps before it. `@CURSOR` (the cursor `log mark` printed) names exactly
-one marker, also when the name was used more than once; the export's `range` records the name
-and cursor of each marker it used.
-
-Each step has an `id`. Tap sends it with every device call the step makes, so the device log's
-action entries and the server's record of the calls name the step that caused them:
-
-- `export --logs` adds `log`: per device, the log for the same range (the app's logcat lines,
-  Tap's actions with their `step`, markers), with secrets redacted by the server. `--package`,
-  `--priority`, `--tag` and `--grep` narrow its logcat lines as they narrow `log`, and are
-  recorded per device as `log.<serial>.filters`; without them a phone's log is mostly other
-  processes. The Tap driver's own lines are left out unless `--driver-lines`.
-- `export --calls` adds `calls`: the server's record of every device call the session made
-  (`command`, `app`, `error` and `failure` are `tap.v1` messages in proto3 JSON; 64-bit integers
-  are strings), each with its `step`. This includes helper waits and polling a step did. The
-  server keeps the newest 2,000 calls; `dropped` counts the ones it no longer has.
-- `tap-agent log` prints a `── step N <verb>  [id]` line where a step's actions begin, and
-  `tap-agent log --step N` prints only that step's part of the log. `tap-agent log --json`
-  returns the log entries alone as data, with the same filters, start points and `--until`.
-
-The device log and the call record live in the server and end with the session, so `--logs` and
-`--calls` work only **before release**; `release --export FILE` writes `export --logs --calls`
-to a new file and then releases. The step history itself does not need the server. The calls are
-the server's `tap.v1` messages as they are, so their error codes keep the protocol's names
-(`ERR_NOT_FOUND`), while a step's `outcome.error` and the log say `NOT_FOUND`.
-
-### Storage
-
-`history clean NAME` deletes a stopped history; `history clean --all` deletes all stopped ones.
-A live session's history cannot be cleaned. Exported files are separate copies and are not
-deleted by clean. This is logical deletion, not a secure-erasure guarantee.
-
-Histories live in private SQLite storage under `$TAP_AGENT_DIR/records` (default
-`.tap/agent/records`): 0700 directory, 0600 files. CLI and MCP processes share them when
-they use the same agent directory. List, clean and a plain export need no daemon.
-Storage needs a local filesystem with SQLite locking and POSIX owner-only permissions; Windows
-has not been validated.
-
-A history belongs to one held connection, not just its reusable session name. When that
-connection is gone (released, timed out, a daemon restart), the next step of a session with the
-same name starts a new history and the old one is stopped with `stop_reason: "connection ended"`.
-
-## What a step means
-
-A recording captures **one high-level agent action or explicit wait per call**, including known
-failures. Examples: targeted typing remains one step with tap/focus/type options; scroll-until
-remains one bounded operation. SDK polls, ref resolution, snapshots, inspections, counts and
-automatic post-action settle are not extra steps. Mixed commands record only their action/wait
-form: clipboard writes, permission waits/choices, app visibility waits and so on. Session controls,
-`log`, media capture and history/export are not app steps.
-
-Every resolved target contains the actual, package-bound SDK selector used, never a transient
-`@eN` handle. Drag and scroll-until retain both targets. Each step identifies its actual device;
-a recording can contain steps on several attached devices.
-
-The format is **`tap-agent-recording/2`**. It is high-level intent, not a list of raw daemon calls
-and not Studio's separate `tap-recording/2` protobuf document. For example:
-
-```json
-{
-  "format": "tap-agent-recording/2",
-  "name": "agent-20261106-120000",
-  "session": "agent",
-  "connection_id": "opaque-held-connection-id",
-  "state": "stopped",
-  "started_at": "2026-11-06T12:00:00.000Z",
-  "stopped_at": "2026-11-06T12:00:02.000Z",
-  "stop_reason": "released",
-  "complete": true,
-  "markers": [{"name": "login", "after_seq": 0, "at": "2026-11-06T12:00:00.500Z", "serial": "emulator-5554", "cursor": 212}],
-  "steps": [{
-    "seq": 1,
-    "id": "5f0c2a9d41b7e6a3",
-    "action": "tap",
-    "kind": "action",
-    "serial": "emulator-5554",
-    "started_at": "2026-11-06T12:00:01.000Z",
-    "finished_at": "2026-11-06T12:00:01.100Z",
-    "duration_ms": 100,
-    "parameters": {
-      "target": {"selector_ref": "target"},
-      "device": null,
-      "long": false,
-      "settle": false,
-      "double": false,
-      "count": 1,
-      "interval": 0.1,
-      "duration": null,
-      "timeout": null
-    },
-    "targets": {"target": {"node": {"resource": {"name": "login"}}}},
-    "outcome": {"status": "succeeded", "error": null}
-  }]
-}
+```sh
+tap-agent record list
+tap-agent record list -L
+tap-agent record clean checkout
 ```
 
-Selectors use `tap.v1.Selector` proto3 JSON with proto field names. Other parameters describe the
-agent call (durations in seconds, including explicit defaults); `selector_ref` points into that
-step's targets. They are data for a person/agent converting a flow, not ready-to-execute kwargs.
+The short list prints names. `-L` adds state, timestamps and retained backing-segment disk
+usage. Segments can be shared by overlapping ranges: these bytes are not a promise of how
+much cleaning one recording will reclaim. `record clean NAME` explicitly removes a stopped
+recording's protection and local history; ordinary retention then applies. Active recordings
+must be stopped first. Protection does not override hard storage/free-space limits.
 
-A marker's `after_seq` is the last step before it (0: before the first) and `cursor` its entry
-in that device's log. An export cut with `--since` / `--until` also has `range`.
+New attachments cannot receive recorded input while a recording protects an older fixed
+device set. Stop it and start a new range with the desired set. `media-record` is separate
+video/audio capture, not history protection.
 
-**Complete means the history is stopped and has no unfinished outcomes—not that the flow passed.**
-A successful input acknowledges acceptance, not the app-specific result. Assert the effect in
-the test you create. A failure keeps its code in `outcome.error`: the driver's error code
-(`NOT_FOUND`, `AMBIGUOUS`, `INDETERMINATE`), `WAIT_TIMEOUT`, the server's failure reason
-(`SESSION_UNUSABLE`, `DEVICE_BUSY`) or, for a refusal of the agent's own, the error's class name
-(`AgentError`). Never the exception text or command output, which can hold typed text. Explicit settle quiet-period expiry is `wait_timeout`; after
-an accepted action it is `post_settle_timeout`.
+## What survives release and restart
 
-A failed action has one of three statuses, and only two of them are safe to act on:
+The daemon stores redacted RPC events alongside device logs, under the same retention and
+protection budget. Exports use those archives, not a newly attached device or the live
+connection's bounded `Events` ring. SDK scripts and agent sessions can therefore be inspected
+after release or daemon restart while their evidence remains retained.
 
-- `rejected_before_input`: the step was refused before it sent anything (a bad argument, a
-  device that isn't attached, a selector the agent could not resolve).
-- `failed`: the step sent one command and its error code proves the command changed nothing
-  (`NOT_FOUND`, `AMBIGUOUS`, `NOT_INTERACTABLE`, `STALE_BEFORE_INPUT`, a server refusal made
-  before the device was touched, ...).
-- `unknown`: anything else. The input may have happened: the error code allows it
-  (`INDETERMINATE`, `ACTION_REJECTED`, `AUT_CRASHED`, a setting that did not read back, ...), the
-  step sends several inputs (a tap before typing, a scroll loop, waking before unlocking), or a
-  read after the input failed. Never replay it blindly.
+Agent intent is stored privately in `$TAP_AGENT_DIR/records` (default
+`.tap/agent/records`); CLI and MCP processes must share it. If local intent is missing but the
+daemon acknowledged a named recording, it remains discoverable and exportable. Missing agent
+steps are reported, never reconstructed from RPCs. Offline local exports preserve the last
+acknowledged status and explicitly report unavailable daemon evidence. Named stop/clean needs
+the daemon so it can update protection.
 
-A step's `app_deaths` lists the watched app crashes and ANRs the step reported: serial,
-sequence, `kind` (`crash` or `anr`), package and process names, exception class and `expected`
-(the step ran with `--expect-death`). Like other app output, the exception message and stack
-trace are not stored.
+## Read the evidence honestly
 
-An intent is committed before input and selectors before their mutation. A killed process leaves
-`running`/`unknown` or `interrupted` evidence, with `complete: false`.
-Later steps are still recorded after it; the export says `complete: false`. If outcome storage
-fails after input, the original result is preserved with a warning not to repeat it. An export
-of a live history is a consistent snapshot and always non-final.
+Exports preserve original connection, attachment, step, cursor and clock identities, resolved
+selectors, actual input calls and known outcomes. Nested calls use proto3 JSON field names,
+enum names and string-encoded 64-bit values. Monotonic times only compare within their original
+clock ID. Device log observations are not assertions or a universal cross-device ordering.
 
-Limits are 10,000 steps, 1 MiB per step and 32 MiB per history (including metadata allowances).
-A full history is stopped (`stop_reason: "full"`) and the next step starts a new one; a single
-step over 1 MiB is refused before any input.
+High-level action outcomes distinguish:
 
-## Sensitive data
+- `rejected_before_input`: no mutation was transmitted.
+- `failed`: the known response proves the operation failed without the uncertain effect.
+- `unknown`: the input may have happened. Inspect the device; never replay it blindly.
 
-- `fill`/`type --sensitive` (MCP `sensitive: true`) replace text with `{"redacted": true}` before
-  persistence. Text-bearing selectors for these steps are also omitted explicitly; resource/class/
-  package selectors can remain. Clipboard writes are always redacted in step recordings.
-- Output and exception messages are not stored. Inferred snapshots and poll results are not steps.
-- Other intentionally supplied arguments are ordinary recording data. A sensitive flag does **not**
-  automatically make a later wait, selector, intent extra or unmarked text input secret. Avoid
-  putting secrets there. Keep recordings private; inspect them before publishing.
-- A converted test must obtain redacted values/selectors explicitly. No secret substitution,
-  automatic inferred wait or replay is hidden in export.
+Cancellation and unclassified transport failures remain indeterminate. A command returning
+success is not proof of the app's intended result. Explicit waits retain their actual condition;
+count waits do not claim an atomic collection snapshot, and helper polls are not new assertions.
+No export generates tests or invents checks.
 
-## Privacy of an export
+Check `complete`, `dropped`, `capture_error`, gaps and `log_capture`. `complete: true` means a
+finalized capture with known outcomes and no known missing requested evidence—not a passing
+test. It is false for live captures, known loss, unknown outcomes or missing expected intent.
 
-Typed text is verbatim unless marked sensitive; this is not automatic secret classification.
-The device log in `--logs` is redacted by the server (`log redact REGEX` adds patterns), the
-calls in `--calls` hold what the session sent. New `-o` files are owner-only and never overwrite
-existing outputs.
+## Retention and privacy
 
-The Python SDK still provides `connection.event_log()` directly
-([Held connections and screen snapshots](../sdk/python.md#held-connections-and-screen-snapshots)).
-[Tap Studio](../studio/index.md) records browser-selected flows using its own recording contract.
+Defaults are **one hour / 256 MiB rolling**, **1 GiB hard budget**, and **256 MiB free-space
+reserve**. The daemon's administrative policy is configured with `tap config logging-policy`;
+history/recording commands stay under `tap-agent`. Agent history also has bounded local
+partitions. Full/expired partitions, interrupted writes and failed capture remain explicit.
+
+Redaction happens before durable storage. Mark input secrets with `--sensitive`; clipboard
+writes are always withheld. Default patterns and registered literal/regex rules apply to
+known string fields. Sensitive inputs are masked even when short; unknown wire fields,
+binary payloads and unclassified failure output are not persisted as raw evidence. Rules are
+bound to the original attachment, including late completion after reattachment. New rules
+also scrub that attachment's retained activity.
+
+This is not automatic secret discovery. Do not put secrets in names, IDs, selectors, extras
+or unmarked text. Treat accessibility snapshots, artifacts, raw live diagnostic APIs and shell
+redirected exports as potentially sensitive.
+
+## SDK exports
+
+SDKs call the underlying API directly; they do not invoke `tap-agent`. Start/stop a named
+range through `client.log_recordings` (Python) or `client.logRecordings` (Kotlin). After your
+script releases its connection, a fresh client can export its original connection ID or
+named recording without attaching a device:
+
+```python
+from tap_e2e import TapClient
+
+with TapClient.create() as client:
+    evidence = client.log_recordings.export("checkout", logs=True)
+    print(evidence.text)
+    document = evidence.to_dict()
+    json_text = evidence.to_json()
+```
+
+```kotlin
+val evidence = client.logRecordings.export("checkout", logs = true)
+println(evidence.text)
+val jsonText = evidence.toJson()
+```
+
+Use `history(original_connection_id, logs=True)` in Python or
+`history(originalConnectionId, logs = true)` in Kotlin for ordinary retained activity without
+a protected name. SDK-only recordings have RPC events but no fabricated agent steps. Both
+SDKs return `tap-history/1`; choosing text or JSON changes presentation, not capture fidelity.
+Keep evidence/export failures separate from the script's original result, and never retry a
+mutation to repair a recording.

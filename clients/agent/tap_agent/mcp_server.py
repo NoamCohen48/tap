@@ -23,7 +23,14 @@ from mcp_types import (  # pyright: ignore[reportMissingImports]
 from pydantic import Field, StrictInt
 
 from . import render
-from .core import EXIT_APP_DIED, EXIT_NO_DAEMON, EXIT_USAGE, LOG_LIMIT, Agent, AgentError
+from .core import (
+    EXIT_APP_DIED,
+    EXIT_NO_DAEMON,
+    EXIT_USAGE,
+    LOG_LIMIT,
+    Agent,
+    AgentError,
+)
 from .targets import SELECTOR_KEYS
 
 INSTRUCTIONS = """\
@@ -47,9 +54,14 @@ Use expect_death only for deliberate reproductions on tools that accept it.
 The session lives in the daemon and ends after 15 idle minutes or on release.
 log reads the device log: the app's lines with your steps and Tap's actions between them; mark
 a name (log action=mark) before a flow and read since it afterwards. Every action and wait is
-recorded as a step without being asked; export returns that history (with logs/calls for the
-device log and the server's calls, which end with the session: export before release, or
-release with export set). history lists saved histories; media_record is video/audio.
+recorded as a step without being asked. record start/stop protects a named range of steps and
+device logs from rolling eviction. record action=export reads a named range; history reads
+paginated activity (stable step/time bounds, from inclusive/until exclusive). Both default to
+readable text; as_json returns tap-history/1, logs adds retained device logs. Durable RPC events
+survive release/restart; no live connection or standalone export tool is needed. record list
+prints names, long=true adds state/times/shared disk bytes; clean needs a stopped name.
+Missing intent, capture gaps and unknown outcomes stay explicit; never infer assertions or
+replay uncertain input. media_record is separate video/audio capture.
 Tools with events/expect_events parameters observe toast, window, content, click, scroll and
 text events, subscribing before input. Not every mutation supports them (scroll_until does not).
 expect_events=["toast:saved"] fails unless that event is observed within the budget, not proof
@@ -208,12 +220,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call("", report=False, step=lambda a: a.sessions())
 
     @mcp.tool(name="release")
-    async def release(
-        export: Annotated[str, Field(description="First save the step history with the device log and the server's calls to this new file; both end with the session.")] = "",
-        session: Session = "",
-    ) -> CallToolResult:
-        """End the session: detach its devices so others can use them."""
-        return await call(session, report=False, step=lambda a: a.release(export=export or None))
+    async def release(session: Session = "") -> CallToolResult:
+        """End the session and finalize protected capture; history remains available after release."""
+        return await call(session, report=False, step=lambda a: a.release())
 
     @mcp.tool(name="detach")
     async def detach(session: Session = "", device: Device = "") -> CallToolResult:
@@ -264,9 +273,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         last_action: Annotated[bool, Field(description="Read from the start of the newest Tap action.")] = False,
         step: Annotated[str, Field(description="Read only one step, by its number or id: from its first action to its last.")] = "",
         until: Annotated[str, Field(description="End the read at a marker (a name or @CURSOR) instead of now.")] = "",
-        packages: Annotated[list[str], Field(description="Only these apps' lines.")] = [],
+        packages: Annotated[list[str] | None, Field(description="Only these apps' lines.")] = None,
         priority: Annotated[Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None, Field(description="Lines at least this severe.")] = None,
-        tags: Annotated[list[str], Field(description="Only lines with one of these tags.")] = [],
+        tags: Annotated[list[str] | None, Field(description="Only lines with one of these tags.")] = None,
         grep: Annotated[str, Field(description="Only lines whose message matches this regular expression.")] = "",
         actions: Annotated[bool, Field(description="False leaves Tap's own actions out.")] = True,
         limit: Annotated[int, Field(ge=1, le=5000, description="At most this many entries: from a start the first ones (read on with `after` the last cursor), otherwise the newest.")] = LOG_LIMIT,
@@ -283,14 +292,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         `until` a second marker to close the range); narrow with `packages`, `priority`, `tags`,
         `grep`; `as_json` returns the entries as data to filter or compute on. A read from a start
         returns its first `limit` entries and says how many more follow; the last line gives the
-        cursor to pass as `after` for what comes next. Times are the host's clock. `mark` also marks the step history, so `export` can
-        cut at it. `driver` saves the Tap driver's own diagnostic log and `evidence` the device's
+        cursor to pass as `after` for what comes next. Times are the host's clock. `mark` also
+        retains a marker in step history. `driver` saves the Tap driver's own diagnostic log and `evidence` the device's
         failure evidence (log, crashes, ANRs, activity and window state) to a private file."""
         return await call(
             session,
             lambda a: a.log(
                 action, value or None, device or None, since=since or None, after=after, tail=tail,
-                last_action=last_action, packages=packages, priority=priority, tags=tags, grep=grep or None,
+                last_action=last_action, packages=packages or (), priority=priority, tags=tags or (), grep=grep or None,
                 actions=actions, limit=limit, step=step or None, until=until or None, as_json=as_json, out=path or None,
                 driver_lines=driver_lines,
             ),
@@ -407,8 +416,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         allow_reach_below: Annotated[bool, Field(description="With outside_panel: touch even the screen under a panel that lets touches through.")] = False,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -426,8 +435,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -445,8 +454,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -457,8 +466,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="clear")
     async def clear(target: Target, timeout_seconds: Budget = None, settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None, session: Session = "", device: Device = "") -> CallToolResult:
         """Clear a field's text."""
         return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.clear(target, device or None, settle=settle, timeout=timeout_seconds))
@@ -467,8 +476,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def scroll(
         target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One scroll gesture on a scrollable node; `down` reveals content below."""
@@ -478,8 +487,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def swipe(
         target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One swipe across a node, the finger moving in `direction`."""
@@ -489,8 +498,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def fling(
         target: Target, direction: Direction, timeout_seconds: Budget = None, settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None, session: Session = "", device: Device = ""
     ) -> CallToolResult:
         """One fast swipe on a scrollable node towards a content edge, as for scroll; the content
@@ -504,8 +513,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Budget = None,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -521,8 +530,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Budget = None,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -533,8 +542,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="submit")
     async def submit(target: Target, timeout_seconds: Budget = None, settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None, session: Session = "", device: Device = "") -> CallToolResult:
         """Run a text field's keyboard action (Search, Go, Send, Done, ... as the app set it up),
         exactly as the keyboard's action key does; press_key enter is not the same. The field must
@@ -556,8 +565,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Budget = None,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -575,8 +584,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Budget = None,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -593,8 +602,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ] = "state",
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -698,8 +707,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Annotated[float, Field(ge=0.001, le=120, description="Command/wait budget in seconds.")] = 10,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -721,8 +730,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -738,8 +747,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ],
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -756,8 +765,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ],
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -774,8 +783,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ] = "state",
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -796,8 +805,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ] = None,
         settle: Settle = False,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -947,15 +956,15 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
         timeout_seconds: Budget = None,
         extras: Annotated[
-            list[str],
+            list[str] | None,
             Field(
                 description="launch/cold-launch: intent extras as KEY=VALUE (a string) or KEY:TYPE=VALUE, "
                 "TYPE one of string, int, long, float, bool (e.g. item:long=42)."
             ),
-        ] = [],
+        ] = None,
         expect_death: ExpectDeath = False,
-        events: Events = [],
-        expect_events: ExpectEvents = [],
+        events: Events = Field(default_factory=list),
+        expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None,
         session: Session = "",
         device: Device = "",
@@ -967,46 +976,35 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release)."""
         return await call(
-            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras, timeout=timeout_seconds)
+            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras or (), timeout=timeout_seconds)
         )
+
+    @mcp.tool(name="record")
+    async def record(
+        action: Literal["start", "stop", "list", "export", "clean"],
+        name: Annotated[str, Field(description="Required for start/stop/export/clean; list takes no name.")] = "",
+        long: Annotated[bool, Field(description="List only: timestamps, capture state and shared segment disk usage (-L).")] = False,
+        logs: Annotated[bool, Field(description="Export only: include retained device logs.")] = False,
+        as_json: Annotated[bool, Field(description="Export only: JSON rather than readable text. Returns data, never writes a file.")] = False,
+        session: Session = "",
+    ) -> CallToolResult:
+        """List, start, stop, export or clean named protected ranges of automatic activity.
+        Export does not stop capture. History/export share text and JSON rendering, durable events
+        and optional logs. Capture gaps and unknown outcomes remain explicit. No replay."""
+        return await call(session, report=False, step=lambda a: a.record(action, name or None, long=long, logs=logs, as_json=as_json))
 
     @mcp.tool(name="history")
     async def history(
-        action: Literal["list", "clean"] = "list",
-        name: Annotated[str, Field(description="Clean: the history to delete.")] = "",
-        all_histories: Annotated[bool, Field(description="Clean only: delete every stopped history.")] = False,
+        start: Annotated[str, Field(description="Inclusive stable step cursor or ISO timestamp with timezone (--from); pages forward.")] = "",
+        until: Annotated[str, Field(description="Exclusive step cursor or ISO timestamp with timezone.")] = "",
+        limit: Annotated[int, Field(ge=1, le=5000, description="Maximum steps, latest 200 by default; next/older positions support pagination.")] = 200,
+        logs: Annotated[bool, Field(description="Include retained device logs for the selected page.")] = False,
+        as_json: Annotated[bool, Field(description="JSON instead of readable text. Returns data, never writes a file.")] = False,
         session: Session = "",
     ) -> CallToolResult:
-        """List or clean the saved step histories. Every session records its actions and waits
-        by itself, from its first one until `release`; nothing has to be started. A live
-        session's history cannot be cleaned. CLI/MCP share TAP_AGENT_DIR."""
-        return await call(session, report=False, step=lambda a: a.history(action, name or None, all_histories=all_histories))
-
-    @mcp.tool(name="export", annotations=WRITES_FILES)
-    async def export(
-        name: Annotated[str, Field(description="A history's name (`history`); omit for this session's live history, otherwise its latest stopped one.")] = "",
-        path: Annotated[str, Field(description="Write JSON to a new 0600 file instead of returning it.")] = "",
-        since: Annotated[str, Field(description="Only the steps after a marker (`log mark`): its name (the newest with it) or @CURSOR.")] = "",
-        until: Annotated[str, Field(description="Only the steps before a marker: its name or @CURSOR.")] = "",
-        logs: Annotated[bool, Field(description="Live session only: add each device's log for the same range.")] = False,
-        calls: Annotated[bool, Field(description="Live session only: add the server's record of every device call.")] = False,
-        packages: Annotated[list[str], Field(description="With logs: only these apps' lines.")] = [],
-        priority: Annotated[Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None, Field(description="With logs: lines at least this severe.")] = None,
-        tags: Annotated[list[str], Field(description="With logs: only lines with one of these tags.")] = [],
-        grep: Annotated[str, Field(description="With logs: only lines whose message matches this regular expression.")] = "",
-        driver_lines: Annotated[bool, Field(description="With logs: keep the Tap driver's own logcat lines.")] = False,
-        session: Session = "",
-    ) -> CallToolResult:
-        """Export tap-agent-recording/2: the session's actions and waits with their parameters,
-        resolved selectors, devices, outcomes and markers. Each step has an `id`; with `logs` the
-        device log's actions carry the same id as `step`, and with `calls` so does every server
-        call, so a step is matched to what it did. A stopped history exports without a daemon;
-        `logs` / `calls` need the live session. Unknown/unfinished outcomes remain explicit;
-        sensitive inputs are redacted. Not replay."""
-        return await call(session, report=False, step=lambda a: a.export(
-            name or None, path or None, since=since or None, until=until or None, logs=logs, calls=calls,
-            packages=packages, priority=priority, tags=tags, grep=grep or None, driver_lines=driver_lines,
-        ))
+        """Show retained activity, not a catalog of internal history partitions. Stable step cursors
+        survive rotation and cleanup. Known missing evidence and uncertain outcomes remain explicit."""
+        return await call(session, report=False, step=lambda a: a.history(start=start or None, until=until or None, limit=limit, logs=logs, as_json=as_json))
 
     return mcp
 

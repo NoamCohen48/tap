@@ -12,28 +12,28 @@ import contextlib
 import datetime
 import json
 import math
-import queue
 import os
 import pathlib
+import queue
 import time
 import uuid
-from dataclasses import replace
 from collections.abc import Callable, Iterator, Sequence
+from dataclasses import replace
 from typing import Literal, TypeVar
 
 from tap_e2e import (  # pyright: ignore[reportMissingImports]
     AppDeath,
     CommandError,
     ConnectionEntry,
-    Device,
     DatabaseBundle,
-    DisplayRotation,
+    Device,
     Direction,
+    DisplayRotation,
+    Element,
     ErrorCode,
     FailureReason,
-    LogPriority,
-    Element,
     LocationAccuracy,
+    LogPriority,
     Long,
     MatchMode,
     Notification,
@@ -52,11 +52,19 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
 from . import deaths as deaths_output
 from . import events as device_events
 from . import render
-from .toast_inbox import ToastInbox
 from .output import json_text, json_value, save_private
 from .records import RecordError, RecordStore
 from .step_capture import CURRENT, instrument, sending
-from .targets import Target, UsageError, format_duration, parse_condition, parse_int32, parse_key, parse_target
+from .targets import (
+    Target,
+    UsageError,
+    format_duration,
+    parse_condition,
+    parse_int32,
+    parse_key,
+    parse_target,
+)
+from .toast_inbox import ToastInbox
 
 DEFAULT_SESSION = "agent"
 DEFAULT_IDLE = 15 * 60.0
@@ -505,7 +513,7 @@ class Agent:
     def _selected_device(device: Device) -> Device:
         capture = CURRENT.get()
         if capture is not None:
-            capture.device(device.serial, device.owner_connection.id)
+            capture.device(device.serial, device.owner_connection.id, device.attached_device_id)
         return device
 
     @staticmethod
@@ -685,33 +693,10 @@ class Agent:
 
         return self._run(step)
 
-    def release(self, export: str | os.PathLike[str] | None = None) -> str:
-        """Ends the session: every device is detached and the name is free again. The device log
-        and the server's call record end with it; ``export`` first saves the step history with
-        both (``export --logs --calls``) to that new file."""
-
-        saved = None
-        if export is not None:
-            if self._run(self._held) is None:
-                return f"no session {self.session!r}"
-            saved = self.export(out=export, logs=True, calls=True)
-
-        def step() -> str:
-            entry = self._held()
-            if entry is None:
-                return f"no session {self.session!r}"
-            TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold).close()
-            serials = ", ".join(d.serial for d in entry.attached_devices)
-            text = f"released session {self.session!r}" + (f" (detached {serials})" if serials else "")
-            try:
-                active = self.records.active(self.session)
-                if active is not None and active["connection_id"] == entry.id:
-                    self.records.stop(active["name"], self.session, reason="released")
-            except RecordError:
-                text += "\nWARNING: session released but its step history could not be closed; its export will say it is incomplete"
-            return f"{saved}\n{text}" if saved else text
-
-        return self._run(step)
+    def release(self) -> str:
+        """Release the session and finalize protected capture, without exporting files."""
+        from .history import release
+        return release(self)
 
     def detach(self, device: str | None = None) -> str:
         """Detach only the selected device; retain the held session and its other devices."""
@@ -835,41 +820,15 @@ class Agent:
 
         return self._run(step)
 
-    def history(self, action: str = "list", name: str | None = None, *, all_histories: bool = False) -> str:
-        """The saved step histories: ``list`` them, or ``clean`` one by name (``all_histories``:
-        every stopped one). Local, no daemon.
+    def record(self, action: str, name: str | None = None, *, long: bool = False, logs: bool = False, as_json: bool = False) -> str:
+        """List, start, stop, export or clean a named protected recording."""
+        from .history import record
+        return record(self, action, name, long=long, logs=logs, as_json=as_json)
 
-        A session's history starts by itself with its first action or wait and stops when the
-        session is released; ``export`` writes one out. The store keeps the newest stopped
-        histories and removes older ones when a new history starts."""
-        if not isinstance(all_histories, bool) or (name is not None and not isinstance(name, str)):
-            raise AgentError("history needs a string name and boolean --all flag", EXIT_USAGE)
-        name = name or None
-        if action not in ("list", "clean"):
-            raise AgentError("history action must be list or clean", EXIT_USAGE)
-        if action == "list" and (name is not None or all_histories):
-            raise AgentError("history list takes no name and no --all", EXIT_USAGE)
-
-        def step() -> str:
-            if action == "clean":
-                count = self.records.clean(name, self.session, all_records=all_histories)
-                return f"cleaned {count} step histor{'ies' if count != 1 else 'y'}"
-            asked = self._end_ended_histories()
-            rows = self.records.list()
-            markers = self.records.marker_names()
-            lines = []
-            for row in rows:
-                times = f"started {render.local_time(row['started_at'])}"
-                if row["state"] == "recording":
-                    state = "live" if asked else "live? (the server could not be asked)"
-                else:
-                    state = f"stopped ({row['stop_reason'] or 'stopped'})"
-                    times += f", stopped {render.local_time(row['stopped_at'])}"
-                names = markers.get(row["id"], [])
-                marked = f"  markers {', '.join(names)}" if names else ""
-                lines.append(f"{row['name']}  {state}  {row['steps']} step{'' if row['steps'] == 1 else 's'}  {times}{marked}  session {row['session']!r}")
-            return "\n".join(lines) or "no step histories"
-        return self._run(step)
+    def history(self, *, start: str | int | None = None, until: str | int | None = None, limit: int = 200, logs: bool = False, as_json: bool = False) -> str:
+        """Print retained activity, latest 200 by default; paginate by stable cursor or ISO time."""
+        from .history import history
+        return history(self, start=start, until=until, limit=limit, logs=logs, as_json=as_json)
 
     def _end_ended_histories(self) -> bool:
         """Stops each live step history whose held connection the server no longer has (an idle
@@ -887,96 +846,6 @@ class Agent:
                 with contextlib.suppress(RecordError):
                     self.records.stop(row["name"], row["session"], reason="connection ended")
         return True
-
-    def export(
-        self,
-        name: str | None = None,
-        out: str | os.PathLike[str] | None = None,
-        *,
-        since: str | None = None,
-        until: str | None = None,
-        logs: bool = False,
-        calls: bool = False,
-        packages: Sequence[str] = (),
-        priority: str | None = None,
-        tags: Sequence[str] = (),
-        grep: str | None = None,
-        driver_lines: bool = False,
-    ) -> str:
-        """Export a session's step history as JSON, to stdout or a new 0600 file.
-
-        With no name: this session's live history, otherwise its latest stopped one; a stopped
-        history exports without a daemon. Each step has its parameters (typed ``sensitive`` text
-        is a placeholder), its outcome and its ``id``. ``since`` / ``until`` cut the export to
-        the steps between two markers (``log mark``), each its name (the newest marker with it)
-        or ``@CURSOR``.
-
-        Only for the live history, while its devices are attached: ``logs`` adds each device's
-        log for the same range (``log``: app lines, Tap's actions carrying the ``step`` id of
-        the step that caused them, markers; secrets redacted), narrowed like ``log`` by
-        ``packages``, ``priority``, ``tags`` and ``grep`` (logcat lines only; the Tap driver's own
-        lines are left out unless ``driver_lines``), and ``calls`` adds
-        the server's own record of every device call the session made (``calls``, each with its
-        ``step``). Unfinished outcomes are explicit in the JSON (``complete``)."""
-        since_point = _marker_point(since, "since") if since is not None else None
-        until_point = _marker_point(until, "until") if until is not None else None
-        filters = {"packages": list(packages), "min_priority": priority, "tags": list(tags), "grep": grep}
-        if (packages or priority or tags or grep or driver_lines) and not logs:
-            raise AgentError("--package, --priority, --tag, --grep and --driver-lines narrow the log of --logs", EXIT_USAGE)
-        if priority is not None:
-            try:
-                filters["min_priority"] = LogPriority.of(priority).name.lower()
-            except ValueError as error:
-                raise AgentError(str(error), EXIT_USAGE) from None
-
-        def step() -> str:
-            if name is None:
-                self._end_ended_histories()
-            document = self.records.export(name, self.session, since=since_point, until=until_point)
-            if logs or calls:
-                entry = self._held()
-                if document["state"] != "live" or entry is None or entry.id != document["connection_id"]:
-                    why = "it was released" if document.get("stop_reason") == "released" else f"its session ended ({document.get('stop_reason') or 'released'})"
-                    raise AgentError(f"the device log and the server's call record of this history are gone: {why}; export it without --logs/--calls", EXIT_USAGE)
-                connection = TapConnection(self.client, entry.id, name=entry.name, hold=entry.hold)
-                if calls:
-                    events = connection.event_log(0)
-                    wanted = {item["id"] for item in document["steps"]}
-                    cut = since is not None or until is not None
-                    document["calls"] = {"dropped": events.dropped, "events": [event.to_dict() for event in events.events if not cut or event.step in wanted]}
-                if logs:
-                    document["log"] = {device.serial: self._exported_log(device, since_point, until_point, filters, driver_lines) for device in connection.attached_devices()}
-            text = json_text(document)
-            if out is None:
-                return text
-            path = save_private(pathlib.Path(out), (text + "\n").encode("utf-8"))
-            return f"exported step history {document['name']!r} ({len(document['steps'])} steps) to {path}"
-        return self._run(step)
-
-    @staticmethod
-    def _exported_log(device: Device, since: str | int | None, until: str | int | None, filters: dict, driver_lines: bool = False) -> dict:
-        """One device's log for an export: from the ``since`` marker (else everything kept) up
-        to the ``until`` marker, each a name or a cursor, narrowed by ``filters`` (``log``'s).
-        A marker this device's log does not hold leaves that side open."""
-        begin = since - 1 if isinstance(since, int) else since
-        try:
-            entries = device.logs.read(since=begin, **filters)
-        except ServerError as error:
-            if error.reason is FailureReason.DAEMON_PRECONDITION:
-                return {"unavailable": "log capture is off for this device"}
-            if error.reason is not FailureReason.UNKNOWN_LOG_MARKER:
-                raise
-            entries = device.logs.read(**filters)
-        kept = list(entries)
-        if isinstance(until, int):
-            kept = [entry for entry in kept if entry.cursor <= until]
-        elif until is not None:
-            end = max((index for index, entry in enumerate(kept) if entry.marker == until), default=None)
-            kept = kept if end is None else kept[: end + 1]
-        if not driver_lines:
-            kept = [entry for entry in kept if not _driver_line(entry)]
-        narrowed = {key: value for key, value in filters.items() if value} | ({"driver_lines": True} if driver_lines else {})
-        return {"dropped": entries.dropped, **({"filters": narrowed} if narrowed else {}), "entries": [Agent._log_entry(entry) for entry in kept]}
 
     @staticmethod
     def _log_entry(entry) -> dict:
@@ -1156,11 +1025,14 @@ class Agent:
                      *([] if actions else ["--no-actions"]), *(["--driver-lines"] if driver_lines else [])]
             following = _read_on(shown[-1].cursor, until_point, kept, flags) if more and shown else None
             if not as_json:
-                return render.log(shown, steps, dropped=entries.dropped, omitted=omitted, more=more, read_on=following)
+                warning = f"WARNING: incomplete durable log capture: {entries.capture_error}\n" if entries.capture_error else ""
+                return warning + render.log(shown, steps, dropped=entries.dropped, omitted=omitted, more=more, read_on=following)
             named = {entry.action.step for entry in shown if entry.action is not None and entry.action.step in steps}
             skew = render.clock_skew(shown)
             return json_text({
                 "dropped": entries.dropped,
+                "capture_error": entries.capture_error,
+                "clock_id": entries.clock_id,
                 "omitted": omitted,
                 "more": more,
                 "device_clock_offset_s": None if skew is None else round(skew, 3),
@@ -2083,8 +1955,9 @@ class Agent:
                     app.background()
                 return f"sent {name} to the background (pressed home)"
             if action == "open-link":
+                assert argument is not None  # Validated before admitting the step.
                 with sending():
-                    activity = app.open_link(argument, any_app=any_app, timeout=timeout)  # type: ignore[arg-type]
+                    activity = app.open_link(argument, any_app=any_app, timeout=timeout)
                 return f"opened {argument}" + (f" in {activity}" if activity else "")
             if action == "stop":
                 with sending():
@@ -2095,23 +1968,27 @@ class Agent:
                     app.clear_data(timeout)
                 return f"cleared data of {name}"
             if action == "install":
+                assert argument is not None
                 with sending():
-                    app.install(argument, timeout)  # type: ignore[arg-type]
+                    app.install(argument, timeout)
                 return f"installed {argument}"
             if action == "uninstall":
                 with sending():
                     app.uninstall()
                 return f"uninstalled {name}"
             if action == "grant":
+                assert argument is not None
                 with sending():
-                    app.grant_permission(argument)  # type: ignore[arg-type]
+                    app.grant_permission(argument)
                 return f"granted {argument} to {name}"
             if action == "revoke":
+                assert argument is not None
                 with sending():
-                    app.revoke_permission(argument)  # type: ignore[arg-type]
+                    app.revoke_permission(argument)
                 return f"revoked {argument} from {name} (Android stops its process)"
             if action == "granted":
-                granted = app.is_permission_granted(argument)  # type: ignore[arg-type]
+                assert argument is not None
+                granted = app.is_permission_granted(argument)
                 return f"{argument} is {'granted' if granted else 'not granted'} to {name}"
             if action == "locale":
                 if argument is not None:

@@ -9,7 +9,6 @@ from collections.abc import Sequence
 from importlib import resources
 
 from . import render
-from .events import KIND_NAMES as EVENT_KINDS
 from .core import (
     ACCURACIES,
     APP_ACTIONS,
@@ -32,9 +31,10 @@ from .core import (
     AppDiedStep,
     command_timeout,
 )
+from .events import KIND_NAMES as EVENT_KINDS
 from .targets import SELECTOR_KEYS, UsageError, parse_duration
 
-DESCRIPTION = """\
+DESCRIPTION = f"""\
 Drive an Android device through a running Tap daemon (`tap start`), one step per call.
 
   tap-agent devices
@@ -49,9 +49,9 @@ Drive an Android device through a running Tap daemon (`tap start`), one step per
   tap-agent release
 
 A target is a ref from `snapshot` (@e3) or key=value terms joined by commas, all of which must
-match: {keys}. Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon, 4 the step ran
+match: {SELECTOR_KEYS}. Exit codes: 0 ok, 1 the step failed, 2 usage, 3 no daemon, 4 the step ran
 but a watched app crashed or stopped responding.
-""".format(keys=SELECTOR_KEYS)
+"""
 
 TARGET_HELP = "a ref (@e3), comma-joined selector terms, or a JSON selector (all/any, relations, flags, text modes)"
 
@@ -124,8 +124,7 @@ def parser() -> argparse.ArgumentParser:
     )
 
     verb("sessions", "list sessions with their devices", common)
-    p = verb("release", "end the session and detach its devices", common)
-    p.add_argument("--export", metavar="FILE", help="first save the step history with the device log and the server's calls (`export --logs --calls`): both end with the session")
+    verb("release", "end the session and detach its devices", common)
     verb("devices", "list devices, properties and who holds them", common)
     p = verb("unquarantine", "put a checked quarantined device back in service (retries its cleanup first)", common)
     p.add_argument("serial")
@@ -390,23 +389,19 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("local", nargs="?", help="read/write: local file; export-db/import-db: local bundle directory")
     p.add_argument("--overwrite", action="store_true", help="write/import-db: explicitly replace existing remote data")
 
-    p = verb("history", "list or clean the saved step histories (every session records its steps by itself)", common)
-    p.add_argument("action", choices=("list", "clean"), nargs="?", default="list")
-    p.add_argument("name", nargs="?", help="clean: the history to delete")
-    p.add_argument("--all", dest="all_histories", action="store_true", help="clean only: delete every stopped history")
+    p = verb("record", "protect a named range of history and device logs from rolling eviction", common)
+    p.add_argument("action", choices=("start", "stop", "list", "export", "clean"))
+    p.add_argument("name", nargs="?", help="required for start/stop/export/clean; list takes no name")
+    p.add_argument("-L", dest="long", action="store_true", help="list only: include capture state, timestamps and shared segment disk usage")
+    p.add_argument("--logs", action="store_true", help="export only: include retained device logs")
+    p.add_argument("--json", dest="as_json", action="store_true", help="export only: JSON instead of readable text; stdout, never a file")
 
-    p = verb("export", "export a session's step history as JSON, even after release", common)
-    p.add_argument("name", nargs="?", help="default: this session's live history, otherwise its latest stopped one")
-    p.add_argument("-o", "--out", help="write to a new 0600 file instead of stdout")
-    p.add_argument("--since", metavar="MARKER", help="only the steps after a marker (`log mark`): its name (the newest with it) or @CURSOR")
-    p.add_argument("--until", metavar="MARKER", help="only the steps before a marker: its name or @CURSOR")
-    p.add_argument("--logs", action="store_true", help="live session only: add each device's log for the same range")
-    p.add_argument("--package", dest="packages", action="append", default=[], metavar="PACKAGE", help="with --logs: only this app's lines (repeatable)")
-    p.add_argument("--priority", help="with --logs: lines at least this severe: verbose, debug, info, warn, error, fatal")
-    p.add_argument("--tag", dest="tags", action="append", default=[], metavar="TAG", help="with --logs: only lines with this tag (repeatable)")
-    p.add_argument("--grep", metavar="REGEX", help="with --logs: only lines whose message matches")
-    p.add_argument("--driver-lines", action="store_true", help="with --logs: keep the Tap driver's own logcat lines")
-    p.add_argument("--calls", action="store_true", help="live session only: add the server's record of every device call")
+    p = verb("history", "show retained activity, not a catalog; latest 200 steps by default", common)
+    p.add_argument("--from", dest="start", metavar="STEP|TIME", help="inclusive stable step cursor or ISO timestamp with timezone; page forward")
+    p.add_argument("--until", metavar="STEP|TIME", help="exclusive stable step cursor or ISO timestamp with timezone")
+    p.add_argument("--limit", type=int, default=200, metavar="N", help="maximum steps per page, 1..5000 (default: 200)")
+    p.add_argument("--logs", action="store_true", help="include retained device logs for this page's time range")
+    p.add_argument("--json", dest="as_json", action="store_true", help="JSON instead of readable text; stdout, never a file")
 
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
     verb("skill", "print the agent skill (SKILL.md)")
@@ -415,7 +410,7 @@ def parser() -> argparse.ArgumentParser:
 
 # Verbs after which no app deaths are reported: they need no device or session (record, export
 # and the inventory work without one), end the session, or list deaths themselves.
-UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "unquarantine", "server-info", "history", "export", "deaths"})
+UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "unquarantine", "server-info", "record", "history", "deaths"})
 
 
 def run(args: argparse.Namespace, agent: Agent) -> str:
@@ -431,7 +426,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "sessions":
         return agent.sessions()
     if v == "release":
-        return agent.release(export=args.export)
+        return agent.release()
     if v == "devices":
         return agent.devices()
     if v == "unquarantine":
@@ -541,13 +536,10 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return str(agent.screenshot(device, args.out))
     if v == "capture":
         return agent.capture(device, args.out)
+    if v == "record":
+        return agent.record(args.action, args.name, long=args.long, logs=args.logs, as_json=args.as_json)
     if v == "history":
-        return agent.history(args.action, args.name, all_histories=args.all_histories)
-    if v == "export":
-        return agent.export(
-            args.name, args.out, since=args.since, until=args.until, logs=args.logs, calls=args.calls,
-            packages=args.packages, priority=args.priority, tags=args.tags, grep=args.grep, driver_lines=args.driver_lines,
-        )
+        return agent.history(start=args.start, until=args.until, limit=args.limit, logs=args.logs, as_json=args.as_json)
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
