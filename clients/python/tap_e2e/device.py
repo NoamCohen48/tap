@@ -5,11 +5,13 @@ from __future__ import annotations
 
 import concurrent.futures
 import hashlib
+import logging
 import math
 import os
 import tempfile
 import time
 from collections.abc import Callable, Iterator, Sequence
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, TypeVar, overload
 
@@ -18,7 +20,7 @@ from . import _deaths, _proto
 from ._deaths import AllowedDeaths, DeathGuard, ExpectedDeath
 from .app import App
 from .capabilities import DeviceCapabilities, _from_proto as _capabilities_from_proto
-from .errors import CommandError, TapError, WaitTimeoutError
+from .errors import CommandError, SettingsRestorationError, TapError, WaitTimeoutError
 from .models import (
     AppDeath,
     AppDeathKind,
@@ -353,6 +355,98 @@ class Device:
         """The device clipboard as text; ``""`` when it is empty or holds nothing that reads as
         text."""
         return self._execute_or_raise(timeout, get_clipboard=pb.GetClipboard()).text
+
+    @contextmanager
+    def temporary_settings(
+        self,
+        *,
+        dark_mode: bool | None = None,
+        font_scale: float | None = None,
+        animations: bool | None = None,
+    ) -> Iterator[None]:
+        """Override settings for a ``with`` block, restoring them without detaching.
+
+        Pass at least one setting; ``None`` leaves it unchanged. Values are saved on entry,
+        so nested blocks restore their parent's values. Setup failures and every block exit
+        (including exceptions) restore all attempted settings in reverse order. Attachment
+        cleanup remains the safety net if restoration cannot reach the device.
+
+        Restoration failures raise :class:`SettingsRestorationError` when the block succeeds.
+        Otherwise the original exception is re-raised with ``settings_restoration_error``
+        attached and a traceback note (Python 3.11+) or error log (Python 3.10).
+
+        Restores the values exposed by :meth:`info`, not raw Android settings: automatic
+        theme mode becomes explicit light/dark, and animations become all 0 or all 1 rather
+        than their individual previous scales. Detach still restores the original raw state.
+        Concurrent changes to these settings on the same device are unsupported. Android
+        configuration changes may recreate activities; wait for the UI as needed.
+
+        Example::
+
+            with device.temporary_settings(dark_mode=True, font_scale=1.3):
+                app.wait(text("Large text")).visible()
+        """
+        if dark_mode is None and font_scale is None and animations is None:
+            raise ValueError("set at least one of dark_mode, font_scale or animations")
+        if dark_mode is not None and not isinstance(dark_mode, bool):
+            raise TypeError("dark_mode must be a bool")
+        if animations is not None and not isinstance(animations, bool):
+            raise TypeError("animations must be a bool")
+        if font_scale is not None and not 0.5 <= font_scale <= 2.0:
+            raise ValueError("font_scale must be 0.5 to 2.0")
+
+        before = self.info()
+        changes: list[tuple[str, Callable[[], None], Callable[[], None]]] = []
+        if animations is not None:
+            changes.append((
+                "animations",
+                lambda: self.set_animations(animations),
+                lambda: self.set_animations(before.animations_enabled),
+            ))
+        if dark_mode is not None:
+            changes.append((
+                "dark_mode",
+                lambda: self.set_dark_mode(dark_mode),
+                lambda: self.set_dark_mode(before.dark_mode),
+            ))
+        if font_scale is not None:
+            changes.append((
+                "font_scale",
+                lambda: self.set_font_scale(font_scale),
+                lambda: self.set_font_scale(before.font_scale),
+            ))
+
+        attempted: list[tuple[str, Callable[[], None]]] = []
+        primary: BaseException | None = None
+        try:
+            for name, apply, restore in changes:
+                # A setter can mutate the device before failing its read-back or transport.
+                attempted.append((name, restore))
+                apply()
+            yield
+        except BaseException as error:
+            primary = error
+            raise
+        finally:
+            failures: list[tuple[str, BaseException]] = []
+            for name, restore in reversed(attempted):
+                try:
+                    restore()
+                except BaseException as error:
+                    failures.append((name, error))
+            if failures:
+                restoration = SettingsRestorationError(failures)
+                if primary is None:
+                    raise restoration from failures[0][1]
+                # Retain failures from inner scopes when the same exception crosses nesting.
+                previous = getattr(primary, "settings_restoration_error", None)
+                if isinstance(previous, SettingsRestorationError):
+                    restoration = SettingsRestorationError((*previous.failures, *failures))
+                primary.settings_restoration_error = restoration
+                if hasattr(primary, "add_note"):
+                    primary.add_note(str(SettingsRestorationError(failures)))
+                else:
+                    logging.getLogger(__name__).error("%s", restoration)
 
     def set_animations(self, enabled: bool) -> None:
         """Turn the window, transition and animator animations off (all three scales 0) or on

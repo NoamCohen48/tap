@@ -38,6 +38,38 @@ device.set_location(48.8584, 2.2945, accuracy_m=5)
 app.grant_permission("android.permission.ACCESS_FINE_LOCATION")
 ```
 
+## Temporary settings (Python)
+
+Use `device.temporary_settings(...)` to change dark mode, font scale or animations for a
+`with` block, then restore the previous values without detaching:
+
+```python
+with device.temporary_settings(dark_mode=True, font_scale=1.3):
+    app.wait(text("Large text")).visible()
+    with device.temporary_settings(font_scale=1.6):
+        check_extra_large_text()
+    # Font scale is 1.3 again.
+# Previous theme and font scale restored; the device is still attached.
+```
+
+Pass at least one of `dark_mode`, `font_scale` and `animations`; omitted values and `None`
+leave that setting unchanged. Each block saves values on entry, so nesting restores the
+parent block's values. Changes to other settings are not restored by the block. Do not
+change the same device settings concurrently.
+
+Restoration runs even if setup partially fails or the block raises. Every attempted setting
+is restored in reverse order. If cleanup alone fails, it raises `SettingsRestorationError`;
+its `failures` contains `(setting_name, exception)` pairs. If setup or the block already
+failed, that exception remains primary, with a `settings_restoration_error` attribute and a
+traceback note on Python 3.11+ (an error log on Python 3.10). Attachment cleanup remains the
+safety net if the device cannot be reached.
+
+This helper restores the values exposed by `info()`, not the exact raw Android settings:
+automatic theme mode becomes explicit light/dark, and animations are restored to all on
+(scale 1) or all off (scale 0), not individual previous scales. Detach still restores the
+original raw settings. Configuration changes can recreate activities on both entry and exit;
+wait for the UI where needed.
+
 ## Waiting for the change to land
 
 Android applies dark mode, font scale, density and the languages as configuration changes: a

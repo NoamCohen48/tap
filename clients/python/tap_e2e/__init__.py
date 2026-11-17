@@ -37,6 +37,7 @@ from .errors import (
     DeviceBusyError,
     DeviceQuarantinedError,
     ServerError,
+    SettingsRestorationError,
     TapError,
     WaitTimeoutError,
 )
@@ -230,6 +231,7 @@ __all__ = [
     "SelectorKind",
     "ServerDefaults",
     "ServerError",
+    "SettingsRestorationError",
     "ServerInfo",
     "StabilitySignal",
     "StandardAction",

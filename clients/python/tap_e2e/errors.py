@@ -17,6 +17,23 @@ class TapError(Exception):
     """Base class for everything this package raises deliberately."""
 
 
+class SettingsRestorationError(TapError):
+    """One or more temporary settings could not be restored.
+
+    ``failures`` contains ``(setting_name, exception)`` pairs in cleanup order. When the
+    block or setup already failed, that original exception remains primary and this error
+    is attached as ``settings_restoration_error`` (with a traceback note on Python 3.11+,
+    or an error log on Python 3.10).
+    """
+
+    def __init__(self, failures: Sequence[tuple[str, BaseException]]):
+        self.failures = tuple(failures)
+        super().__init__(
+            "Could not restore temporary settings: "
+            + "; ".join(f"{name}: {type(error).__name__}: {error}" for name, error in self.failures)
+        )
+
+
 class ServerError(TapError):
     """The host server rejected or failed a call (unknown connection or device, bad argument,
     driver start failure, ...). ``code`` is the gRPC status code name; ``reason`` is the server's
