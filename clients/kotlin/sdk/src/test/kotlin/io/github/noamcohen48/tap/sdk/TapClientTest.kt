@@ -15,7 +15,6 @@ import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.Done
-import io.github.noamcohen48.tap.api.v1.OutsideTouch
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
@@ -30,6 +29,7 @@ import io.github.noamcohen48.tap.api.v1.NarrowingPart
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
 import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.SystemPanel
@@ -168,6 +168,146 @@ class TapClientTest {
             } finally {
                 connection.close()
             }
+        }
+
+    @Test
+    fun `protected log APIs retain original identities and capture metadata after connection close`() =
+        runBlocking {
+            val client = client()
+            val connection = client.connect("protected-logs")
+            try {
+                fakeLogs.recording =
+                    io.github.noamcohen48.tap.api.v1.LogRecording
+                        .newBuilder()
+                        .setName(
+                            "saved",
+                        ).setClientConnectionId(connection.id)
+                        .setStartedAtMs(1)
+                        .addRanges(
+                            io.github.noamcohen48.tap.api.v1.LogRecordingRange
+                                .newBuilder()
+                                .setAttachedDeviceId(
+                                    "old-device",
+                                ).setSerial("serial")
+                                .setAfterCursor(7),
+                        ).build()
+                val started = client.logRecordings.start(connection, "saved")
+                assertNull(started.stoppedAtMs)
+                assertNull(started.ranges.single().throughCursor)
+                assertEquals(connection.id, fakeLogs.starts.single().clientConnectionId)
+                connection.close()
+                fakeLogs.entries +=
+                    io.github.noamcohen48.tap.api.v1.LogEntry
+                        .newBuilder()
+                        .setCursor(8)
+                        .setMarker("inside")
+                        .build()
+                fakeLogs.captureError = "storage limit"
+                fakeLogs.clockId = "original-clock"
+                fakeLogs.dropped = 2
+                fakeLogs.finalDropped = 3
+                val stopped = client.logRecordings.stop("saved")
+                assertFalse(stopped.complete)
+                assertEquals(8, stopped.ranges.single().throughCursor)
+                val retained = client.logRecordings.read("saved").getValue("serial")
+                assertEquals("inside", retained.single().marker)
+                assertEquals(5, retained.dropped)
+                assertEquals("storage limit", retained.captureError)
+                assertEquals("original-clock", retained.clockId)
+                assertEquals("saved", fakeLogs.reads.last().recording)
+                assertEquals("old-device", fakeLogs.reads.last().attachedDeviceId)
+                fakeLogs.archives =
+                    listOf(
+                        io.github.noamcohen48.tap.api.v1.RetainedLog
+                            .newBuilder()
+                            .setClientConnectionId(
+                                connection.id,
+                            ).setAttachedDeviceId("old-device")
+                            .setSerial("serial")
+                            .setClockId("original-clock")
+                            .build(),
+                    )
+                val archive = client.logRecordings.archives(connection.id).single()
+                assertEquals("original-clock", archive.clockId)
+                assertEquals(5, client.logRecordings.readArchive(archive).dropped)
+                client.logRecordings.delete("saved")
+                assertEquals(listOf("saved"), fakeLogs.deletes)
+                assertTrue(client.logRecordings.list().isEmpty())
+            } finally {
+                connection.close()
+            }
+        }
+
+    @Test
+    fun `SDK history export preserves durable events uncertainty and exact clocks without connecting`() =
+        runBlocking {
+            val client = client()
+            fakeLogs.archives =
+                listOf(
+                    io.github.noamcohen48.tap.api.v1.RetainedLog
+                        .newBuilder()
+                        .setClientConnectionId("original")
+                        .setAttachedDeviceId("original-events")
+                        .setEvents(true)
+                        .setClosed(true)
+                        .setClockId("old-clock")
+                        .build(),
+                )
+            fakeLogs.clockId = "old-clock"
+            val event =
+                io.github.noamcohen48.tap.api.v1.LoggedEvent
+                    .newBuilder()
+                    .setSeq(1)
+                    .setAtEpochMs(1_000)
+                    .setSerial("serial")
+                    .setClockId("old-clock")
+                    .setAttachedDeviceId("original-attachment")
+                    .setStartedMonotonicNs(9_007_199_254_740_993L)
+                    .setFinishedMonotonicNs(9_007_199_254_740_994L)
+                    .setDevice(
+                        io.github.noamcohen48.tap.api.v1.DeviceCall
+                            .newBuilder()
+                            .setOperation("set_dark_mode")
+                            .setEnabled(true),
+                    ).build()
+            fakeLogs.entries +=
+                LogEntryProto
+                    .newBuilder()
+                    .setCursor(1)
+                    .setHostTimeMs(1_000)
+                    .setEvent(event)
+                    .build()
+            val saved = client.logRecordings.history("original")
+            assertTrue(saved.complete)
+            assertEquals(event, saved.events.single())
+            assertTrue(saved.toJson().contains("\"started_monotonic_ns\":\"9007199254740993\""))
+            assertTrue(saved.toJson().contains("\"at\":\"1970-01-01T00:00:01.000Z\""))
+            assertTrue(saved.toJson().contains("\"seq\":1"))
+            assertTrue(saved.toJson().contains("\"ok\":true"))
+            assertTrue(saved.toJson().contains("\"cursor\":\"original-events:1\""))
+            assertTrue(saved.toJson().contains("\"attached_device_id\":\"original-attachment\""))
+            assertTrue(saved.text.contains("set_dark_mode"))
+            assertEquals("original", fakeLogs.reads.last().clientConnectionId)
+            assertTrue(client.logRecordings.archives("original").isEmpty())
+            fakeLogs.entries[0] =
+                fakeLogs.entries[0]
+                    .toBuilder()
+                    .setEvent(event.toBuilder().setIndeterminate(true))
+                    .build()
+            val unknown = client.logRecordings.history("original")
+            assertFalse(unknown.complete)
+            assertTrue(unknown.text.contains("unknown"))
+            fakeLogs.captureError = "storage full"
+            assertTrue(
+                client.logRecordings
+                    .history("original")
+                    .text
+                    .contains("storage full"),
+            )
+            fakeLogs.archives = emptyList()
+            val missing = client.logRecordings.history("missing")
+            assertFalse(missing.complete)
+            assertTrue(missing.toJson().contains("events_unavailable"))
         }
 
     private suspend fun withPrivateApp(block: suspend (App) -> Unit) {
@@ -1746,7 +1886,15 @@ class TapClientTest {
     fun `tapOutsidePanel sends one command naming the panel's node`() =
         runBlocking {
             fakeDevices.executeResponder = {
-                CommandResult.newBuilder().setOutsideTouch(OutsideTouch.newBuilder().setX(540).setY(1519).setPanel("window [28,943][1052,1456], below")).build()
+                CommandResult
+                    .newBuilder()
+                    .setOutsideTouch(
+                        OutsideTouch
+                            .newBuilder()
+                            .setX(540)
+                            .setY(1519)
+                            .setPanel("window [28,943][1052,1456], below"),
+                    ).build()
             }
             val connection = client().connect("tap-outside")
             try {
@@ -1755,7 +1903,11 @@ class TapClientTest {
                     try {
                         device.screen.element(text("Dialog title")).tapOutsidePanel()
                         device.screen.element(res("dropdown")).tapOutsidePanel(timeout = 3.seconds, allowReachBelow = true)
-                        val commands = fakeDevices.executeRequests.map { it.command }.filter { it.opCase == Command.OpCase.TAP_OUTSIDE_PANEL }
+                        val commands =
+                            fakeDevices.executeRequests
+                                .map {
+                                    it.command
+                                }.filter { it.opCase == Command.OpCase.TAP_OUTSIDE_PANEL }
                         assertEquals(2, commands.size)
                         assertEquals(text("Dialog title").proto, commands[0].tapOutsidePanel.selector)
                         assertFalse(commands[0].tapOutsidePanel.allowReachBelow)
@@ -3215,7 +3367,13 @@ class TapClientTest {
                         fakeDevices.deaths += death(5, handled = true)
                     }
                     // App.guard sees only its own app.
-                    assertEquals(7, device.app("com.example.other").guard { fakeDevices.deaths += death(6); 7 })
+                    assertEquals(
+                        7,
+                        device.app("com.example.other").guard {
+                            fakeDevices.deaths += death(6)
+                            7
+                        },
+                    )
                     device.detach()
                 }
             } finally {
@@ -3231,7 +3389,13 @@ class TapClientTest {
                 tapScope {
                     val device = connection.attachDevice("emulator-5554")
                     val app = device.app("com.example.shop")
-                    assertEquals("done", app.allowDeaths { fakeDevices.deaths += death(1); "done" })
+                    assertEquals(
+                        "done",
+                        app.allowDeaths {
+                            fakeDevices.deaths += death(1)
+                            "done"
+                        },
+                    )
                     assertEquals(listOf(1L), fakeDevices.acknowledged)
                     // Exceptions come through as they are, and the deaths are still taken.
                     fakeDevices.executeResponder = { crashedResult(death(2, handled = true).also { fakeDevices.deaths += it }) }
@@ -3245,7 +3409,12 @@ class TapClientTest {
                     fakeDevices.executeResponder = null
 
                     // A death logged a little after the block still counts; only it is taken.
-                    val later = launch { delay(300); fakeDevices.deaths += death(5); fakeDevices.deaths += death(6) }
+                    val later =
+                        launch {
+                            delay(300)
+                            fakeDevices.deaths += death(5)
+                            fakeDevices.deaths += death(6)
+                        }
                     assertEquals(5L, app.expectDeath(timeout = 5.seconds) { }.sequence)
                     later.join()
                     assertEquals(listOf(6L), device.takeUnhandledDeaths(4).map { it.sequence }, "a second crash still fails the test")
@@ -3253,10 +3422,13 @@ class TapClientTest {
 
                     // awaitAppDeaths waits for the next death of the app, past another app's, and changes nothing.
                     val mark = device.deathSequence()
-                    val dying = launch {
-                        delay(200); fakeDevices.deaths += death(7, packageName = "com.google.android.gms", watched = false)
-                        delay(200); fakeDevices.deaths += death(8)
-                    }
+                    val dying =
+                        launch {
+                            delay(200)
+                            fakeDevices.deaths += death(7, packageName = "com.google.android.gms", watched = false)
+                            delay(200)
+                            fakeDevices.deaths += death(8)
+                        }
                     assertEquals(listOf(8L), device.awaitAppDeaths(mark, 5.seconds, "com.example.shop").map { it.sequence })
                     dying.join()
                     assertEquals(emptyList(), device.awaitAppDeaths(8, 300.milliseconds))
@@ -3545,7 +3717,8 @@ class TapClientTest {
         ): io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsResponse {
             acknowledged += request.sequencesList
             deaths.replaceAll { if (it.sequence in request.sequencesList) it.toBuilder().setHandled(true).build() else it }
-            return io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsResponse.getDefaultInstance()
+            return io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsResponse
+                .getDefaultInstance()
         }
 
         override suspend fun listAppDeaths(
@@ -3559,7 +3732,10 @@ class TapClientTest {
                 if (request.sequenceOnly) {
                     emptyList()
                 } else {
-                    deaths.filter { it.sequence > request.afterSequence && (!request.hasPackageName() || it.packageName == request.packageName) }
+                    deaths.filter {
+                        it.sequence > request.afterSequence &&
+                            (!request.hasPackageName() || it.packageName == request.packageName)
+                    }
                 }
             return io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
                 .newBuilder()

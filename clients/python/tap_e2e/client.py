@@ -62,6 +62,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from .device import Device, Timeouts
+    from .log_recordings import LogRecordings
 
 
 def state_dir() -> pathlib.Path:
@@ -400,6 +401,12 @@ class TapClient:
         if reason:
             raise TapError(reason)
         self._version_checked = True
+
+    @property
+    def log_recordings(self) -> LogRecordings:
+        """Daemon-owned protected log ranges; readable after the original session ends."""
+        from .log_recordings import LogRecordings
+        return LogRecordings(self)
 
     def devices(self) -> list[DeviceEntry]:
         """Every device ADB lists, with its state (``FREE``, ``LEASED``, ``QUARANTINED``,

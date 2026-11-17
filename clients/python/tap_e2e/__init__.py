@@ -62,6 +62,8 @@ from .events import (
     WindowChange,
     WindowChangedEvent,
 )
+from .history import HistoryExport
+from .log_recordings import LogRecording, LogRecordingRange, LogRecordings, RetainedLog
 from .logs import (
     DeviceLog,
     LogAction,
@@ -238,6 +240,11 @@ __all__ = [
     "DeviceLogs",
     "LogAction",
     "LogEntries",
+    "LogRecording",
+    "LogRecordingRange",
+    "LogRecordings",
+    "HistoryExport",
+    "RetainedLog",
     "LogEntry",
     "LogFollower",
     "LogLine",

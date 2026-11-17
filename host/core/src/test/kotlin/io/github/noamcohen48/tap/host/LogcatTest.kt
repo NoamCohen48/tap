@@ -167,4 +167,32 @@ class LogcatTest {
         assertTrue(adb.since.size > 1, "it kept trying")
         assertTrue(sink.gaps.isEmpty(), "one report per interruption")
     }
+
+    @Test
+    fun `closing does not interrupt a line being stored`() {
+        val child = Child()
+        val entered = java.util.concurrent.CountDownLatch(1)
+        val release = java.util.concurrent.CountDownLatch(1)
+        val interrupted = LinkedBlockingQueue<Boolean>()
+        val sink =
+            object : LogcatCapture.Sink {
+                override fun line(line: LogcatLine) {
+                    entered.countDown()
+                    // A durable sink writes through a file channel here, which an interrupt closes.
+                    val wasInterrupted = runCatching { release.await(5, TimeUnit.SECONDS) }.isFailure
+                    interrupted.put(wasInterrupted || Thread.currentThread().isInterrupted)
+                }
+
+                override fun interrupted(reason: String) = Unit
+            }
+        val capture = LogcatCapture(StreamingAdb(child), "serial", null, sink).also { it.start() }
+        child.print("1700000001.000 10001   10   11 D App     : one")
+        assertTrue(entered.await(5, TimeUnit.SECONDS))
+        val closer = Thread { capture.close() }.also { it.start() }
+        Thread.sleep(100)
+        release.countDown()
+        closer.join(5_000)
+
+        assertEquals(false, interrupted.poll(5, TimeUnit.SECONDS))
+    }
 }
