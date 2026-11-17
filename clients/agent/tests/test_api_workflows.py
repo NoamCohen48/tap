@@ -45,11 +45,11 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     agent.tap("id=save")
     agent.log("mark", "second")
     agent.tap("id=cancel")
-    events = json.loads(agent.export(calls=True))["calls"]["events"]
-    assert len(events) == 3  # snapshot's passive toast-history read, then the two taps
-    assert "read_toast_history" in events[0]["command"]
-    later = json.loads(agent.export(calls=True, since="second"))["calls"]["events"]
-    assert later == events[2:]
+    document = json.loads(agent.history(as_json=True))
+    events = document["events"]
+    assert len(events) == 2  # The page selects the two intent step IDs, not an unrelated snapshot read.
+    later = json.loads(agent.history(start=document["steps"][1]["cursor"], as_json=True))["events"]
+    assert later == events[1:]
 
 
 def test_app_queries_and_visibility_reuse_sdk(fake, agent, client, monkeypatch):
@@ -244,8 +244,8 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
     ("settle", {"stable_for": 31}), ("settle", {"stable_for": .0001}),
     ("settle", {"stable_for": 2, "timeout": 1}), ("settle", {"signal": "unknown"}),
     ("snapshot", {"candidates": True, "level": "all"}),
-    ("history", {"action": "export"}), ("history", {"name": "x"}), ("history", {"action": "clean", "all_histories": 1}),
-    ("export", {"since": ""}), ("export", {"until": 3}), ("log", {"action": "driver", "tail": 5}), ("log", {"out": "x"}),
+    ("history", {"start": "invalid"}), ("history", {"limit": 0}), ("history", {"as_json": 1}),
+    ("record", {"action": "stop"}), ("record", {"action": "list", "logs": True}), ("log", {"action": "driver", "tail": 5}), ("log", {"out": "x"}),
     ("log", {"step": "1", "last_action": True}),
     ("wait", {"target": "id=input", "state": "count", "value": "²"}),
     ("wait", {"target": "id=input", "state": "count", "value": "9" * 5000}),
@@ -276,7 +276,9 @@ def test_cli_forwards_new_parameters(fake, agent):
     assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_ALL
     assert fake.devices.commands[-1].WhichOneof("op") == "read_toast_history"
     assert json.loads(run(["app", "installed", "com.example"])) is True
-    assert "wait_screen_stable" in json.loads(run(["export", "--calls"]))["calls"]["events"][-2]["command"]
+    events = json.loads(run(["history", "--json"]))["events"]
+    assert any("wait_screen_stable" in event.get("command", {}) for event in events)
+    assert events[-1]["command"].get("read_toast_history") == {}
     assert "detached" in run(["detach"])
 
 

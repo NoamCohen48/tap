@@ -15,16 +15,21 @@ tap-agent release
 
 - Sessions are the daemon's *held connections*: they survive between calls and end after an
   idle timeout (15 min by default) or `release`. The CLI and the MCP server share them.
-- Every session records its actions and explicit waits by itself, from the first one until
-  `release`. `export [NAME] [-o FILE]` writes that step history as `tap-agent-recording/2` to
-  stdout or a new 0600 file, even after release. It retains resolved selectors, device identity
-  and outcomes, never replays input, and redacts sensitive text. `log mark NAME` writes a marker
-  to the device log and the history; `export --since NAME --until OTHER` cuts the export between
-  markers, `--logs` adds the device log and `--calls` the server's record of each device call
-  (both only while the session lives), matched to the steps by step id.
-  Storage is under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share that directory
-  between CLI/MCP processes. `history` lists the saved histories, `history clean` removes
-  stopped ones.
+- Activity is retained automatically. `history [--logs] [--json] [--from STEP|TIME]
+  [--until STEP|TIME] [--limit N]` reads it, defaulting to the latest 200 steps. Step cursors
+  survive pruning; from is inclusive and until exclusive. Output is readable stdout text
+  or `tap-history/1` JSON; redirect it yourself to save a file.
+- `record start NAME` protects a named range of the same steps, durable RPC events and device
+  logs; `record stop NAME` freezes it. `record export NAME [--logs] [--json]` reads the range
+  without stopping it, including after release/restart. `record list` prints names, `-L`
+  adds state/times/shared backing-segment bytes. `record clean NAME` removes stopped protection.
+  No standalone `export`, `history clean` or release-time export option exists.
+- Local intent is private under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share
+  it between CLI/MCP processes. SDKs export durable evidence directly through
+  `client.log_recordings.export/history`, never through the CLI. Missing local intent, gaps,
+  unknown outcomes and unavailable daemon evidence stay explicit, never reconstructed.
+  Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve;
+  configure with `tap config logging-policy`. Protection cannot override hard limits.
 - `log` prints the device log with the session's steps, `log --step N` one step's part.
   `media-record start|stop` is video/audio capture.
   Converting an export into a test remains the user's job.

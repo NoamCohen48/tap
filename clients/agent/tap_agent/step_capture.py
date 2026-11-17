@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
 WAITS = frozenset({"wait", "settle", "toast", "wait_event"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
-EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "log", "recording", "pull", "activity", "history", "export"})
+EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "log", "recording", "pull", "activity", "record", "history"})
 
 
 def _word(value: Any) -> Any:
@@ -103,10 +103,10 @@ class Capture:
         self.returned = 0  # ... and returned normally
         self.compound = False  # one of them may send several inputs
 
-    def device(self, serial: str, connection_id: str) -> None:
+    def device(self, serial: str, connection_id: str, attached_device_id: str) -> None:
         if connection_id != self.connection_id:
             raise RecordError("held connection changed during recording; no new input was sent")
-        self.store.device(self.identifier, self.sequence, serial)
+        self.store.device(self.identifier, self.sequence, serial, attached_device_id)
 
     def target(self, slot: str, selector: Any) -> None:
         value = json_value(selector)

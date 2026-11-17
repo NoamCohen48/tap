@@ -1,11 +1,12 @@
 # Named agent step recordings
 
-> **Superseded in part (2026-11-14, owner approved; see `.docs/app-logs.md`, "tap-agent: one
-> history").** `record start|stop` is gone: every session records its steps by itself, per held
-> connection, until release. `record list|clean` are `history [list|clean]`; the raw event
-> history (`tap-events/1`) is `export --calls`; the format is `tap-agent-recording/2` (step
-> `id`, `markers`). An unfinished or `unknown` step no longer blocks later input, and a full
-> history rotates instead of refusing input. The text below is the original decision.
+> **Historical decision, superseded by [History, recordings and daemon logging policy](history-and-logging-policy.md).**
+> Activity is automatic history; `record start|stop` now protects named ranges of that same
+> history, durable redacted RPC events and device logs. `history` reads paginated activity;
+> `record export NAME` reads a protected range. The common SDK/agent export is `tap-history/1`.
+> Unknown steps do not block later input, and full partitions rotate without evicting named
+> protection. The original design and verification evidence below are historical, not proof
+> of the new disk-retention path.
 
 Decision (owner approved): `record` records high-level actions and explicit waits; `history`
 prints the session's raw event log (`tap-events/1`); `export [NAME] [-o FILE]` exports a named
