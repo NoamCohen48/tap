@@ -21,17 +21,16 @@ import io.github.noamcohen48.tap.api.v1.DriverLogRequest
 import io.github.noamcohen48.tap.api.v1.DriverLogResponse
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ExecuteResponse
-import io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest
-import io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
 import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesRequest
 import io.github.noamcohen48.tap.api.v1.GetDeviceCapabilitiesResponse
 import io.github.noamcohen48.tap.api.v1.GetForegroundActivityRequest
 import io.github.noamcohen48.tap.api.v1.GetForegroundActivityResponse
+import io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest
+import io.github.noamcohen48.tap.api.v1.ListAppDeathsResponse
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
-import io.github.noamcohen48.tap.api.v1.Node
-import io.github.noamcohen48.tap.api.v1.TextProperty
-import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.ListDevicesResponse
+import io.github.noamcohen48.tap.api.v1.MatchMode
+import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.PullFileRequest
 import io.github.noamcohen48.tap.api.v1.PullFileResponse
 import io.github.noamcohen48.tap.api.v1.PushFileRequest
@@ -64,6 +63,7 @@ import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StartRecordingResponse
 import io.github.noamcohen48.tap.api.v1.StopRecordingRequest
 import io.github.noamcohen48.tap.api.v1.StopRecordingResponse
+import io.github.noamcohen48.tap.api.v1.TextProperty
 import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
 import io.github.noamcohen48.tap.api.v1.UnquarantineResponse
 import io.github.noamcohen48.tap.daemon.cli.restrictToOwner
@@ -101,8 +101,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.nio.file.Files
 import java.nio.file.Path
@@ -353,7 +353,7 @@ class DeviceService(
             val timeoutMs =
                 if (command.hasTimeoutMs()) positive(command.timeoutMs, "command.timeout_ms") else attachedDevice.defaultTimeoutMs
             // Before it is typed: an app that logs what it was given must not leak it through the log.
-            command.sensitiveText()?.let { attachedDevice.logs?.redactor?.literal(it) }
+            command.sensitiveText()?.let { attachedDevice.eventRedactor.literal(it) }
             val result =
                 if (command.opCase in UNLOGGED_OPS) {
                     resultOf(attachedDevice.deviceSession.client.submit(Requests.of(command), timeoutMs))
@@ -393,7 +393,9 @@ class DeviceService(
         }
         if (command.opCase !in WAIT_OPS || !deaths.watching) return deaths.explain(resultOf(pending))
         val from = deaths.lastSequence
-        val endedFor = java.util.concurrent.atomic.AtomicReference<Long?>(null)
+        val endedFor =
+            java.util.concurrent.atomic
+                .AtomicReference<Long?>(null)
         val result =
             coroutineScope {
                 val watcher =
@@ -526,7 +528,13 @@ class DeviceService(
             argument(request.settleMs in 0..MAX_SETTLE_MS) { "settle_ms must be 0 to $MAX_SETTLE_MS" }
             argument(request.waitMs in 0..MAX_DEATH_WAIT_MS) { "wait_ms must be 0 to $MAX_DEATH_WAIT_MS" }
             val attachedDevice =
-                daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false, inUse = request.waitMs == 0L)
+                daemon.attachedDevice(
+                    request.attachedDeviceId,
+                    request.clientConnectionId,
+                    requireDriver = false,
+                    inUse =
+                        request.waitMs == 0L,
+                )
             val deaths = attachedDevice.appDeaths
             deaths.settle(request.settleMs)
             if (request.waitMs > 0 && !deaths.awaitRecordAfter(request.afterSequence, request.waitMs)) {
@@ -534,8 +542,18 @@ class DeviceService(
                 daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId, requireDriver = false, inUse = false)
             }
             // A sequence-only call still catches up first, so its sequence counts what is logged.
-            val listed = deaths.list(if (request.sequenceOnly) Long.MAX_VALUE else request.afterSequence, request.packageName.takeIf { request.hasPackageName() })
-            ListAppDeathsResponse.newBuilder().addAllDeaths(listed).setLastSequence(deaths.lastSequence).build()
+            val listed =
+                deaths.list(
+                    if (request.sequenceOnly) Long.MAX_VALUE else request.afterSequence,
+                    request.packageName.takeIf {
+                        request.hasPackageName()
+                    },
+                )
+            ListAppDeathsResponse
+                .newBuilder()
+                .addAllDeaths(listed)
+                .setLastSequence(deaths.lastSequence)
+                .build()
         }
 
     override suspend fun acknowledgeAppDeaths(request: AcknowledgeAppDeathsRequest): AcknowledgeAppDeathsResponse =

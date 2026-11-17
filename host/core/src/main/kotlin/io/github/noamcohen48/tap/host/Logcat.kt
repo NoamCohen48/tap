@@ -72,15 +72,20 @@ class LogcatCapture(
 
     fun start() = reader.start()
 
-    /** Ends the child and waits briefly for the reader; idempotent, never throws. */
+    /**
+     * Ends the child and waits briefly for the reader; idempotent, never throws. The reader is
+     * never interrupted: it may be inside [Sink.line] writing to a file channel, which an
+     * interrupt would close. It stops at the ended child's end of output, or wakes from its
+     * retry pause through [lock].
+     */
     fun close() {
         val running =
             synchronized(lock) {
                 closed = true
+                (lock as Object).notifyAll()
                 process
             }
         running?.let(::reap)
-        reader.interrupt()
         runCatching { reader.join(JOIN_MS) }
     }
 
@@ -128,7 +133,7 @@ class LogcatCapture(
                 runCatching { sink.interrupted(ended) }
             }
             try {
-                Thread.sleep(retryMs)
+                synchronized(lock) { if (!closed) (lock as Object).wait(retryMs) }
             } catch (_: InterruptedException) {
                 return
             }

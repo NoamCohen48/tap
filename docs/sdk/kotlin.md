@@ -5,6 +5,16 @@ talks to a device is `suspend`; building selectors is not. The [Guide](../guide/
 shows each feature in Python; [The guide in Kotlin](#the-guide-in-kotlin) below has the same
 examples in Kotlin, and the [Kotlin API reference](../reference/kotlin.md) has every signature.
 
+## Post-script evidence
+
+`client.logRecordings.start(connection, "checkout")` protects the connection's durable RPC
+events and attached device logs. After `stop("checkout")` and connection release,
+`client.logRecordings.export("checkout", logs = true)` returns a `HistoryExport` with `.text`
+and `.toJson()` (`tap-history/1`). `history(originalConnectionId, logs = true)` reads ordinary
+retained activity. These are SDK RPC calls, not CLI subprocesses or implicit file writes, and
+work after daemon restart while evidence remains retained. Unknown outcomes, gaps and missing
+agent intent stay explicit. See [history and recordings](../agent/export.md#sdk-exports).
+
 ## Install
 
 The Maven artifacts live in this repository's GitHub Packages registry; reads need a token with

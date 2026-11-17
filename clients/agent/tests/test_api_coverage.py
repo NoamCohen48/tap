@@ -14,6 +14,7 @@ from tap_e2e import (
     Device,
     Element,
     Elements,
+    LogRecordings,
     Selector,
     TapClient,
     TapConnection,
@@ -29,7 +30,7 @@ from .test_reference import _generator
 
 ROOT = Path(__file__).resolve().parents[3]
 REGISTRY = json.loads((ROOT / "clients/agent/api-coverage.json").read_text())
-SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector)
+SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector, LogRecordings)
 
 
 @pytest.fixture(scope="module")
@@ -57,6 +58,9 @@ def test_every_rpc_and_execute_operation_is_classified(tools):
         "tap.v1.ClientConnectionService.Observe", "tap.v1.AppService.AwaitIdle",
         "tap.v1.WatchService.Watch", "tap.v1.WatchService.WatchVideo",
         "tap.v1.WatchService.WatchLog",
+        "tap.v1.DeviceLogService.StartLogRecording", "tap.v1.DeviceLogService.StopLogRecording",
+        "tap.v1.DeviceLogService.ListLogRecordings", "tap.v1.DeviceLogService.DeleteLogRecording",
+        "tap.v1.DeviceLogService.ListRetainedLogs",
     }
     assert all(excluded.values()) and not covered.intersection(excluded)
     assert covered | set(excluded) == actual
