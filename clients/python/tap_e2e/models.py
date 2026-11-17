@@ -618,10 +618,19 @@ class LoggedEvent:
     failure: dict | None
     step: str | None = None
     """The step the call was made in (``tap_e2e.step``), or None."""
+    device: dict | None = None
+    """Device-condition/file call, as a ``tap.v1.DeviceCall`` JSON object."""
+    indeterminate: bool = False
+    """Cancellation or loss of a terminal result leaves the effect unknown. Never replay it."""
+    clock_id: str = ""
+    started_monotonic_ns: int | None = None
+    finished_monotonic_ns: int | None = None
+    attached_device_id: str = ""
+    """The original attachment identity, not a later attachment of the same serial."""
 
     @property
     def ok(self) -> bool:
-        return self.error is None and self.failure is None
+        return not self.indeterminate and self.error is None and self.failure is None
 
     def to_dict(self) -> dict:
         """A JSON-ready dict: the fields above with ``at`` as an ISO 8601 UTC timestamp and
@@ -636,7 +645,17 @@ class LoggedEvent:
             "serial": self.serial,
             "ok": self.ok,
         }
-        for key in ("command", "app", "error", "failure", "step"):
+        if self.indeterminate:
+            out["indeterminate"] = True
+        if self.clock_id:
+            out["clock_id"] = self.clock_id
+        if self.attached_device_id:
+            out["attached_device_id"] = self.attached_device_id
+        for key in ("started_monotonic_ns", "finished_monotonic_ns"):
+            value = getattr(self, key)
+            if value is not None:
+                out[key] = str(value)
+        for key in ("command", "app", "device", "error", "failure", "step"):
             value = getattr(self, key)
             if value is not None:
                 out[key] = value

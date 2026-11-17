@@ -22,13 +22,18 @@ internal class LogRedactor {
     private var literals = emptyList<String>()
     private var patterns = emptyList<Pattern>()
 
+    /** Re-redact durable copies after registering a new rule. Never persist the rule's secret. */
+    var changed: () -> Unit = {}
+
     /** Redacts [value] wherever it appears; ignored when shorter than [MIN_LITERAL_CHARS]. */
     fun literal(value: String) {
         if (value.length < MIN_LITERAL_CHARS) return
         synchronized(lock) {
             // Longest first, so a value that contains another is replaced whole.
-            if (value !in literals && literals.size < MAX_LITERALS) literals = (literals + value).sortedByDescending { it.length }
+            if (value in literals || literals.size >= MAX_LITERALS) return
+            literals = (literals + value).sortedByDescending { it.length }
         }
+        changed()
     }
 
     /** Adds caller patterns; all or none. */
@@ -40,7 +45,13 @@ internal class LogRedactor {
                 }
                 try {
                     Pattern.compile(expression).also {
-                        if (it.matcher("").matches()) throw InvalidRedactionException("redaction pattern '$expression' matches the empty string")
+                        if (it
+                                .matcher(
+                                    "",
+                                ).matches()
+                        ) {
+                            throw InvalidRedactionException("redaction pattern '$expression' matches the empty string")
+                        }
                     }
                 } catch (error: PatternSyntaxException) {
                     throw InvalidRedactionException("redaction pattern '$expression' is not a regular expression: ${error.description}")
@@ -54,6 +65,7 @@ internal class LogRedactor {
             }
             patterns = patterns + added
         }
+        changed()
     }
 
     /** [text] with every secret replaced. */

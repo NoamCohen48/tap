@@ -163,6 +163,10 @@ class ConnectedClient internal constructor(
     val holdIdleMs: Long? = null,
     /** Where this connection's logged calls are also published for watchers. */
     activity: ActivityLog? = null,
+    persist: (
+        io.github.noamcohen48.tap.api.v1.LoggedEvent,
+        (io.github.noamcohen48.tap.api.v1.LoggedEvent) -> io.github.noamcohen48.tap.api.v1.LoggedEvent,
+    ) -> Unit = { _, _ -> },
 ) {
     internal var closed = false
     internal val createdAtEpochMs = System.currentTimeMillis()
@@ -184,7 +188,7 @@ class ConnectedClient internal constructor(
     val events =
         EventLog(onAppend = { event ->
             activity?.append(Activity.newBuilder().setClientConnectionId(id).setEvent(event))
-        })
+        }, onPersist = persist)
 }
 
 /**
@@ -270,6 +274,8 @@ class AttachedDevice internal constructor(
     /** The device's log since the attachment opened; null when the attachment captures none. */
     internal val logs: DeviceLog? = null,
 ) {
+    internal val eventRedactor = logs?.redactor ?: LogRedactor()
+
     /** The logcat reader feeding [logs]; started once the attachment is registered. */
     internal var logcat: LogcatCapture? = null
 
@@ -353,6 +359,7 @@ class TapDaemon internal constructor(
     private val shutdownTotalMs get() = deps.shutdownTotalMs
     private val shutdownAttachedDeviceMs get() = deps.shutdownAttachedDeviceMs
     private val observeGraceMs get() = deps.observeGraceMs
+    internal val retainedLogs = RetainedLogs(config.stateDir, warning = config.log)
     private val lifecycleLock = Any()
     private val clientConnectionsById = HashMap<String, ConnectedClient>()
     private val attachedDevicesById = HashMap<String, AttachedDevice>()
@@ -361,6 +368,13 @@ class TapDaemon internal constructor(
     // (it may come back as another device or rebooted into another build).
     private val deviceProperties = java.util.concurrent.ConcurrentHashMap<String, DeviceProperties>()
     private val cleanupScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val retentionMaintenance =
+        cleanupScope.launch {
+            while (true) {
+                delay(60_000)
+                runCatching { retainedLogs.maintain() }.onFailure { config.log("retained log maintenance failed: ${it.message}") }
+            }
+        }
     private val runtimeCache =
         config.driverIdleTimeoutMs.takeIf { it > 0 }?.let {
             io.github.noamcohen48.tap.host
@@ -391,12 +405,14 @@ class TapDaemon internal constructor(
         name: String,
         holdIdleMs: Long? = null,
     ): ConnectedClient {
-        val connection = ConnectedClient(UUID.randomUUID().toString(), name, holdIdleMs, activity)
+        val id = UUID.randomUUID().toString()
+        val connection = ConnectedClient(id, name, holdIdleMs, activity) { event, redact -> persistEvent(id, event, redact) }
         synchronized(lifecycleLock) {
             if (closing) throw DaemonClosingException()
             if (holdIdleMs != null && clientConnectionsById.values.any { it.holdIdleMs != null && it.name == name }) {
                 throw HeldNameTakenException(name)
             }
+            retainedLogs.open(connection.id, connection.id, "", events = true)
             clientConnectionsById[connection.id] = connection
             activity.append(
                 Activity
@@ -414,7 +430,6 @@ class TapDaemon internal constructor(
         // Observe is the only liveness signal, so a client that dies between Connect and Observe
         // would otherwise leak its connection (and anything it attached) until daemon shutdown.
         // The reaper holds only the id, so a connection disconnected earlier is not retained.
-        val id = connection.id
         cleanupScope.launch {
             delay(observeGraceMs)
             val unobserved =
@@ -422,6 +437,26 @@ class TapDaemon internal constructor(
             if (unobserved) disconnectClient(id, "no Observe stream within ${observeGraceMs}ms")
         }
         return connection
+    }
+
+    private fun persistEvent(
+        owner: String,
+        event: io.github.noamcohen48.tap.api.v1.LoggedEvent,
+        redact: (io.github.noamcohen48.tap.api.v1.LoggedEvent) -> io.github.noamcohen48.tap.api.v1.LoggedEvent,
+    ) {
+        val archive =
+            try {
+                retainedLogs.archive(owner, owner)
+            } catch (_: Exception) {
+                config.log("durable event archive unavailable; evidence is incomplete")
+                return
+            }
+        try {
+            retainedLogs.appendEvent(archive, redact(event))
+        } catch (_: Exception) {
+            // Capture bookkeeping must never replace an already executed device outcome.
+            runCatching { retainedLogs.close(archive, "durable event capture failed; evidence is incomplete") }
+        }
     }
 
     fun clientConnection(id: String): ConnectedClient =
@@ -435,6 +470,34 @@ class TapDaemon internal constructor(
         markInUse(id)
         return connection.events
     }
+
+    /** Atomically protect the current device set with respect to attach/detach/disconnect. */
+    internal suspend fun startLogRecording(
+        owner: String,
+        name: String,
+        agentStepsExpected: Boolean = false,
+    ): io.github.noamcohen48.tap.api.v1.LogRecording {
+        markInUse(owner)
+        return synchronized(lifecycleLock) {
+            clientConnectionsById[owner]?.takeUnless { it.closed } ?: throw UnknownClientConnectionException(owner)
+            val devices = attachedDevicesById.values.filter { it.ownerConnectionId == owner }
+            devices.firstOrNull { it.logs == null }?.let { throw LogCaptureOffException(it.deviceSession.serial) }
+            retainedLogs.start(name, owner, devices.map { it.id } + owner, agentStepsExpected)
+        }
+    }
+
+    /** A stop during admitted work records a gap before freezing its receipt boundary. */
+    internal fun stopLogRecording(name: String): io.github.noamcohen48.tap.api.v1.LogRecording =
+        synchronized(lifecycleLock) {
+            val recording = retainedLogs.list().firstOrNull { it.name == name } ?: throw UnknownLogRecordingException(name)
+            if (!recording.hasStoppedAtMs() && (clientConnectionsById[recording.clientConnectionId]?.inFlight ?: 0) > 0) {
+                retainedLogs.interruption(
+                    retainedLogs.archive(recording.clientConnectionId, recording.clientConnectionId),
+                    "recording stopped with calls in flight; outcomes may fall outside its boundary",
+                )
+            }
+            retainedLogs.stop(name)
+        }
 
     /** Every live connection with its attached devices, in no particular order. */
     fun connections(): List<ConnectionInfo> = synchronized(lifecycleLock) { connectionsLocked() }
@@ -650,6 +713,16 @@ class TapDaemon internal constructor(
         if (expectedObserveOwner != null && connection.observeOwner !== expectedObserveOwner) return null
         check(clientConnectionsById.remove(id, connection))
         connection.closed = true
+        retainedLogs.close(
+            retainedLogs.archive(id, id),
+            if (connection.inFlight >
+                0
+            ) {
+                "connection ended with calls in flight; outcomes may be unknown"
+            } else {
+                ""
+            },
+        )
         // AttachedDevice.ownerConnectionId is the sole ownership index.
         val owned = detachOwnedAttachedDevices(connection.id)
         owned.forEach { appendDetached(it, reason) }
@@ -972,42 +1045,79 @@ class TapDaemon internal constructor(
         // Registration is one lifecycle transaction. If disconnect wins while attachment is
         // suspended, the DeviceSession is closed before exposure: no orphan lease.
         val registered: AttachedDevice? =
-            measureAttachmentStage(serial, "daemon_attach_register") {
-                synchronized(lifecycleLock) {
-                    val owner = clientConnectionsById[ownerConnectionId]?.takeUnless { it.closed }
-                    if (owner == null) {
-                        null
-                    } else {
-                        val attachedDevice =
-                            AttachedDevice(
-                                UUID.randomUUID().toString(),
-                                ownerConnectionId,
-                                device,
-                                options.defaultTimeoutMs,
-                                log,
-                                owner.events,
-                                deps.scrcpyLaunch?.let { ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable, it) }
-                                    ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
-                                attachedAt,
-                                AppDeaths(config.adb, serial, attachedAt, config.log),
-                                if (options.captureLogs) DeviceLog(installedPackages = { config.adb.packageUids(serial) }) else null,
+            try {
+                measureAttachmentStage(serial, "daemon_attach_register") {
+                    synchronized(lifecycleLock) {
+                        val owner = clientConnectionsById[ownerConnectionId]?.takeUnless { it.closed }
+                        if (owner == null) {
+                            null
+                        } else {
+                            val attachedId = UUID.randomUUID().toString()
+                            val logArchive = if (options.captureLogs) retainedLogs.open(attachedId, ownerConnectionId, serial) else null
+                            val attachedDevice =
+                                AttachedDevice(
+                                    attachedId,
+                                    ownerConnectionId,
+                                    device,
+                                    options.defaultTimeoutMs,
+                                    log,
+                                    owner.events,
+                                    deps.scrcpyLaunch?.let {
+                                        ScrcpyRecorder(
+                                            serial,
+                                            config.stateDir,
+                                            config.scrcpy,
+                                            config.adb.executable,
+                                            it,
+                                        )
+                                    }
+                                        ?: ScrcpyRecorder(serial, config.stateDir, config.scrcpy, config.adb.executable),
+                                    attachedAt,
+                                    AppDeaths(config.adb, serial, attachedAt, config.log),
+                                    if (options.captureLogs) {
+                                        DeviceLog(installedPackages = {
+                                            config.adb.packageUids(serial)
+                                        }, retained = retainedLogs, archive = logArchive)
+                                    } else {
+                                        null
+                                    },
+                                )
+                            val redactor = attachedDevice.eventRedactor
+                            val previousRedaction = redactor.changed
+                            redactor.changed = {
+                                previousRedaction()
+                                retainedLogs.redact(retainedLogs.archive(ownerConnectionId, ownerConnectionId)) { entry ->
+                                    if (entry.hasEvent() &&
+                                        entry.event.attachedDeviceId == attachedId
+                                    ) {
+                                        entry.toBuilder().setEvent(durableEvent(entry.event, redactor)).build()
+                                    } else {
+                                        entry
+                                    }
+                                }
+                            }
+                            attachedDevicesById[attachedDevice.id] = attachedDevice
+                            activity.append(
+                                Activity
+                                    .newBuilder()
+                                    .setClientConnectionId(ownerConnectionId)
+                                    .setDeviceAttached(
+                                        DeviceAttached
+                                            .newBuilder()
+                                            .setAttachedDeviceId(attachedDevice.id)
+                                            .setSerial(serial)
+                                            .setGeneration(device.generation),
+                                    ),
                             )
-                        attachedDevicesById[attachedDevice.id] = attachedDevice
-                        activity.append(
-                            Activity
-                                .newBuilder()
-                                .setClientConnectionId(ownerConnectionId)
-                                .setDeviceAttached(
-                                    DeviceAttached
-                                        .newBuilder()
-                                        .setAttachedDeviceId(attachedDevice.id)
-                                        .setSerial(serial)
-                                        .setGeneration(device.generation),
-                                ),
-                        )
-                        attachedDevice
+                            attachedDevice
+                        }
                     }
                 }
+            } catch (error: Throwable) {
+                withContext(NonCancellable) {
+                    closeDeviceBounded(device, DEVICE_SESSION_CLOSE_TIMEOUT_MS, "failed attachment registration on $serial")
+                }
+                throw error
             }
         if (registered == null) {
             withContext(NonCancellable) {
@@ -1091,6 +1201,7 @@ class TapDaemon internal constructor(
      * the detached state so orphans are closed before exposure.
      */
     suspend fun close(timeoutMs: Long = shutdownTotalMs) {
+        retentionMaintenance.cancel()
         withContext(NonCancellable) {
             val deadlineNanos = deadlineAfterMs(timeoutMs)
             runtimeCache?.stopAccepting()

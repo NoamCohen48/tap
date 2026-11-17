@@ -62,6 +62,10 @@ internal fun runCli(
         }
     }
     return try {
+        if (line.command.startsWith("config logging-policy ")) {
+            out(terminalSafe(loggingPolicyConfiguration(line, stateDir)))
+            return 0
+        }
         if (line.command == "logs") return printLogs(line, stateDir, { out(terminalSafe(it)) }, keepGoing, pause)
         if (line.command == "start") {
             start(line.options, stateDir)
@@ -100,6 +104,9 @@ internal fun runCli(
             pause(((line.options["--interval"]?.toDouble() ?: 2.0) * 1000).toLong())
         } while (keepGoing())
         0
+    } catch (invalid: UsageException) {
+        err(terminalSafe("error: ${invalid.message}\n\n${helpText(invalid.command)}"))
+        2
     } catch (_: InterruptedException) {
         Thread.currentThread().interrupt()
         130

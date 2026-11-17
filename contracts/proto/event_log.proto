@@ -45,6 +45,10 @@ message LoggedEvent {
   string clock_id = 13;
   // The `tap-step` header the call carried (`LogAction.step`); absent when it carried none.
   optional string step = 14;
+  // The call was cancelled after admission; its effect is not known. Never replay it.
+  bool indeterminate = 15;
+  // Original attachment generation identity, never a persistent element handle.
+  string attached_device_id = 16;
 }
 
 // An AppService call. `operation` is the RPC in snake_case: install, uninstall, force_stop,

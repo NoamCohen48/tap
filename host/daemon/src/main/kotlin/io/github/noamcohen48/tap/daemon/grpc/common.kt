@@ -3,12 +3,14 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.Failure
 import io.github.noamcohen48.tap.api.v1.FailureReason
 import io.github.noamcohen48.tap.daemon.core.ActivityReaderOverflowException
-import io.github.noamcohen48.tap.daemon.core.LogReaderOverflowException
-import io.github.noamcohen48.tap.daemon.core.UnknownLogMarkerException
 import io.github.noamcohen48.tap.daemon.core.DaemonPreconditionException
+import io.github.noamcohen48.tap.daemon.core.LogReadSelectionLimitException
+import io.github.noamcohen48.tap.daemon.core.LogReaderOverflowException
 import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
 import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
+import io.github.noamcohen48.tap.daemon.core.UnknownLogMarkerException
+import io.github.noamcohen48.tap.daemon.core.UnknownLogRecordingException
 import io.github.noamcohen48.tap.daemon.core.VideoReaderOverflowException
 import io.github.noamcohen48.tap.daemon.snapshot.RefNotAddressableException
 import io.github.noamcohen48.tap.daemon.snapshot.UnknownRefException
@@ -153,18 +155,22 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_BUSY).setSerial(serial).setWaitedMs(waitedMs)
                 if (waitedMs > 0) Status.DEADLINE_EXCEEDED else Status.FAILED_PRECONDITION
             }
+
             is HostWaitTimeoutException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_HOST_WAIT_TIMEOUT).setSerial(serial).setWaitedMs(elapsedMs)
                 Status.DEADLINE_EXCEEDED
             }
+
             is AdbTimeoutException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_TIMEOUT).setSerial(serial.orEmpty())
                 Status.DEADLINE_EXCEEDED
             }
+
             is DeviceQuarantinedException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_QUARANTINED).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
+
             is AdbReapUncertainException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_REAP_UNCERTAIN).setSerial(serial.orEmpty())
                 Status.FAILED_PRECONDITION
@@ -187,10 +193,12 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 failure.setReason(FailureReason.FAILURE_REASON_UNSUPPORTED_API).setSerial(serial).setDetail("REQUIRES_API_$requiredApi")
                 Status.FAILED_PRECONDITION
             }
+
             is DeviceFileException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_FILE).setSerial(serial)
                 Status.FAILED_PRECONDITION
             }
+
             is DeviceSettingException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DEVICE_SETTING).setSerial(serial)
                 Status.FAILED_PRECONDITION
@@ -212,6 +220,7 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                     .setDetail(detail.orEmpty())
                 Status.FAILED_PRECONDITION
             }
+
             is CommandTransportException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_DRIVER_TRANSPORT).setSerial(serial.orEmpty()).setErrorCode(code)
                 Status.UNAVAILABLE
@@ -227,13 +236,21 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             }
 
-            is ActivityReaderOverflowException, is VideoReaderOverflowException, is LogReaderOverflowException -> {
+            is ActivityReaderOverflowException, is VideoReaderOverflowException, is LogReaderOverflowException, is LogReadSelectionLimitException -> {
                 Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             }
 
             // Video capture could not start or stopped; the device and its connections are untouched.
             is VideoException -> {
                 Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
+            is UnknownLogRecordingException -> {
+                Status.NOT_FOUND.also {
+                    failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION
+                    failure.detail =
+                        "UNKNOWN_LOG_RECORDING"
+                }
             }
 
             is UnknownLogMarkerException -> {
@@ -262,10 +279,12 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_FAILED).setSerial(serial.orEmpty())
                 Status.UNAVAILABLE
             }
+
             is AdbRunnerGatedException -> {
                 failure.setReason(FailureReason.FAILURE_REASON_ADB_FAILED).setSerial(attemptSerial.orEmpty())
                 Status.UNAVAILABLE
             }
+
             else -> {
                 System.err.println("[tap] INTERNAL: unexpected ${this::class.qualifiedName}")
                 printStackTrace()

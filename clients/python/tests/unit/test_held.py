@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+from typing import cast
+
 import pytest  # type: ignore[import-not-found]
 
 from tap_e2e import (
@@ -145,7 +147,7 @@ def test_screen_snapshot_asks_for_and_maps_selector_candidates(fake, client):
         candidates = [
             pb.SelectorCandidate(selector=res("login")._proto, kind=pb.SELECTOR_KIND_PLAIN),
             pb.SelectorCandidate(selector=text("Log in")._proto, kind=pb.SELECTOR_KIND_PLAIN),
-            pb.SelectorCandidate(selector=text("Log in")._proto, kind=99),
+            pb.SelectorCandidate(selector=text("Log in")._proto, kind=cast(pb.SelectorKind, 99)),
         ]
         fake.devices.snapshot = pb.ScreenSnapshotResponse(
             snapshot_id=1, nodes=[_node("e1", selector=res("login")._proto, candidates=candidates)]
@@ -171,7 +173,8 @@ def test_resolve_ref_returns_the_selector_or_unknown_ref(fake, client):
 def test_every_node_enum_value_maps_to_a_model_constant():
     for name, number in pb.NodeFlag.items():
         if name != "FLAG_UNSPECIFIED":
-            assert _proto.node_flag(number).name == name.removeprefix("FLAG_")
+            flag = _proto.node_flag(number)
+            assert flag is not None and flag.name == name.removeprefix("FLAG_")
     for name, number in pb.NodeChange.items():
         if name != "NODE_CHANGE_UNSPECIFIED":
             assert _proto.node_change(number).name == name.removeprefix("NODE_")
@@ -201,6 +204,7 @@ def test_event_log_is_the_calls_as_proto_json(fake, client):
             "at": "2026-09-21T14:13:20.001Z",
             "duration_ms": 5,
             "serial": "emulator-5554",
+            "attached_device_id": "attached-emulator-5554",
             "ok": False,
             "command": second.command,
             "error": second.error,

@@ -12,7 +12,9 @@ from typing import TYPE_CHECKING
 import grpc
 
 from . import _gen as pb
+from ._proto import logged_event
 from .client import mapped_errors
+from .models import LoggedEvent
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -110,6 +112,8 @@ class LogEntry:
     gap: str | None = None
     """The capture was interrupted here (the device disconnected, logcat ended) and lines may be
     missing: why."""
+    event: LoggedEvent | None = None
+    """A redacted SDK call, only present in a connection's retained event archive."""
 
     def __str__(self) -> str:
         moment = datetime.datetime.fromtimestamp(self.at)
@@ -128,6 +132,10 @@ class LogEntry:
         if self.line is not None:
             letter = self.line.priority.letter if self.line.priority else "?"
             return f"{letter} {self.line.tag}: {self.line.message}"
+        if self.event is not None:
+            event = self.event
+            call = event.command or event.app or event.device or {}
+            return f"── event {event.seq} {call} → {'unknown' if event.indeterminate else 'ok' if event.ok else 'failed'}"
         if self.marker is not None:
             return f"── marker {self.marker}"
         if self.gap is not None:
@@ -148,9 +156,15 @@ class LogEntry:
 class LogEntries(list[LogEntry]):
     """What ``DeviceLog.read`` returns: the entries, oldest first."""
 
+    clock_id: str = ""
+    """Original capture daemon's monotonic clock identity; preserved across archive reads."""
+
+    capture_error: str = ""
+    """Nonempty when durable capture could not preserve all evidence (e.g. disk limit)."""
+
     dropped: int = 0
-    """How many entries older than the starting point the server had already forgotten (it keeps
-    the newest 16 MiB per attachment). Always 0 for a ``tail`` read."""
+    """Entries unavailable in the requested cursor range, before user filtering. Sum over all
+    response batches; protected ranges can leave holes in ordinary history. Zero for a tail read."""
 
     @property
     def text(self) -> str:
@@ -193,7 +207,7 @@ def _entry(entry: pb.LogEntry) -> LogEntry:
             uid=value.uid if value.HasField("uid") else None,
             pid=value.pid,
             tid=value.tid,
-            priority=LogPriority(value.priority) if value.priority in iter(LogPriority) else None,
+            priority=LogPriority(value.priority) if any(int(p) == value.priority for p in LogPriority) else None,
             tag=value.tag,
             message=value.message,
             packages=tuple(value.packages),
@@ -216,6 +230,7 @@ def _entry(entry: pb.LogEntry) -> LogEntry:
         marker=entry.marker if kind == "marker" else None,
         action=action,
         gap=entry.gap if kind == "gap" else None,
+        event=logged_event(entry.event) if kind == "event" else None,
     )
 
 
@@ -228,6 +243,8 @@ class LogFollower:
         self._call = call
         self._serial = serial
         self._closed = False
+        self.capture_error: str = ""
+        self.clock_id: str = ""
         self.dropped: int = 0
         """How many entries older than the starting point the server had already forgotten;
         known once the first entry has been read."""
@@ -237,6 +254,8 @@ class LogFollower:
             with mapped_errors(self._serial):
                 for response in self._call:
                     self.dropped += response.dropped
+                    self.capture_error = response.capture_error or self.capture_error
+                    self.clock_id = response.clock_id or self.clock_id
                     for entry in response.entries:
                         yield _entry(entry)
         except Exception:
@@ -263,8 +282,10 @@ class DeviceLog:
 
     The server captures it from the moment the device is attached, unless the attachment turned
     that off (``attach_device(capture_logs=False)``; every call here then raises ``ServerError``
-    with ``FailureReason.DAEMON_PRECONDITION``). It keeps the newest 16 MiB and forgets them at
-    ``detach``. Secrets are replaced by ``<redacted>`` in everything read: see ``redact``.
+    with ``FailureReason.DAEMON_PRECONDITION``). Redacted disk evidence follows the daemon's
+    rolling policy and survives detach/restart; use ``client.log_recordings`` for archived
+    reads and named protection. A 16 MiB hot buffer serves live followers. Secrets are replaced
+    by ``<redacted>`` before storage and on read: see ``redact``.
 
     Typical use, the app's warnings during one step::
 
@@ -354,11 +375,15 @@ class DeviceLog:
         with mapped_errors(self._device.serial):
             for response in self._device.client.device_log.ReadLog(request, timeout=timeout):
                 entries.dropped += response.dropped
+                entries.capture_error = response.capture_error or entries.capture_error
+                entries.clock_id = response.clock_id or entries.clock_id
                 entries.extend(_entry(entry) for entry in response.entries)
         if until is None:
             return entries
         cut = LogEntries(entries[: _until_index(entries, until) + 1])
         cut.dropped = entries.dropped
+        cut.capture_error = entries.capture_error
+        cut.clock_id = entries.clock_id
         return cut
 
     def follow(
@@ -375,8 +400,9 @@ class DeviceLog:
     ) -> LogFollower:
         """The entries from the starting point and then every new one as it is logged, until
         the returned ``LogFollower`` is closed or the device detached. Same starting points and
-        filters as ``read``; with none, it starts at the oldest entry (``tail=1`` starts near
-        now). Read it on its own thread, or to wait for a line::
+        filters as ``read``, but backlog comes from the bounded live hot buffer. Read retained
+        evidence separately for older entries (``tail=1`` starts near now). Read it on its own
+        thread, or to wait for a line::
 
             with device.logs.follow(since="checkout", tags=["Payments"]) as log:
                 done = next(e for e in log if e.line and "settled" in e.line.message)
@@ -391,7 +417,7 @@ class DeviceLog:
         """Writes a named marker into the log, at the time the server gets the call, and
         returns its cursor. Read from it with ``read(since=name)``; a later marker with the
         same name replaces it as the starting point. ``name`` is 1 to 200 characters on one
-        line."""
+        line. Closed capture or failed persistence refuses acknowledgment."""
         self._device._ensure_usable("logs.mark")
         with mapped_errors(self._device.serial):
             return self._device.client.device_log.MarkLog(
@@ -412,7 +438,9 @@ class DeviceLog:
 
         Redacted without any call: ``Authorization`` / ``Cookie`` style headers, ``password=``
         / ``token=`` style values, bearer tokens, JWTs, and the text of every ``sensitive``
-        ``set_text`` / ``type_text`` on this device. At most 64 patterns per attachment."""
+        ``set_text`` / ``type_text`` on this device (literals of four characters or longer).
+        At most 64 patterns per attachment. Late rules rewrite retained segments; failure is
+        explicit. This cannot securely erase earlier copies or backups of unrecognized values."""
         self._device._ensure_usable("logs.redact")
         with mapped_errors(self._device.serial):
             self._device.client.device_log.RedactLog(

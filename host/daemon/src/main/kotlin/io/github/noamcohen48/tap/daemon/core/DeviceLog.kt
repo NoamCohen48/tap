@@ -32,6 +32,10 @@ class UnknownLogMarkerException(
 /** A follower fell [LOG_READER_CAPACITY] entries behind; it reads again after the last cursor it got. */
 class LogReaderOverflowException : RuntimeException("log reader fell behind; read again after the last received cursor")
 
+/** A tail selection exceeded the bounded server-side selection buffer. */
+internal class LogReadSelectionLimitException :
+    RuntimeException("selected log tail exceeds 16 MiB; request fewer entries or narrower filters")
+
 /** Where a read of the log starts. */
 internal sealed interface LogStart {
     /** The oldest entry still kept. */
@@ -68,7 +72,10 @@ internal data class LogFilter(
     /** [entry], already redacted. */
     fun passes(entry: LogEntry): Boolean =
         when (entry.kindCase) {
-            LogEntry.KindCase.ACTION -> !excludeActions
+            LogEntry.KindCase.ACTION -> {
+                !excludeActions
+            }
+
             LogEntry.KindCase.LINE -> {
                 val line = entry.line
                 (uids == null || (line.hasUid() && line.uid in uids)) &&
@@ -76,7 +83,10 @@ internal data class LogFilter(
                     (tags.isEmpty() || line.tag in tags) &&
                     (message == null || message.matcher(line.message).find())
             }
-            else -> true
+
+            else -> {
+                true
+            }
         }
 }
 
@@ -95,8 +105,13 @@ internal class DeviceLog(
     private val readerCapacity: Int = LOG_READER_CAPACITY,
     /** The device's installed packages and their uids (`pm list packages -U`); null: lines name no package. */
     private val installedPackages: (suspend () -> Map<String, Int>)? = null,
+    private val retained: RetainedLogs? = null,
+    internal val archive: RetainedLogs.Archive? = null,
 ) : LogcatCapture.Sink {
-    val redactor = LogRedactor()
+    val redactor =
+        LogRedactor().apply {
+            changed = { archive?.let { retained?.redact(it, ::redacted) } }
+        }
 
     /** The uid the driver logs as ([io.github.noamcohen48.tap.api.v1.DeviceInfo.getDriverUid]); its `Tap` lines are actions. */
     @Volatile var driverUid: Int? = null
@@ -164,7 +179,14 @@ internal class DeviceLog(
     }
 
     /** Writes a marker; returns its cursor. */
-    fun mark(name: String): Long = append(LogEntry.newBuilder().setMarker(name))
+    @Synchronized
+    fun mark(name: String): Long {
+        if (closed) throw DaemonPreconditionException("log capture closed before the marker could be retained")
+        if (archive?.error.orEmpty().isNotEmpty()) throw DaemonPreconditionException("marker cannot be retained: ${archive?.error}")
+        val cursor = append(LogEntry.newBuilder().setMarker(name))
+        if (archive?.error.orEmpty().isNotEmpty()) throw DaemonPreconditionException("marker could not be retained: ${archive?.error}")
+        return cursor
+    }
 
     /**
      * The driver request [requestId], sent at or after [sentAtHostMs], belongs to [step]: its
@@ -185,11 +207,18 @@ internal class DeviceLog(
         for (index in entries.indices.reversed()) {
             val entry = entries[index]
             if (entry.hostTimeMs < sentAtHostMs) break
-            if (!entry.hasAction() || !entry.action.hasRequestId() || entry.action.requestId != requestId || entry.action.hasStep()) continue
+            if (!entry.hasAction() || !entry.action.hasRequestId() || entry.action.requestId != requestId ||
+                entry.action.hasStep()
+            ) {
+                continue
+            }
             entries[index] = entry.toBuilder().setAction(entry.action.toBuilder().setStep(step)).build()
             bytes += step.length
             if (entry.action.finished) steps.remove(requestId)
         }
+        val previousError = archive?.error.orEmpty()
+        archive?.let { retained?.commandStep(it, requestId, step, sentAtHostMs) }
+        noticeStorageFailure(previousError)
     }
 
     /** An action the host ran itself (an app or device call), at its start or its end. */
@@ -222,7 +251,16 @@ internal class DeviceLog(
                 if (entry.action.finished) steps.remove(requestId)
             }
         }
-        val recorded = entry.setCursor(++lastCursor).setHostTimeMs(System.currentTimeMillis()).setHostMonotonicNs(MediaClock.nowNs()).build()
+        val recorded =
+            entry
+                .setCursor(
+                    ++lastCursor,
+                ).setHostTimeMs(System.currentTimeMillis())
+                .setHostMonotonicNs(MediaClock.nowNs())
+                .build()
+        // Persist only the currently redacted representation, never the raw log line.
+        val previousError = archive?.error.orEmpty()
+        archive?.let { retained?.append(it, redacted(recorded)) }
         entries.addLast(recorded)
         bytes += size(recorded)
         while (bytes > maxBytes && entries.size > 1) {
@@ -240,7 +278,13 @@ internal class DeviceLog(
                 }
             }
         }
+        noticeStorageFailure(previousError)
         return recorded.cursor
+    }
+
+    private fun noticeStorageFailure(previous: String) {
+        val error = archive?.error.orEmpty()
+        if (previous.isEmpty() && error.isNotEmpty()) append(LogEntry.newBuilder().setGap("durable capture incomplete: $error"))
     }
 
     /**
@@ -252,14 +296,45 @@ internal class DeviceLog(
         start: LogStart = LogStart.Oldest,
         filter: LogFilter = LogFilter(),
         follow: Boolean = false,
+        recording: String? = null,
+        memoryOnly: Boolean = follow,
     ): Subscription {
+        val snapshot = archive?.let { retained?.snapshot(it, recording) }
+        val firstExpected = snapshot?.first ?: 1L
+        val lastExpected = snapshot?.last ?: lastCursor
+        val entries =
+            try {
+                if (memoryOnly) {
+                    entries.filter { snapshot == null || snapshot.allows(it) }
+                } else {
+                    snapshot?.entries()?.toList()
+                        ?: entries.toList()
+                }
+            } finally {
+                snapshot?.close()
+            }
         val from: Long =
             when (start) {
-                LogStart.Oldest, is LogStart.Tail -> 0
-                is LogStart.After -> start.cursor
-                is LogStart.Marker ->
-                    (entries.lastOrNull { it.hasMarker() && it.marker == start.name } ?: throw UnknownLogMarkerException(start.name)).cursor - 1
-                LogStart.LastAction -> entries.lastOrNull { it.hasAction() && !it.action.finished }?.let { it.cursor - 1 } ?: 0
+                LogStart.Oldest, is LogStart.Tail -> {
+                    0
+                }
+
+                is LogStart.After -> {
+                    start.cursor
+                }
+
+                is LogStart.Marker -> {
+                    (
+                        entries.lastOrNull { it.hasMarker() && it.marker == start.name } ?: throw UnknownLogMarkerException(
+                            start.name,
+                        )
+                    ).cursor -
+                        1
+                }
+
+                LogStart.LastAction -> {
+                    entries.lastOrNull { it.hasAction() && !it.action.finished }?.let { it.cursor - 1 } ?: 0
+                }
             }
         val range =
             if (filter.step == null) {
@@ -276,9 +351,10 @@ internal class DeviceLog(
                 .filter(filter::passes)
                 .toList()
         val backlog = if (start is LogStart.Tail) matching.takeLast(start.count) else matching
-        val oldestKept = entries.firstOrNull()?.cursor ?: (lastCursor + 1)
-        // Entries between the starting point and the oldest one kept are gone.
-        val missed = if (start is LogStart.Tail) 0 else (oldestKept - 1 - from).coerceIn(0, dropped)
+        val lower = maxOf(firstExpected, if (from == Long.MAX_VALUE) Long.MAX_VALUE else from + 1, range?.first ?: firstExpected)
+        val upper = minOf(lastExpected, range?.last ?: lastExpected)
+        val available = entries.count { it.cursor in lower..upper }
+        val missed = if (start is LogStart.Tail || upper < lower) 0 else ((upper - lower + 1) - available).coerceAtLeast(0)
         val live = if (follow) Channel<LogEntry>(readerCapacity).also { if (closed) it.close() else readers[it] = filter } else null
         return Subscription(backlog, missed, live)
     }
@@ -342,15 +418,40 @@ internal class DeviceLog(
         readers.keys.forEach { it.close() }
         readers.clear()
         steps.clear()
+        archive?.let { retained?.close(it) }
         entries.clear()
         bytes = 0
     }
 
-    private fun redacted(entry: LogEntry): LogEntry {
-        if (!entry.hasLine()) return entry
-        val message = redactor.redact(entry.line.message)
-        return if (message == entry.line.message) entry else entry.toBuilder().setLine(entry.line.toBuilder().setMessage(message)).build()
-    }
+    internal fun redacted(entry: LogEntry): LogEntry =
+        when {
+            entry.hasLine() -> {
+                entry
+                    .toBuilder()
+                    .setLine(
+                        entry.line
+                            .toBuilder()
+                            .setMessage(redactor.redact(entry.line.message))
+                            .setTag(redactor.redact(entry.line.tag)),
+                    ).build()
+            }
+
+            entry.hasAction() && entry.action.hasTarget() -> {
+                entry
+                    .toBuilder()
+                    .setAction(
+                        entry.action.toBuilder().setTarget(redactor.redact(entry.action.target)),
+                    ).build()
+            }
+
+            entry.hasGap() -> {
+                entry.toBuilder().setGap(redactor.redact(entry.gap)).build()
+            }
+
+            else -> {
+                entry
+            }
+        }
 
     private fun size(entry: LogEntry): Long =
         ENTRY_OVERHEAD_BYTES +
@@ -395,6 +496,7 @@ internal class DeviceLog(
          * [entry] as one line of text, for `DeviceLogs.logcat`: a log line as
          * `<device epoch s.ms> <uid> <pid> <tid> <P> <tag>: <message>`, anything else after `──`.
          */
+
         /** `MM-dd HH:mm:ss.SSS` on the daemon host's clock and zone: the time the daemon got an entry. */
         private val STAMP = DateTimeFormatter.ofPattern("MM-dd HH:mm:ss.SSS").withZone(ZoneId.systemDefault())
 
@@ -407,13 +509,29 @@ internal class DeviceLog(
         fun text(entry: LogEntry): String {
             val stamp = STAMP.format(Instant.ofEpochMilli(entry.hostTimeMs))
             return when (entry.kindCase) {
-                LogEntry.KindCase.LINE ->
+                LogEntry.KindCase.LINE -> {
                     with(entry.line) {
-                        "%s %5s %5d %5d %c %s: %s".format(stamp, if (hasUid()) uid.toString() else "?", pid, tid, letter(priority), tag, message)
+                        "%s %5s %5d %5d %c %s: %s".format(
+                            stamp,
+                            if (hasUid()) uid.toString() else "?",
+                            pid,
+                            tid,
+                            letter(priority),
+                            tag,
+                            message,
+                        )
                     }
-                LogEntry.KindCase.MARKER -> "$stamp ── marker ${entry.marker}"
-                LogEntry.KindCase.GAP -> "$stamp ── gap ${entry.gap}"
-                LogEntry.KindCase.ACTION ->
+                }
+
+                LogEntry.KindCase.MARKER -> {
+                    "$stamp ── marker ${entry.marker}"
+                }
+
+                LogEntry.KindCase.GAP -> {
+                    "$stamp ── gap ${entry.gap}"
+                }
+
+                LogEntry.KindCase.ACTION -> {
                     with(entry.action) {
                         buildString {
                             append(stamp).append(" ── ").append(operation)
@@ -422,7 +540,11 @@ internal class DeviceLog(
                             if (hasDurationMs()) append("  ").append(durationMs).append(" ms")
                         }
                     }
-                else -> stamp
+                }
+
+                else -> {
+                    stamp
+                }
             }
         }
     }

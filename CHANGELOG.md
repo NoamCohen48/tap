@@ -6,6 +6,15 @@ name the components affected. Earlier releases used independent version lines. T
 
 ## Unreleased
 
+### Engine
+
+- Device logs survive detach and daemon restart in a private, redacted disk store. Configure
+  global rolling retention with `tap config logging-policy show|rolling` (default one hour /
+  256 MiB, 1 GiB hard storage budget, 256 MiB free-disk reserve). Python
+  `client.log_recordings` and Kotlin `client.logRecordings` protect named ranges and discover
+  retained ordinary evidence. Gaps, storage failures and interrupted captures stay explicit.
+  No input replay or inferred assertions. See the [device logs guide](docs/guide/logs.md).
+
 ## 0.2.0
 
 All components use 0.2.0. Install the server and clients from this release together; Tap agent,
@@ -35,7 +44,7 @@ API compatibility epoch is unchanged; the internal device protocol is 5.3 (also 
   app's lines in order with the actions Tap ran (the driver logs each action and wait when it
   starts and finishes) and the markers a test wrote, filtered by package, priority, tag or a
   regular expression, read from a marker, a cursor, the newest N or the newest action, or
-  followed live. Secrets are replaced on read (auth headers, tokens, sensitive typed text, your
+  followed live. Secrets are replaced before persistence and on read (auth headers, tokens, sensitive typed text, your
   own patterns). A client that sends a `tap-step` header gets its step id on the actions and
   calls it caused. Python: `device.logs.read(...)` / `follow` / `mark` / `redact`,
   `with tap_e2e.step() as id:`; `tap-agent log`. Each app line names the packages installed
