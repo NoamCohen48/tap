@@ -176,7 +176,7 @@ def test_an_exported_step_keeps_the_deaths_it_reported_without_app_output(fake, 
     crashes(fake, death(1))
     agent.reporting_deaths(lambda: agent.tap("text=Crash"), expect=True)
     fake.devices.responder = None
-    (step,) = json.loads(agent.export())["steps"]
+    (step,) = json.loads(agent.history(as_json=True))["steps"]
     assert step["app_deaths"] == [{
         "serial": "emulator-5554", "sequence": 1, "kind": "crash", "package_name": PKG, "process_name": PKG,
         "exception_class": "java.lang.IllegalStateException", "expected": True,

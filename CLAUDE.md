@@ -71,16 +71,20 @@ See `CONTRIBUTING.md` for build/run commands.
 - `.docs/device-capabilities.md` — approved design and implementation plan for read-only
   per-attachment operation support, shared by the server, SDKs and tap-agent (G37).
 - `.docs/app-logs.md` — decision record: the device log (`DeviceLogService`): logcat streamed
-  for the whole attachment with the driver's own action lines, markers and redaction on read;
+  for the whole attachment with the driver's own action lines, markers and redaction;
   the log parser pipeline (HTTP exchanges) is deferred to `.docs/feature-todo.md`.
+- `.docs/history-and-logging-policy.md` — decision record: durable redacted device logs,
+  daemon-wide rolling retention (`tap config logging-policy`), named protected history ranges,
+  crash recovery and export across release/restart. Protected ranges bypass rolling eviction,
+  not hard storage/free-space limits; capture gaps and uncertainty stay explicit.
 - `.docs/tap-outside-panel.md` — decision record: `tap_outside_panel`, one tap outside the dialog,
   popup, menu, drawer or sheet that holds a node (panel by dismiss action / pane title, else the
   window), its refusals, the device evidence and the rejected placement design.
 - `.docs/device-actions.md` — device actions: what is done (rotation, screen/keyguard, app
   foreground/background/deep links, permission dialogs, gestures), the group in progress with its
   per-action design and upstream comparison, and the prioritised backlog.
-- `.docs/cli-parsing.md` — research note on CLI parsing libraries for `tap` (Clikt / picocli /
-  kotlinx-cli); decision: hand parser until the CLI grows a second tier, then Clikt core.
+- `.docs/cli-parsing.md` — current decision: metadata-driven administration CLI without a
+  parser library; original Clikt/picocli/kotlinx-cli comparison is historical research.
 - `docs/` + `mkdocs.yml` — the *public* user documentation (guide pages and generated Kotlin /
   Python / gRPC references; `scripts/build-docs.sh`). Update the guide with any user-visible
   client change; public client API needs KDoc/docstrings because the references are generated

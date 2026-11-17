@@ -55,12 +55,9 @@ def test_every_rpc_and_execute_operation_is_classified(tools):
             _check_tools(via, tools)
     excluded = REGISTRY["excluded_rpcs"]
     assert set(excluded) == {
-        "tap.v1.ClientConnectionService.Observe", "tap.v1.AppService.AwaitIdle",
+        "tap.v1.ClientConnectionService.Observe", "tap.v1.ClientConnectionService.Events", "tap.v1.AppService.AwaitIdle",
         "tap.v1.WatchService.Watch", "tap.v1.WatchService.WatchVideo",
         "tap.v1.WatchService.WatchLog",
-        "tap.v1.DeviceLogService.StartLogRecording", "tap.v1.DeviceLogService.StopLogRecording",
-        "tap.v1.DeviceLogService.ListLogRecordings", "tap.v1.DeviceLogService.DeleteLogRecording",
-        "tap.v1.DeviceLogService.ListRetainedLogs",
     }
     assert all(excluded.values()) and not covered.intersection(excluded)
     assert covered | set(excluded) == actual

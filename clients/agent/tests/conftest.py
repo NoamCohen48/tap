@@ -21,6 +21,12 @@ TOKEN = fake_daemon.TOKEN
 fake = fake_daemon.fake  # the fixture
 
 
+@pytest.fixture(autouse=True)
+def private_default_agent_storage(monkeypatch, tmp_path):
+    """CLI tests must not read or change the developer's default history catalog."""
+    monkeypatch.setenv("TAP_AGENT_DIR", str(tmp_path / "agent-default"))
+
+
 @pytest.fixture
 def anyio_backend() -> str:
     return "asyncio"

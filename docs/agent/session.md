@@ -342,26 +342,25 @@ notifies: the death stays for the next step to report and take. The wait runs on
 does not count as use of the session, so a forgotten waiter never keeps the device held past
 the idle timeout. MCP has no background calls, so it is a CLI command only.
 
-## Step history, export and release
+## History, recordings and release
 
-Every action and explicit wait is recorded as a step from the first one; nothing has to be
-started. `export` writes the history, also after `release`:
+Every action and explicit wait is retained automatically. `history` reads the latest steps;
+`record start NAME` protects a named range of the same steps, durable RPC events and device logs:
 
-```console
-$ tap-agent export -o session.json
-exported step history 'agent-20261114-101502' (9 steps) to session.json
-$ tap-agent release
-released session 'agent' (detached emulator-5554)
+```sh
+tap-agent record start checkout
+tap-agent tap text=Pay,pkg=com.shop
+tap-agent record stop checkout
+tap-agent release
+tap-agent record export checkout --logs --json > checkout.json
 ```
 
-The device log and the server's record of each call end with the session, so export them first:
-`release --export flow.json` writes `export --logs --calls` to a new file, then releases.
-
-`log mark NAME` puts a marker in the device log and in the history; `export --since NAME`
-exports from it, and `--logs` / `--calls` add the device log and the server's record of each
-call while the session is live. `history` lists the saved histories. Only actions and explicit
-waits are steps, not inspections/polls.
-[Record steps and turn them into tests](export.md) explains persistence, redaction and outcomes.
+Release frees devices and finalizes current protection; it does not write an export file.
+Events and logs remain readable after release/restart while retained. `history [--logs]
+[--json] [--from STEP|TIME] [--until STEP|TIME] [--limit N]` reads ordinary activity;
+`record list [-L]` discovers protected ranges. Default output is readable stdout text.
+Only actions and explicit waits are high-level steps, not internal inspections/polls.
+[History and recordings](export.md) explains pagination, retention, redaction and unknown outcomes.
 
 ## SDK workflows and diagnostics
 
@@ -467,6 +466,8 @@ $ tap-agent log mark paid
 $ tap-agent log --since checkout --until paid --package com.shop --json
 {
   "dropped": 0,
+  "capture_error": "",
+  "clock_id": "opaque-capture-clock-id",
   "omitted": 0,
   "more": 0,
   "next": null,
@@ -489,7 +490,9 @@ process) and `device_time` (the device's clock, in seconds; `device_clock_offset
 it is ahead of the host's). `steps` names the session's steps the actions refer to. `omitted`
 counts earlier entries left out by `--limit`, `more` later ones and `next` the flags that read
 them (`--after` the `cursor`, the same end and filters), `dropped` entries the server no longer
-has (it keeps the newest 16 MiB). `--tail N` counts actions and markers too. See
+has under the daemon's rolling retention policy. `capture_error` reports incomplete durable
+capture, and `clock_id` identifies the original capture clock. `--tail N` counts actions and
+markers too. Retained exports remain available after release; see
 [Device logs](../guide/logs.md).
 MCP screenshot/capture now also accept `path`, matching CLI `-o`.
 
