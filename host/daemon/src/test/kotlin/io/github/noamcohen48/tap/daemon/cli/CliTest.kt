@@ -40,7 +40,7 @@ class CliTest {
         assertEquals(CommandLine("stop", mapOf("--state-dir" to "d")), parseCommandLine(listOf("stop", "--state-dir", "d")))
 
         fun refused(vararg args: String): String? = assertFailsWith<UsageException> { parseCommandLine(args.toList()) }.message
-        assertEquals(null, refused())
+        assertEquals(CommandLine("", help = true), parseCommandLine(emptyList()))
         assertEquals("unknown command 'launch'", refused("launch"))
         assertEquals("option --port is not valid for `tap status`", refused("status", "--port", "1"))
         assertEquals("--port must be an integer in 0..65535, got '70000'", refused("serve", "--port", "70000"))
@@ -142,6 +142,20 @@ class CliTest {
             lines.clear()
             assertEquals(1, doctor(stateDir, listed, serial = "gone", fix = false, out = { lines += it }, server = { "no daemon" }))
             assertEquals("gone: not listed by `adb devices`", lines.last())
+        }
+
+    @Test
+    fun `doctor fails for unavailable devices without suggesting cleanup as a cure`() =
+        runBlocking {
+            for (state in listOf(AdbDeviceState.OFFLINE, AdbDeviceState.UNAUTHORIZED)) {
+                val adb =
+                    object : Adb("fake-adb") {
+                        override suspend fun deviceStates(timeoutMs: Long) = listOf(AdbDevice("phone", state, state.name.lowercase()))
+                    }
+                val lines = mutableListOf<String>()
+                assertEquals(1, doctor(Files.createTempDirectory("tap-doctor-unavailable"), adb, null, false, lines::add) { "running" })
+                assertFalse(lines.any { it.contains("run `tap doctor --fix`") })
+            }
         }
 
     @Test

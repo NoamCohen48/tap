@@ -34,20 +34,29 @@ internal suspend fun doctor(
         return if (serial == null) 0 else 1
     }
     var unhealthy = false
+    var unavailable = false
     for (device in devices) {
         if (device.state != AdbDeviceState.ONLINE) {
+            unavailable = true
             val hint = if (device.state == AdbDeviceState.UNAUTHORIZED) "; accept the USB debugging prompt on the device" else ""
             out("${device.serial}: ${device.rawState}$hint")
             continue
         }
         when (val outcome = DeviceDoctor.check(adb, stateDir.resolve("sessions"), device.serial, fix)) {
-            Outcome.Clean -> out("${device.serial}: clean")
-            Outcome.InUse -> out("${device.serial}: in use by a session; skipped")
+            Outcome.Clean -> {
+                out("${device.serial}: clean")
+            }
+
+            Outcome.InUse -> {
+                out("${device.serial}: in use by a session; skipped")
+            }
+
             is Outcome.Quarantined -> {
                 unhealthy = true
                 out("${device.serial}: quarantined: ${outcome.reason}")
                 out("  check the device, then `tap unquarantine --serial ${device.serial}` puts it back in service")
             }
+
             is Outcome.Findings -> {
                 if (outcome.findings.any { !it.fixed }) unhealthy = true
                 out("${device.serial}:")
@@ -56,7 +65,7 @@ internal suspend fun doctor(
         }
     }
     if (unhealthy && !fix) out("run `tap doctor --fix` to clean up what ended sessions left")
-    return if (unhealthy) 1 else 0
+    return if (unhealthy || unavailable) 1 else 0
 }
 
 private fun serverLine(stateDir: Path): String {
@@ -89,10 +98,12 @@ internal suspend fun unquarantine(
             out("$serial: in use by a session; not changed")
             1
         }
+
         UnquarantineOutcome.NotQuarantined -> {
             out("$serial: not quarantined; nothing to do")
             0
         }
+
         is UnquarantineOutcome.Unquarantined -> {
             out("$serial: back in service (it was quarantined: ${outcome.reason})")
             outcome.cleaned.forEach { out("  - $it") }
@@ -101,4 +112,3 @@ internal suspend fun unquarantine(
         }
     }
 }
-

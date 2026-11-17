@@ -56,6 +56,9 @@ class DaemonConfig(
     val scrcpyServer: Path? = null,
     /** Experimental bounded instrumentation reuse; 0 disables it. */
     val driverIdleTimeoutMs: Long = 0,
+    /** Allowlisted CLI startup values and their sources; never credentials. */
+    val startupOptions: Map<String, String> = emptyMap(),
+    val startupOptionSources: Map<String, String> = emptyMap(),
 )
 
 class UnknownClientConnectionException(
@@ -119,6 +122,10 @@ data class ConnectionInfo(
     val holdIdleMs: Long?,
     val idleMs: Long,
     val attachedDevices: List<AttachedDevice>,
+    val createdAtEpochMs: Long,
+    val lastActivityAtEpochMs: Long,
+    val inFlight: Int,
+    val observing: Boolean,
 )
 
 /** A held connection's name is already taken by another held connection. */
@@ -158,11 +165,13 @@ class ConnectedClient internal constructor(
     activity: ActivityLog? = null,
 ) {
     internal var closed = false
+    internal val createdAtEpochMs = System.currentTimeMillis()
+    internal var lastActivityAtEpochMs = createdAtEpochMs
 
-    /** Held connections: when the last call naming it started or finished ([System.nanoTime]). */
+    /** When the last call naming it started or finished ([System.nanoTime]). */
     internal var lastUsedNanos = System.nanoTime()
 
-    /** Held connections: calls naming it that have not finished; it is never idle while any run. */
+    /** Calls naming it that have not finished; a held connection is never idle while any run. */
     internal var inFlight = 0
 
     /** Invoked once with the reason when the connection closes, so an Observe stream can complete. */
@@ -439,6 +448,10 @@ class TapDaemon internal constructor(
                 holdIdleMs = connection.holdIdleMs,
                 idleMs = if (connection.inFlight > 0) 0L else (now - connection.lastUsedNanos) / 1_000_000L,
                 attachedDevices = attachedDevicesById.values.filter { it.ownerConnectionId == connection.id },
+                createdAtEpochMs = connection.createdAtEpochMs,
+                lastActivityAtEpochMs = connection.lastActivityAtEpochMs,
+                inFlight = connection.inFlight,
+                observing = connection.observeOwner != null,
             )
         }
     }
@@ -468,15 +481,17 @@ class TapDaemon internal constructor(
     private suspend fun markInUse(id: String) {
         val connection =
             synchronized(lifecycleLock) {
-                clientConnectionsById[id]?.takeIf { it.holdIdleMs != null && !it.closed }?.also {
+                clientConnectionsById[id]?.takeIf { !it.closed }?.also {
                     it.inFlight++
                     it.lastUsedNanos = System.nanoTime()
+                    it.lastActivityAtEpochMs = System.currentTimeMillis()
                 }
             } ?: return
         val finished = {
             synchronized(lifecycleLock) {
                 connection.inFlight--
                 connection.lastUsedNanos = System.nanoTime()
+                connection.lastActivityAtEpochMs = System.currentTimeMillis()
             }
         }
         val job = currentCoroutineContext()[Job]
@@ -559,7 +574,8 @@ class TapDaemon internal constructor(
         id: String,
         reason: String,
         perAttachedDeviceMs: Long = DEVICE_SESSION_CLOSE_TIMEOUT_MS,
-    ): Int = disconnectClientWithin(id, reason, perAttachedDeviceMs, totalTimeoutMs = null)
+        onCleanupIssue: (serial: String, detail: String) -> Unit = { _, _ -> },
+    ): Int = disconnectClientWithin(id, reason, perAttachedDeviceMs, totalTimeoutMs = null, onCleanupIssue = onCleanupIssue)
 
     /**
      * Internal seam for the connection-level exhaustion branch: production calls this via
@@ -574,6 +590,7 @@ class TapDaemon internal constructor(
         totalTimeoutMs: Long?,
         expectedObserveOwner: Any? = null,
         completedObserveCloser: ((String) -> Unit)? = null,
+        onCleanupIssue: (serial: String, detail: String) -> Unit = { _, _ -> },
     ): Int =
         withContext(NonCancellable) {
             val snapshot =
@@ -600,6 +617,7 @@ class TapDaemon internal constructor(
                     .map { attachedDevice ->
                         async {
                             val detail = closeAttachedDevice(attachedDevice, timeoutMs, shutdown = totalTimeoutMs != null)
+                            if (detail != null) onCleanupIssue(attachedDevice.deviceSession.serial, detail)
                             config.log("attached device ${attachedDevice.id} detached" + (detail?.let { " (quarantined: $it)" } ?: ""))
                         }
                     }.awaitAll()
@@ -1017,6 +1035,7 @@ class TapDaemon internal constructor(
      * Returns the attached device, rejecting use after sticky reap quarantine so a poisoned device
      * cannot be driven through a direct command path that bypasses [AppLifecycle].
      */
+
     /** [inUse] false: the call does not count as use of a held connection (a long wait that must not keep it alive). */
     suspend fun attachedDevice(
         id: String,

@@ -30,7 +30,42 @@ library added here must not need reflection config, or must generate its own.
 | **picocli** (`info.picocli`) | Java, annotation-driven (`@Command`, `@Option`, `@Parameters`), subcommands, completion scripts, ANSI help. | First-class, but reflection-based: its annotation processor emits the GraalVM reflection/resource/proxy config into the jar; that config must be regenerated whenever options change. | single jar, no deps | The most battle-tested choice for native CLIs on the JVM; Quarkus's default. |
 | **kotlinx-cli** (JetBrains) | Property delegates like Clikt, fewer features. | fine | small | Effectively unmaintained; Clikt's own comparison of it is fair. Not recommended. |
 
-## Decision
+## Current decision — daemon administration CLI
+
+The operator explicitly approved expanding daemon administration while keeping `tap` and
+`tap-agent` independent, and removed the requirement to adopt Clikt. The CLI therefore keeps
+an explicit parser with a single metadata table (`CliCommands.kt`) driving command paths,
+option arity/validation, per-command help and shell completions. There is no new parser
+library or reflection dependency. The earlier mandatory Clikt trigger below is superseded;
+its comparison remains historical research, not an implementation requirement.
+
+The supported shape is `tap [--state-dir DIR] <command> [subcommand] [arguments] [options]`.
+Help is successful, side-effect-free stdout output at root and every command; usage failures
+are stderr/2. Existing startup flags, environment fallbacks, paired APK validation and
+`start` → `serve` forwarding remain intact. Both `--key value` and `--key=value` work.
+Inspection uses authenticated daemon RPCs directly, never a Python executable, and never
+opens or renews a client connection. Interaction remains in separate SDK/agent/Studio clients.
+
+The expanded commands cover device/session list and details, forced session close with an
+audit reason and cleanup results, guarded restart, status/watch, setup doctor, log tail/follow,
+configuration provenance, restricted diagnostic archives and static bash/zsh/fish completion.
+Restart's active-session guard is explicitly a preflight, not exclusive admission control.
+See the public [server guide](../docs/guide/server.md) for behavior and examples.
+
+Verification is in `CliDiscoveryTest`, `AdministrationTest`, the connection/core lifecycle
+suites and `.github/scripts/daemon_cli_smoke.py`. The latter drives either executable build
+with fake ADB and real RPC-created sessions; it touches no Android devices. Native CI and
+release smoke run it after installing the Python SDK as the *test fixture*, not a CLI dependency.
+
+Final verification after rebasing onto `31010856`: **666 JVM tests** (host core/daemon,
+protocol, command engine and Kotlin SDK), **566 Python client/agent unit tests**, stub freshness,
+buf lint/breaking, full HTML/Markdown documentation builds, and JVM/native CLI executable smoke
+all passed. The metadata commit was also tested independently with daemon/protocol suites.
+Native build/smoke used **GraalVM 25**. CE 21.0.2 hits the already-recorded compiler error in
+unchanged `AppDeaths.follow` (see `fast-attach.md`); it is not a successful CE 21.0.2 validation
+or a toolchain configuration change. No device matrix was requested or run.
+
+## Original decision (superseded)
 
 **Not now.** The current surface is small enough that the hand parser is correct and cheaper
 than a dependency. A library earns its place the moment the CLI grows a second tier —

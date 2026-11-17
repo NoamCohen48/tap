@@ -123,6 +123,7 @@ jobs:
           tap=host/daemon/build/native/nativeCompile/tap
           test "$("$tap" version)" = "tap daemon $VERSION"
           python -m pip install --quiet clients/python
+          python .github/scripts/daemon_cli_smoke.py "$tap"
           "$tap" start
           trap '"$tap" stop' EXIT
           python .github/scripts/daemon_smoke.py

@@ -3,9 +3,9 @@ package io.github.noamcohen48.tap.daemon.grpc
 import io.github.noamcohen48.tap.api.v1.AttachedDeviceEntry
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Closing
-import io.github.noamcohen48.tap.api.v1.ConnectionEntry
 import io.github.noamcohen48.tap.api.v1.ConnectRequest
 import io.github.noamcohen48.tap.api.v1.ConnectResponse
+import io.github.noamcohen48.tap.api.v1.ConnectionEntry
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.DisconnectResponse
 import io.github.noamcohen48.tap.api.v1.EventsRequest
@@ -67,7 +67,11 @@ class ClientConnectionService(
         reply {
             argument(request.afterSeq >= 0) { "after_seq must be >= 0" }
             val (events, dropped) = daemon.eventLog(request.clientConnectionId).after(request.afterSeq)
-            EventsResponse.newBuilder().addAllEvents(events).setDropped(dropped).build()
+            EventsResponse
+                .newBuilder()
+                .addAllEvents(events)
+                .setDropped(dropped)
+                .build()
         }
 
     /**
@@ -104,8 +108,21 @@ class ClientConnectionService(
 
     override suspend fun disconnect(request: DisconnectRequest): DisconnectResponse =
         reply {
-            val detached = daemon.disconnectClient(request.clientConnectionId, "client request")
-            DisconnectResponse.newBuilder().setAttachedDevicesDetached(detached).build()
+            argument(request.reason.length <= 512 && request.reason.none { it.isISOControl() }) {
+                "reason must be at most 512 characters with no control characters"
+            }
+            val issues = java.util.concurrent.ConcurrentHashMap<String, String>()
+            val detached =
+                daemon.disconnectClient(
+                    request.clientConnectionId,
+                    request.reason.ifBlank { "client request" },
+                    onCleanupIssue = { serial, detail -> issues[serial] = detail },
+                )
+            DisconnectResponse
+                .newBuilder()
+                .setAttachedDevicesDetached(detached)
+                .putAllCleanupIssues(issues)
+                .build()
         }
 
     override suspend fun info(request: InfoRequest): InfoResponse =
@@ -120,6 +137,9 @@ class ClientConnectionService(
                 .setStateDir(daemon.config.stateDir.toString())
                 .setDriverAvailable(daemon.config.driver != null)
                 .setPid(ProcessHandle.current().pid())
+                .putAllStartupOptions(daemon.config.startupOptions)
+                .putAllStartupOptionSources(daemon.config.startupOptionSources)
+                .setAdministrativeDisconnectSupported(true)
                 .setDefaults(Defaults.message)
                 .build()
         }
@@ -148,6 +168,10 @@ internal fun ConnectionInfo.toEntry(): ConnectionEntry =
         .setClientConnectionId(id)
         .setName(name)
         .setIdleMs(idleMs)
+        .setCreatedAtEpochMs(createdAtEpochMs)
+        .setLastActivityAtEpochMs(lastActivityAtEpochMs)
+        .setInFlight(inFlight)
+        .setObserving(observing)
         .apply { holdIdleMs?.let { hold = Hold.newBuilder().setIdleTimeoutMs(it).build() } }
         .addAllAttachedDevices(
             attachedDevices.map { device ->

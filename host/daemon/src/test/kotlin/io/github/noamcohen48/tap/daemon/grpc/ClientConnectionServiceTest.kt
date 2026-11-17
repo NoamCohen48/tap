@@ -60,7 +60,11 @@ class ClientConnectionServiceTest {
     fun `Info reports the generated API compatibility epoch`() {
         assertEquals(
             io.github.noamcohen48.tap.api.v1.TAP_API_COMPATIBILITY,
-            stub.info(io.github.noamcohen48.tap.api.v1.InfoRequest.getDefaultInstance()).apiCompatibility,
+            stub
+                .info(
+                    io.github.noamcohen48.tap.api.v1.InfoRequest
+                        .getDefaultInstance(),
+                ).apiCompatibility,
         )
     }
 
@@ -75,6 +79,36 @@ class ClientConnectionServiceTest {
         val rest = generateSequence { if (events.hasNext()) events.next() else null }.toList()
         assertEquals("client request", rest.last().closing.reason)
         assertFalse(daemon.clientConnectionExists(id))
+    }
+
+    @Test
+    fun `administrative disconnect delivers its reason and rejects log injection`() {
+        val id = connect()
+        val events = observe(id)
+        events.next()
+        val invalid =
+            assertFailsWith<StatusRuntimeException> {
+                stub.disconnect(
+                    DisconnectRequest
+                        .newBuilder()
+                        .setClientConnectionId(id)
+                        .setReason("bad\nreason")
+                        .build(),
+                )
+            }
+        assertEquals(Status.Code.INVALID_ARGUMENT, invalid.status.code)
+        assertTrue(daemon.clientConnectionExists(id))
+        val response =
+            stub.disconnect(
+                DisconnectRequest
+                    .newBuilder()
+                    .setClientConnectionId(id)
+                    .setReason("administrator: reclaim test device")
+                    .build(),
+            )
+        assertTrue(response.cleanupIssuesMap.isEmpty())
+        val rest = generateSequence { if (events.hasNext()) events.next() else null }.toList()
+        assertEquals("administrator: reclaim test device", rest.last().closing.reason)
     }
 
     @Test
@@ -97,7 +131,10 @@ class ClientConnectionServiceTest {
     @Test
     fun `cancelling the observe stream disconnects the client`() {
         val id = connect()
-        val context = io.grpc.Context.current().withCancellation()
+        val context =
+            io.grpc.Context
+                .current()
+                .withCancellation()
         val events = context.call { observe(id) }
         events.next()
         context.cancel(null)
@@ -111,8 +148,13 @@ class ClientConnectionServiceTest {
         idleMs: Long,
     ): String =
         stub
-            .connect(ConnectRequest.newBuilder().setName(name).setHold(Hold.newBuilder().setIdleTimeoutMs(idleMs)).build())
-            .clientConnectionId
+            .connect(
+                ConnectRequest
+                    .newBuilder()
+                    .setName(name)
+                    .setHold(Hold.newBuilder().setIdleTimeoutMs(idleMs))
+                    .build(),
+            ).clientConnectionId
 
     private fun rejected(call: () -> Unit): Pair<Status.Code, FailureReason> {
         val error = assertFailsWith<StatusRuntimeException> { call() }
@@ -125,10 +167,17 @@ class ClientConnectionServiceTest {
         val observed = connect()
         val rows = stub.listConnections(ListConnectionsRequest.getDefaultInstance()).connectionsList.associateBy { it.clientConnectionId }
         assertEquals("agent", rows.getValue(held).name)
+        assertTrue(rows.getValue(held).createdAtEpochMs > 0)
+        assertTrue(rows.getValue(held).lastActivityAtEpochMs >= rows.getValue(held).createdAtEpochMs)
+        assertEquals(0, rows.getValue(held).inFlight)
+        assertFalse(rows.getValue(held).observing)
         assertEquals(60_000L, rows.getValue(held).hold.idleTimeoutMs)
         assertFalse(rows.getValue(observed).hasHold())
         assertEquals(Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION, rejected { observe(held).next() })
-        assertEquals(Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION, rejected { connectHeld("agent", 60_000) })
+        assertEquals(
+            Status.Code.FAILED_PRECONDITION to FailureReason.FAILURE_REASON_DAEMON_PRECONDITION,
+            rejected { connectHeld("agent", 60_000) },
+        )
         stub.disconnect(DisconnectRequest.newBuilder().setClientConnectionId(held).build())
         connectHeld("agent", 60_000)
     }

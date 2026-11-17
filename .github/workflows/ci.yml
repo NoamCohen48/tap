@@ -387,6 +387,7 @@ jobs:
           tap=host/daemon/build/native/nativeCompile/tap
           "$tap" version
           python -m pip install --quiet clients/python
+          python .github/scripts/daemon_cli_smoke.py "$tap"
           "$tap" start
           trap '"$tap" stop' EXIT
           "$tap" status

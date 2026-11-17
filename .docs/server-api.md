@@ -27,6 +27,28 @@ for deliberate breaking server-API changes, not additive fields or ordinary rele
 server-driver `protocol_version` is separate. Older clients predating the epoch check must be
 upgraded alongside a breaking daemon.
 
+## Daemon administration metadata
+
+`ListConnections` is read-only: it does not renew held sessions. Each `ConnectionEntry` now
+also reports creation and last-activity epoch milliseconds, in-flight calls and whether an
+Observe stream is registered. "Sessions" in the daemon CLI means these client connections,
+not the per-device wire session generations. Last activity is a call naming the connection
+starting or finishing; an Observe heartbeat is not activity.
+
+`DisconnectRequest.reason` is optional (empty retains `client request`), at most 512 characters
+without control characters. The reason is delivered to observers and recorded in lifecycle
+activity and daemon logs. Disconnect remains idempotent and uses the existing bounded,
+concurrent cleanup path. `DisconnectResponse.cleanup_issues` maps serials to cleanup failures
+or timeouts; a closed connection does not imply successful restoration or cleared quarantine.
+`InfoResponse.administrative_disconnect_supported` advertises reason and cleanup reporting;
+the CLI requires it before administrative closure, so an older daemon cannot silently drop
+that information. Existing clients' plain Disconnect requests retain their behavior.
+
+`InfoResponse.startup_options` and `startup_option_sources` expose only allowlisted daemon
+startup configuration, never tokens. They are populated by the CLI launcher and allow
+configuration inspection and preserving options across restart. Embedded/test daemons may
+leave them empty. These additions do not change the compatibility epoch or device protocol.
+
 ## Device capability discovery
 
 `DeviceService.GetDeviceCapabilities` takes the owning `client_connection_id` and
@@ -123,7 +145,24 @@ JUnit (Kotlin)   --gRPC (loopback, bearer token)-->  (same server, same devices)
 - `tap stop` signals the pid only after an `Info` authenticated with the descriptor's token
   answered. A stale descriptor is removed and nothing is signalled, so a recycled pid is never
   killed.
-- `tap version`.
+- `tap version` / `--version`; root and per-command help are side-effect-free stdout/0.
+- `tap devices [show SERIAL]`, `tap sessions [show ID]`: direct authenticated, passive RPC
+  inspection. No dependency on or forwarding to `tap-agent`. `sessions close ID --force`
+  sends an administrative Disconnect reason and reports cleanup issues, including exit 1
+  after a completed close with failed cleanup. No retry on transport loss.
+- `tap restart [startup flags] [--force]`: refuses active connections without force,
+  preserves the running startup options and accepts explicit overrides. Its guard is a
+  preflight rather than an admission fence; coordinate with other clients. It refuses older
+  daemons that do not report startup settings rather than silently losing configuration.
+- `tap status|devices|sessions --watch [--interval SECONDS]`: repeated independent passive
+  snapshots, including failures; `--json` emits newline-delimited objects with `observed_at`.
+  Non-watch inspection, details, administrative closure, doctor and config support JSON too.
+- `tap logs [--tail N] [--follow]`, `tap config show`, `tap diagnostics --out PATH`,
+  `tap completion bash|zsh|fish`: local log inspection, allowlisted configuration provenance,
+  a new owner-only diagnostic ZIP, and static completions. Diagnostics excludes descriptors,
+  environment dumps, journals and arbitrary log payloads; it copies only recognized lifecycle
+  timing lines from a bounded tail. It works with a stopped daemon. Public behavior and
+  examples: `docs/guide/server.md`; parser decision: `.docs/cli-parsing.md`.
 - Like the ADB server, a started daemon stays up until `tap stop` and every client may share
   it. The clients expose the pair as `TapDaemonProcess.start()/stop()` (Kotlin) and
   `tap.start_daemon()/stop_daemon()` (Python). The test runners run it around a whole run when
