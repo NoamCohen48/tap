@@ -80,10 +80,16 @@ message ObserveResponse {
 
 message DisconnectRequest {
   string client_connection_id = 1;
+  // Optional administrative reason, at most 512 characters, no control characters.
+  // Empty retains "client request". Recorded in lifecycle logs and sent to Observe.
+  string reason = 2;
 }
 
 message DisconnectResponse {
   int32 attached_devices_detached = 1;
+  // Serial -> cleanup failure/timeout. The connection is closed even when cleanup is uncertain;
+  // normal journal recovery/quarantine rules still apply. Empty means no reported cleanup issue.
+  map<string, string> cleanup_issues = 2;
 }
 
 message InfoRequest {}
@@ -103,6 +109,14 @@ message InfoResponse {
   // on client and server; increment for breaking API changes, not additive fields or releases.
   // Zero means an older daemon that cannot establish compatibility.
   uint32 api_compatibility = 9;
+  // Allowlisted effective startup options (no credentials), for inspection and explicit restart.
+  // Empty on embedded daemons not launched by the CLI or on older servers.
+  map<string, string> startup_options = 10;
+  // Startup option -> source (command line, environment variable, or default).
+  map<string, string> startup_option_sources = 11;
+  // Disconnect accepts an audit reason and returns per-device cleanup issues.
+  // Administrative tools must require this before claiming a close was clean.
+  bool administrative_disconnect_supported = 12;
 }
 
 message Defaults {
@@ -135,6 +149,11 @@ message ConnectionEntry {
   // Since the last call that named the connection.
   int64 idle_ms = 4;
   repeated AttachedDeviceEntry attached_devices = 5;
+  int64 created_at_epoch_ms = 6;
+  int64 last_activity_at_epoch_ms = 7;
+  // Calls naming this connection currently executing; inspection does not renew it.
+  int32 in_flight = 8;
+  bool observing = 9;
 }
 
 message ListConnectionsResponse {

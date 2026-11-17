@@ -22,7 +22,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file client_connection.proto.
  */
 export const file_client_connection: GenFile = /*@__PURE__*/
-  fileDesc("ChdjbGllbnRfY29ubmVjdGlvbi5wcm90bxIGdGFwLnYxIkgKDkNvbm5lY3RSZXF1ZXN0EgwKBG5hbWUYASABKAkSHwoEaG9sZBgCIAEoCzIMLnRhcC52MS5Ib2xkSACIAQFCBwoFX2hvbGQiHwoESG9sZBIXCg9pZGxlX3RpbWVvdXRfbXMYASABKAMiLwoPQ29ubmVjdFJlc3BvbnNlEhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJIi4KDk9ic2VydmVSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJIikKCU9ic2VydmluZxIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCSILCglIZWFydGJlYXQiGQoHQ2xvc2luZxIOCgZyZWFzb24YASABKAkiowEKD09ic2VydmVSZXNwb25zZRITCgthdF9lcG9jaF9tcxgBIAEoAxImCglvYnNlcnZpbmcYAiABKAsyES50YXAudjEuT2JzZXJ2aW5nSAASJgoJaGVhcnRiZWF0GAMgASgLMhEudGFwLnYxLkhlYXJ0YmVhdEgAEiIKB2Nsb3NpbmcYBCABKAsyDy50YXAudjEuQ2xvc2luZ0gAQgcKBWV2ZW50IjEKEURpc2Nvbm5lY3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJIjcKEkRpc2Nvbm5lY3RSZXNwb25zZRIhChlhdHRhY2hlZF9kZXZpY2VzX2RldGFjaGVkGAEgASgFIg0KC0luZm9SZXF1ZXN0IugBCgxJbmZvUmVzcG9uc2USFgoOZGFlbW9uX3ZlcnNpb24YASABKAkSFQoNaG9zdF9idWlsZF9pZBgCIAEoCRIYChBwcm90b2NvbF92ZXJzaW9uGAMgASgJEhYKDmFkYl9leGVjdXRhYmxlGAQgASgJEhEKCXN0YXRlX2RpchgFIAEoCRIYChBkcml2ZXJfYXZhaWxhYmxlGAYgASgIEgsKA3BpZBgHIAEoAxIiCghkZWZhdWx0cxgIIAEoCzIQLnRhcC52MS5EZWZhdWx0cxIZChFhcGlfY29tcGF0aWJpbGl0eRgJIAEoDSKQAQoIRGVmYXVsdHMSGQoRYWN0aW9uX3RpbWVvdXRfbXMYASABKAMSFwoPd2FpdF90aW1lb3V0X21zGAIgASgDEhwKFGxpZmVjeWNsZV90aW1lb3V0X21zGAMgASgDEhYKDmlkbGVfc3RhYmxlX21zGAQgASgDEhoKEmFjcXVpcmVfdGltZW91dF9tcxgFIAEoAyIYChZMaXN0Q29ubmVjdGlvbnNSZXF1ZXN0IlUKE0F0dGFjaGVkRGV2aWNlRW50cnkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAQgASgDIq8BCg9Db25uZWN0aW9uRW50cnkSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDAoEbmFtZRgCIAEoCRIfCgRob2xkGAMgASgLMgwudGFwLnYxLkhvbGRIAIgBARIPCgdpZGxlX21zGAQgASgDEjUKEGF0dGFjaGVkX2RldmljZXMYBSADKAsyGy50YXAudjEuQXR0YWNoZWREZXZpY2VFbnRyeUIHCgVfaG9sZCJHChdMaXN0Q29ubmVjdGlvbnNSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkiQAoNRXZlbnRzUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIRCglhZnRlcl9zZXEYAiABKAMiRgoORXZlbnRzUmVzcG9uc2USIwoGZXZlbnRzGAEgAygLMhMudGFwLnYxLkxvZ2dlZEV2ZW50Eg8KB2Ryb3BwZWQYAiABKAMymAMKF0NsaWVudENvbm5lY3Rpb25TZXJ2aWNlEjoKB0Nvbm5lY3QSFi50YXAudjEuQ29ubmVjdFJlcXVlc3QaFy50YXAudjEuQ29ubmVjdFJlc3BvbnNlEjwKB09ic2VydmUSFi50YXAudjEuT2JzZXJ2ZVJlcXVlc3QaFy50YXAudjEuT2JzZXJ2ZVJlc3BvbnNlMAESQwoKRGlzY29ubmVjdBIZLnRhcC52MS5EaXNjb25uZWN0UmVxdWVzdBoaLnRhcC52MS5EaXNjb25uZWN0UmVzcG9uc2USMQoESW5mbxITLnRhcC52MS5JbmZvUmVxdWVzdBoULnRhcC52MS5JbmZvUmVzcG9uc2USUgoPTGlzdENvbm5lY3Rpb25zEh4udGFwLnYxLkxpc3RDb25uZWN0aW9uc1JlcXVlc3QaHy50YXAudjEuTGlzdENvbm5lY3Rpb25zUmVzcG9uc2USNwoGRXZlbnRzEhUudGFwLnYxLkV2ZW50c1JlcXVlc3QaFi50YXAudjEuRXZlbnRzUmVzcG9uc2VCOwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCFUNsaWVudENvbm5lY3Rpb25Qcm90b1ABYgZwcm90bzM", [file_event_log]);
+  fileDesc("ChdjbGllbnRfY29ubmVjdGlvbi5wcm90bxIGdGFwLnYxIkgKDkNvbm5lY3RSZXF1ZXN0EgwKBG5hbWUYASABKAkSHwoEaG9sZBgCIAEoCzIMLnRhcC52MS5Ib2xkSACIAQFCBwoFX2hvbGQiHwoESG9sZBIXCg9pZGxlX3RpbWVvdXRfbXMYASABKAMiLwoPQ29ubmVjdFJlc3BvbnNlEhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJIi4KDk9ic2VydmVSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJIikKCU9ic2VydmluZxIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCSILCglIZWFydGJlYXQiGQoHQ2xvc2luZxIOCgZyZWFzb24YASABKAkiowEKD09ic2VydmVSZXNwb25zZRITCgthdF9lcG9jaF9tcxgBIAEoAxImCglvYnNlcnZpbmcYAiABKAsyES50YXAudjEuT2JzZXJ2aW5nSAASJgoJaGVhcnRiZWF0GAMgASgLMhEudGFwLnYxLkhlYXJ0YmVhdEgAEiIKB2Nsb3NpbmcYBCABKAsyDy50YXAudjEuQ2xvc2luZ0gAQgcKBWV2ZW50IkEKEURpc2Nvbm5lY3RSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEg4KBnJlYXNvbhgCIAEoCSK0AQoSRGlzY29ubmVjdFJlc3BvbnNlEiEKGWF0dGFjaGVkX2RldmljZXNfZGV0YWNoZWQYASABKAUSRQoOY2xlYW51cF9pc3N1ZXMYAiADKAsyLS50YXAudjEuRGlzY29ubmVjdFJlc3BvbnNlLkNsZWFudXBJc3N1ZXNFbnRyeRo0ChJDbGVhbnVwSXNzdWVzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASINCgtJbmZvUmVxdWVzdCKcBAoMSW5mb1Jlc3BvbnNlEhYKDmRhZW1vbl92ZXJzaW9uGAEgASgJEhUKDWhvc3RfYnVpbGRfaWQYAiABKAkSGAoQcHJvdG9jb2xfdmVyc2lvbhgDIAEoCRIWCg5hZGJfZXhlY3V0YWJsZRgEIAEoCRIRCglzdGF0ZV9kaXIYBSABKAkSGAoQZHJpdmVyX2F2YWlsYWJsZRgGIAEoCBILCgNwaWQYByABKAMSIgoIZGVmYXVsdHMYCCABKAsyEC50YXAudjEuRGVmYXVsdHMSGQoRYXBpX2NvbXBhdGliaWxpdHkYCSABKA0SQQoPc3RhcnR1cF9vcHRpb25zGAogAygLMigudGFwLnYxLkluZm9SZXNwb25zZS5TdGFydHVwT3B0aW9uc0VudHJ5Ek4KFnN0YXJ0dXBfb3B0aW9uX3NvdXJjZXMYCyADKAsyLi50YXAudjEuSW5mb1Jlc3BvbnNlLlN0YXJ0dXBPcHRpb25Tb3VyY2VzRW50cnkSKwojYWRtaW5pc3RyYXRpdmVfZGlzY29ubmVjdF9zdXBwb3J0ZWQYDCABKAgaNQoTU3RhcnR1cE9wdGlvbnNFbnRyeRILCgNrZXkYASABKAkSDQoFdmFsdWUYAiABKAk6AjgBGjsKGVN0YXJ0dXBPcHRpb25Tb3VyY2VzRW50cnkSCwoDa2V5GAEgASgJEg0KBXZhbHVlGAIgASgJOgI4ASKQAQoIRGVmYXVsdHMSGQoRYWN0aW9uX3RpbWVvdXRfbXMYASABKAMSFwoPd2FpdF90aW1lb3V0X21zGAIgASgDEhwKFGxpZmVjeWNsZV90aW1lb3V0X21zGAMgASgDEhYKDmlkbGVfc3RhYmxlX21zGAQgASgDEhoKEmFjcXVpcmVfdGltZW91dF9tcxgFIAEoAyIYChZMaXN0Q29ubmVjdGlvbnNSZXF1ZXN0IlUKE0F0dGFjaGVkRGV2aWNlRW50cnkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRISCgpnZW5lcmF0aW9uGAQgASgDIpUCCg9Db25uZWN0aW9uRW50cnkSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSDAoEbmFtZRgCIAEoCRIfCgRob2xkGAMgASgLMgwudGFwLnYxLkhvbGRIAIgBARIPCgdpZGxlX21zGAQgASgDEjUKEGF0dGFjaGVkX2RldmljZXMYBSADKAsyGy50YXAudjEuQXR0YWNoZWREZXZpY2VFbnRyeRIbChNjcmVhdGVkX2F0X2Vwb2NoX21zGAYgASgDEiEKGWxhc3RfYWN0aXZpdHlfYXRfZXBvY2hfbXMYByABKAMSEQoJaW5fZmxpZ2h0GAggASgFEhEKCW9ic2VydmluZxgJIAEoCEIHCgVfaG9sZCJHChdMaXN0Q29ubmVjdGlvbnNSZXNwb25zZRIsCgtjb25uZWN0aW9ucxgBIAMoCzIXLnRhcC52MS5Db25uZWN0aW9uRW50cnkiQAoNRXZlbnRzUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIRCglhZnRlcl9zZXEYAiABKAMiRgoORXZlbnRzUmVzcG9uc2USIwoGZXZlbnRzGAEgAygLMhMudGFwLnYxLkxvZ2dlZEV2ZW50Eg8KB2Ryb3BwZWQYAiABKAMymAMKF0NsaWVudENvbm5lY3Rpb25TZXJ2aWNlEjoKB0Nvbm5lY3QSFi50YXAudjEuQ29ubmVjdFJlcXVlc3QaFy50YXAudjEuQ29ubmVjdFJlc3BvbnNlEjwKB09ic2VydmUSFi50YXAudjEuT2JzZXJ2ZVJlcXVlc3QaFy50YXAudjEuT2JzZXJ2ZVJlc3BvbnNlMAESQwoKRGlzY29ubmVjdBIZLnRhcC52MS5EaXNjb25uZWN0UmVxdWVzdBoaLnRhcC52MS5EaXNjb25uZWN0UmVzcG9uc2USMQoESW5mbxITLnRhcC52MS5JbmZvUmVxdWVzdBoULnRhcC52MS5JbmZvUmVzcG9uc2USUgoPTGlzdENvbm5lY3Rpb25zEh4udGFwLnYxLkxpc3RDb25uZWN0aW9uc1JlcXVlc3QaHy50YXAudjEuTGlzdENvbm5lY3Rpb25zUmVzcG9uc2USNwoGRXZlbnRzEhUudGFwLnYxLkV2ZW50c1JlcXVlc3QaFi50YXAudjEuRXZlbnRzUmVzcG9uc2VCOwogaW8uZ2l0aHViLm5vYW1jb2hlbjQ4LnRhcC5hcGkudjFCFUNsaWVudENvbm5lY3Rpb25Qcm90b1ABYgZwcm90bzM", [file_event_log]);
 
 /**
  * @generated from message tap.v1.ConnectRequest
@@ -204,6 +204,14 @@ export type DisconnectRequest = Message<"tap.v1.DisconnectRequest"> & {
    * @generated from field: string client_connection_id = 1;
    */
   clientConnectionId: string;
+
+  /**
+   * Optional administrative reason, at most 512 characters, no control characters.
+   * Empty retains "client request". Recorded in lifecycle logs and sent to Observe.
+   *
+   * @generated from field: string reason = 2;
+   */
+  reason: string;
 };
 
 /**
@@ -221,6 +229,14 @@ export type DisconnectResponse = Message<"tap.v1.DisconnectResponse"> & {
    * @generated from field: int32 attached_devices_detached = 1;
    */
   attachedDevicesDetached: number;
+
+  /**
+   * Serial -> cleanup failure/timeout. The connection is closed even when cleanup is uncertain;
+   * normal journal recovery/quarantine rules still apply. Empty means no reported cleanup issue.
+   *
+   * @generated from field: map<string, string> cleanup_issues = 2;
+   */
+  cleanupIssues: { [key: string]: string };
 };
 
 /**
@@ -299,6 +315,29 @@ export type InfoResponse = Message<"tap.v1.InfoResponse"> & {
    * @generated from field: uint32 api_compatibility = 9;
    */
   apiCompatibility: number;
+
+  /**
+   * Allowlisted effective startup options (no credentials), for inspection and explicit restart.
+   * Empty on embedded daemons not launched by the CLI or on older servers.
+   *
+   * @generated from field: map<string, string> startup_options = 10;
+   */
+  startupOptions: { [key: string]: string };
+
+  /**
+   * Startup option -> source (command line, environment variable, or default).
+   *
+   * @generated from field: map<string, string> startup_option_sources = 11;
+   */
+  startupOptionSources: { [key: string]: string };
+
+  /**
+   * Disconnect accepts an audit reason and returns per-device cleanup issues.
+   * Administrative tools must require this before claiming a close was clean.
+   *
+   * @generated from field: bool administrative_disconnect_supported = 12;
+   */
+  administrativeDisconnectSupported: boolean;
 };
 
 /**
@@ -428,6 +467,28 @@ export type ConnectionEntry = Message<"tap.v1.ConnectionEntry"> & {
    * @generated from field: repeated tap.v1.AttachedDeviceEntry attached_devices = 5;
    */
   attachedDevices: AttachedDeviceEntry[];
+
+  /**
+   * @generated from field: int64 created_at_epoch_ms = 6;
+   */
+  createdAtEpochMs: bigint;
+
+  /**
+   * @generated from field: int64 last_activity_at_epoch_ms = 7;
+   */
+  lastActivityAtEpochMs: bigint;
+
+  /**
+   * Calls naming this connection currently executing; inspection does not renew it.
+   *
+   * @generated from field: int32 in_flight = 8;
+   */
+  inFlight: number;
+
+  /**
+   * @generated from field: bool observing = 9;
+   */
+  observing: boolean;
 };
 
 /**

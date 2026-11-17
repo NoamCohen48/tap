@@ -700,6 +700,35 @@ class TapDaemonLifecycleTest {
         }
 
     @Test
+    fun `administrative disconnect reports cleanup issues without skipping other devices`() =
+        runBlocking {
+            val opener = FakeOpener()
+            val broken = FakeDevice("broken", closeError = IllegalStateException("restoration failed"))
+            val healthy = FakeDevice("healthy")
+            opener.queue.add(broken)
+            opener.queue.add(healthy)
+            val daemon = TapDaemon(testConfig(), opener)
+            val connection = daemon.connectClient("admin-close", holdIdleMs = 60_000)
+            daemon.attachDevice(connection.id, "broken", testOptions())
+            daemon.attachDevice(connection.id, "healthy", testOptions())
+            val issues = java.util.concurrent.ConcurrentHashMap<String, String>()
+            assertEquals(
+                2,
+                daemon.disconnectClient(connection.id, "administrator: stuck test", onCleanupIssue = { serial, detail ->
+                    issues[serial] =
+                        detail
+                }),
+            )
+            assertEquals(mapOf("broken" to "restoration failed"), issues.toMap())
+            assertFalse(daemon.clientConnectionExists(connection.id))
+            assertTrue(daemon.attachedDeviceIds().isEmpty())
+            assertEquals(1, broken.closeCalls.get())
+            assertEquals(1, healthy.closeCalls.get())
+            assertEquals(0, daemon.disconnectClient(connection.id, "again"))
+            assertEquals(1, broken.closeCalls.get())
+        }
+
+    @Test
     fun `racing device detach and client disconnect clean up exactly once`() =
         runBlocking {
             val opener = FakeOpener()

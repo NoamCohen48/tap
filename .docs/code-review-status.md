@@ -225,10 +225,10 @@ Severity from the review (H/M/L/N). Size: S < half a day, M ≈ a day, L = multi
 
 | ID | Sev | Status | What remains | Size |
 |---|---|---|---|---|
-| DM-18 | M | Fixed | `CliTest`: per-command option validation, `status`/`stop` without a daemon and with a stale descriptor (`parseCommandLine`, `status` and `stop` no longer exit the process). `start`/`serve` run in every fixture and Python suite | M |
+| DM-18 | M | Fixed | `CliTest`: per-command option validation and stale/missing daemon handling. `CliDiscoveryTest` / `AdministrationTest` add conventional root/nested help, discovery, safe administrative close/restart, JSON/watch, logs, configuration, diagnostics and completion. `.github/scripts/daemon_cli_smoke.py` exercises JVM/native executables with fake ADB and real RPC sessions; no agent dependency or device matrix | M |
 | DM-15 | L | Fixed | `scroll_until` removed; `DIR_UNSPECIFIED` is rejected uniformly for swipe/scroll | S |
 | DM-17 | N | Fixed | Result shaping moved out of `TapDaemon` into `DeviceService` (its only caller) | S |
-| API-7 | L | Fixed* | `stop` never compares `Info.pid` with the descriptor pid | S |
+| API-7 | L | Fixed | Authenticated `Info.pid` must match the descriptor PID in both the stop/start probe and administration channels. A recycled or mismatched PID is never signalled; `AdministrationTest` covers mismatch rejection | S |
 
 ### Kotlin client (clients/kotlin)
 

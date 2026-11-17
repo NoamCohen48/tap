@@ -9,9 +9,19 @@ held by one client at a time. You start it; clients never do.
 ```
 tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-idle-timeout-ms N]
 tap serve   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK] [--driver-idle-timeout-ms N]
-tap status  [--state-dir DIR]
+tap status  [--state-dir DIR] [--json] [--watch] [--interval SECONDS]
 tap stop    [--state-dir DIR]
-tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
+tap restart [startup options] [--force]
+tap devices [--state-dir DIR] [--json] [--watch] [--interval SECONDS]
+tap devices show SERIAL [--state-dir DIR] [--json]
+tap sessions [--state-dir DIR] [--json] [--watch] [--interval SECONDS]
+tap sessions show SESSION_ID [--state-dir DIR] [--json]
+tap sessions close SESSION_ID --force [--reason TEXT] [--state-dir DIR] [--json]
+tap logs [--state-dir DIR] [--tail N] [--follow]
+tap config show [startup options] [--json]
+tap diagnostics --out PATH [--state-dir DIR]
+tap completion bash|zsh|fish
+tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix] [--json]
 tap unquarantine --serial SERIAL [--state-dir DIR] [--adb PATH]
 tap version
 ```
@@ -27,7 +37,7 @@ tap version
 | `--scrcpy-server` | a scrcpy **4.1** server JAR for the shared screen video that [Tap watcher](../watcher/index.md) shows; default `$TAP_SCRCPY_SERVER`, otherwise no shared video. Recordings do not need it |
 | `--driver-idle-timeout-ms` | experimental clean instrumentation reuse: `0` (default) disables it; `1000`–`300000` keeps a clean runtime for that many milliseconds after detach, without reserving the device |
 | `--driver-apk`, `--driver-test-apk` | a driver build of your own instead of the one bundled in the executable. Clients cannot pick a driver per attach |
-| `status` | prints `running 127.0.0.1:PORT pid=… version=… adb=…` (never the token); exit 1 when no server is running |
+| `status` | reports the authenticated daemon's endpoint, PID, running and installed versions and API compatibility (never the token); exit 1 when stopped, unreachable, stale or incompatible |
 | `stop` | terminates the server recorded in `daemon.json` after it answered an authenticated call; a stale file is removed and nothing is signalled |
 | `doctor` | checks the server and every device ADB lists (or `--serial`) for what a session that is no longer running left behind; `--fix` cleans it up. See [Cleaning up after a crash](#cleaning-up-after-a-crash) |
 | `unquarantine` | puts a quarantined device back in service once you have checked it, after retrying the cleanup; prints why it was quarantined and what is still off. See [The devices](#the-devices) |
@@ -35,6 +45,126 @@ tap version
 One server per machine is the intended setup; every test process on that machine connects to
 it. Two servers with different `--state-dir`s are isolated from each other (separate journals
 and device locks), which is how Tap's own CI keeps a scratch server apart from `~/.tap`.
+
+## Help and exploration
+
+`tap`, `tap --help`, `tap -h` and `tap help` print top-level help and exit successfully.
+Every command supports `--help` / `-h`, including nested commands; `tap help sessions close`
+is equivalent to `tap sessions close --help`. Help does not require a daemon, ADB or an
+interaction client, and never creates state. `tap --version` is an alias for `tap version`.
+
+```bash
+tap start
+tap devices                    # serials, availability, holding session IDs
+tap devices show SERIAL        # properties and quarantine reason
+tap sessions                   # live clients and their devices
+tap sessions show SESSION_ID   # client name, creation/activity times, mode and in-flight calls
+```
+
+A **session** here is a daemon-held client connection: one client may attach several devices.
+Use its complete ID, not its client name, for details or closure. IDs differ from the wire
+session generations shown for individual attachments. A device held outside this daemon may
+have no session ID in the device list.
+
+These commands call the daemon directly. They do not need `tap-agent`, attach a device,
+renew a held session or start a missing daemon. For interaction, use a separately installed
+[Tap agent](../agent/index.md), a [Kotlin/Python SDK](../sdk/index.md) or [Tap Studio](../studio/index.md).
+For example, after installing `tap-agent` separately:
+
+```bash
+tap-agent attach SERIAL
+tap-agent snapshot
+tap-agent release
+```
+
+`--state-dir DIR` may precede or follow the command. Unknown, repeated and inappropriate
+options are errors. Help and successful output go to stdout; usage errors go to stderr with
+exit 2. Operational failures exit 1. JSON inspection, including failures, goes to stdout;
+`serve` exits 3 when its state-directory lock is held.
+
+### Close a session or restart
+
+Closing another client's session interrupts that client and cleans up all of its devices:
+
+```bash
+tap sessions close SESSION_ID --force --reason 'stuck test'
+tap restart                    # refuses when sessions are active
+tap restart --force            # explicitly interrupt all clients
+tap restart --force --port 0   # choose a new port
+```
+
+Closure uses the normal bounded cleanup path. It reports per-device cleanup failures or
+timeouts and exits 1 if any remain, even though the session has closed. It never clears
+quarantine or bypasses restoration checks. Inspect `tap doctor` before returning a device
+to service. A lost close response does not trigger a retry: inspect `tap sessions` and
+`tap doctor` to determine the outcome. The optional reason is recorded in lifecycle logs and
+sent to observed clients; keep credentials out of it.
+
+Restart preserves the running daemon's startup flags, including ADB, scrcpy, driver overrides
+and runtime reuse; explicit flags override them. It uses the installed executable and its
+bundled driver when no override was configured. Restart requires a live daemon that reports
+its startup settings; older builds need explicit `stop` / `start`. The active-session check
+is a preflight, not a lock against other clients connecting: coordinate restarts with tests.
+`tap stop` retains its existing unconditional shutdown behavior.
+
+### Watch and structured output
+
+`status`, `devices` and `sessions` support `--watch`, with `--interval SECONDS` (default 2,
+range 0.1–3600). They reconnect on each poll and keep watching through daemon outages.
+Interrupt with Ctrl-C. Watching does not renew sessions.
+
+`--json` is available on those commands, detail views, session closure, `doctor` and
+`config show`. Watch mode prints newline-delimited JSON: one complete snapshot or error per
+line with `observed_at`. Other JSON commands print one object. Epoch timestamps are in
+milliseconds; in-flight calls keep a session's reported idle time at zero.
+
+### Configuration, logs and diagnostics
+
+```bash
+tap config show --json
+tap logs --tail 200 --follow
+tap diagnostics --out tap-diagnostics.zip
+```
+
+`config show` distinguishes the **running** daemon's settings from **next_start**, the values
+this invocation would use, with their sources (command line, named environment variable or
+default). Startup flags can be supplied to inspect next-start resolution without starting
+or reconfiguring anything. It exposes only known configuration fields, never tokens or an
+environment dump. If a daemon cannot be contacted, local defaults are still shown with a
+warning and exit 1; no descriptor means local inspection succeeds.
+
+`logs` reads `<state-dir>/daemon.log`, defaulting to the last 100 lines (`--tail 0..10000`).
+Reads are bounded to the final 1 MiB. `--follow` waits for log creation and follows complete
+lines, reopening after detected replacement or truncation. `serve` writes to its terminal,
+not this file. Ordinary log viewing is not a sanitized export.
+
+`diagnostics` creates a new ZIP, owner-only on POSIX filesystems, and refuses existing files.
+It works even while the daemon is stopped. The archive includes health, allowlisted
+configuration, device/session discovery or their errors, and only recognized lifecycle timing
+lines from the last 200 log lines. It excludes descriptor credentials, environment dumps,
+journals, screenshots, command payloads and arbitrary free-form logs. Known bearer secrets
+are redacted. **Review before sharing:** device serials, client names and local paths remain.
+
+`doctor` also checks ADB executable availability, state-directory access, daemon connectivity
+and running driver availability. It exits 1 for setup/connectivity failures as well as device
+cleanup findings. It repairs device leftovers only with `--fix`; live sessions are skipped.
+
+### Shell completion
+
+Generate static completions; completing a word never contacts the daemon:
+
+```bash
+tap completion bash > ~/.tap-completion.bash
+source ~/.tap-completion.bash
+
+tap completion zsh > /a/directory/on/your/fpath/_tap
+# Enable completion with autoload -Uz compinit; compinit in your zsh configuration.
+
+tap completion fish > ~/.config/fish/completions/tap.fish
+```
+
+Create the target directories first. Add the bash `source` line to your shell configuration
+to load it in future shells. Bash completion supports Bash 3.2 and newer.
 
 ## Client and server versions
 

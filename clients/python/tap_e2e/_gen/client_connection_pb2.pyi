@@ -63,23 +63,48 @@ class ObserveResponse(_message.Message):
     def __init__(self, at_epoch_ms: _Optional[int] = ..., observing: _Optional[_Union[Observing, _Mapping]] = ..., heartbeat: _Optional[_Union[Heartbeat, _Mapping]] = ..., closing: _Optional[_Union[Closing, _Mapping]] = ...) -> None: ...
 
 class DisconnectRequest(_message.Message):
-    __slots__ = ("client_connection_id",)
+    __slots__ = ("client_connection_id", "reason")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    REASON_FIELD_NUMBER: _ClassVar[int]
     client_connection_id: str
-    def __init__(self, client_connection_id: _Optional[str] = ...) -> None: ...
+    reason: str
+    def __init__(self, client_connection_id: _Optional[str] = ..., reason: _Optional[str] = ...) -> None: ...
 
 class DisconnectResponse(_message.Message):
-    __slots__ = ("attached_devices_detached",)
+    __slots__ = ("attached_devices_detached", "cleanup_issues")
+    class CleanupIssuesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
     ATTACHED_DEVICES_DETACHED_FIELD_NUMBER: _ClassVar[int]
+    CLEANUP_ISSUES_FIELD_NUMBER: _ClassVar[int]
     attached_devices_detached: int
-    def __init__(self, attached_devices_detached: _Optional[int] = ...) -> None: ...
+    cleanup_issues: _containers.ScalarMap[str, str]
+    def __init__(self, attached_devices_detached: _Optional[int] = ..., cleanup_issues: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class InfoRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
 class InfoResponse(_message.Message):
-    __slots__ = ("daemon_version", "host_build_id", "protocol_version", "adb_executable", "state_dir", "driver_available", "pid", "defaults", "api_compatibility")
+    __slots__ = ("daemon_version", "host_build_id", "protocol_version", "adb_executable", "state_dir", "driver_available", "pid", "defaults", "api_compatibility", "startup_options", "startup_option_sources", "administrative_disconnect_supported")
+    class StartupOptionsEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    class StartupOptionSourcesEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: str
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
     DAEMON_VERSION_FIELD_NUMBER: _ClassVar[int]
     HOST_BUILD_ID_FIELD_NUMBER: _ClassVar[int]
     PROTOCOL_VERSION_FIELD_NUMBER: _ClassVar[int]
@@ -89,6 +114,9 @@ class InfoResponse(_message.Message):
     PID_FIELD_NUMBER: _ClassVar[int]
     DEFAULTS_FIELD_NUMBER: _ClassVar[int]
     API_COMPATIBILITY_FIELD_NUMBER: _ClassVar[int]
+    STARTUP_OPTIONS_FIELD_NUMBER: _ClassVar[int]
+    STARTUP_OPTION_SOURCES_FIELD_NUMBER: _ClassVar[int]
+    ADMINISTRATIVE_DISCONNECT_SUPPORTED_FIELD_NUMBER: _ClassVar[int]
     daemon_version: str
     host_build_id: str
     protocol_version: str
@@ -98,7 +126,10 @@ class InfoResponse(_message.Message):
     pid: int
     defaults: Defaults
     api_compatibility: int
-    def __init__(self, daemon_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., driver_available: _Optional[bool] = ..., pid: _Optional[int] = ..., defaults: _Optional[_Union[Defaults, _Mapping]] = ..., api_compatibility: _Optional[int] = ...) -> None: ...
+    startup_options: _containers.ScalarMap[str, str]
+    startup_option_sources: _containers.ScalarMap[str, str]
+    administrative_disconnect_supported: bool
+    def __init__(self, daemon_version: _Optional[str] = ..., host_build_id: _Optional[str] = ..., protocol_version: _Optional[str] = ..., adb_executable: _Optional[str] = ..., state_dir: _Optional[str] = ..., driver_available: _Optional[bool] = ..., pid: _Optional[int] = ..., defaults: _Optional[_Union[Defaults, _Mapping]] = ..., api_compatibility: _Optional[int] = ..., startup_options: _Optional[_Mapping[str, str]] = ..., startup_option_sources: _Optional[_Mapping[str, str]] = ..., administrative_disconnect_supported: _Optional[bool] = ...) -> None: ...
 
 class Defaults(_message.Message):
     __slots__ = ("action_timeout_ms", "wait_timeout_ms", "lifecycle_timeout_ms", "idle_stable_ms", "acquire_timeout_ms")
@@ -129,18 +160,26 @@ class AttachedDeviceEntry(_message.Message):
     def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., generation: _Optional[int] = ...) -> None: ...
 
 class ConnectionEntry(_message.Message):
-    __slots__ = ("client_connection_id", "name", "hold", "idle_ms", "attached_devices")
+    __slots__ = ("client_connection_id", "name", "hold", "idle_ms", "attached_devices", "created_at_epoch_ms", "last_activity_at_epoch_ms", "in_flight", "observing")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     HOLD_FIELD_NUMBER: _ClassVar[int]
     IDLE_MS_FIELD_NUMBER: _ClassVar[int]
     ATTACHED_DEVICES_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
+    LAST_ACTIVITY_AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
+    IN_FLIGHT_FIELD_NUMBER: _ClassVar[int]
+    OBSERVING_FIELD_NUMBER: _ClassVar[int]
     client_connection_id: str
     name: str
     hold: Hold
     idle_ms: int
     attached_devices: _containers.RepeatedCompositeFieldContainer[AttachedDeviceEntry]
-    def __init__(self, client_connection_id: _Optional[str] = ..., name: _Optional[str] = ..., hold: _Optional[_Union[Hold, _Mapping]] = ..., idle_ms: _Optional[int] = ..., attached_devices: _Optional[_Iterable[_Union[AttachedDeviceEntry, _Mapping]]] = ...) -> None: ...
+    created_at_epoch_ms: int
+    last_activity_at_epoch_ms: int
+    in_flight: int
+    observing: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., name: _Optional[str] = ..., hold: _Optional[_Union[Hold, _Mapping]] = ..., idle_ms: _Optional[int] = ..., attached_devices: _Optional[_Iterable[_Union[AttachedDeviceEntry, _Mapping]]] = ..., created_at_epoch_ms: _Optional[int] = ..., last_activity_at_epoch_ms: _Optional[int] = ..., in_flight: _Optional[int] = ..., observing: _Optional[bool] = ...) -> None: ...
 
 class ListConnectionsResponse(_message.Message):
     __slots__ = ("connections",)

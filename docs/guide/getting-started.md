@@ -58,7 +58,13 @@ installed on each device the first time a session opens.
 ```bash
 tap start          # prints: started 127.0.0.1:PORT pid=PID (or "running …" if it already is)
 tap status
+tap devices        # find a serial and see whether another session holds it
+tap sessions       # see active clients and their attached devices
 ```
+
+Run `tap --help` for the startup walkthrough, or `tap devices --help` for focused help.
+These administration commands need only `tap`, not an interaction client. See
+[The tap server](server.md#help-and-exploration) for details, closing a stuck session and diagnostics.
 
 Clients never start the server themselves; if none is running they fail with *run `tap start`*.
 Test runners can start and stop it for you: see [The tap server](server.md#who-starts-it).

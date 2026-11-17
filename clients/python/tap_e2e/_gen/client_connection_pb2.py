@@ -25,7 +25,7 @@ _sym_db = _symbol_database.Default()
 from . import event_log_pb2 as event__log__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63lient_connection.proto\x12\x06tap.v1\x1a\x0f\x65vent_log.proto\"H\n\x0e\x43onnectRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x1f\n\x04hold\x18\x02 \x01(\x0b\x32\x0c.tap.v1.HoldH\x00\x88\x01\x01\x42\x07\n\x05_hold\"\x1f\n\x04Hold\x12\x17\n\x0fidle_timeout_ms\x18\x01 \x01(\x03\"/\n\x0f\x43onnectResponse\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\".\n\x0eObserveRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\")\n\tObserving\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\"\x0b\n\tHeartbeat\"\x19\n\x07\x43losing\x12\x0e\n\x06reason\x18\x01 \x01(\t\"\xa3\x01\n\x0fObserveResponse\x12\x13\n\x0b\x61t_epoch_ms\x18\x01 \x01(\x03\x12&\n\tobserving\x18\x02 \x01(\x0b\x32\x11.tap.v1.ObservingH\x00\x12&\n\theartbeat\x18\x03 \x01(\x0b\x32\x11.tap.v1.HeartbeatH\x00\x12\"\n\x07\x63losing\x18\x04 \x01(\x0b\x32\x0f.tap.v1.ClosingH\x00\x42\x07\n\x05\x65vent\"1\n\x11\x44isconnectRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\"7\n\x12\x44isconnectResponse\x12!\n\x19\x61ttached_devices_detached\x18\x01 \x01(\x05\"\r\n\x0bInfoRequest\"\xe8\x01\n\x0cInfoResponse\x12\x16\n\x0e\x64\x61\x65mon_version\x18\x01 \x01(\t\x12\x15\n\rhost_build_id\x18\x02 \x01(\t\x12\x18\n\x10protocol_version\x18\x03 \x01(\t\x12\x16\n\x0e\x61\x64\x62_executable\x18\x04 \x01(\t\x12\x11\n\tstate_dir\x18\x05 \x01(\t\x12\x18\n\x10\x64river_available\x18\x06 \x01(\x08\x12\x0b\n\x03pid\x18\x07 \x01(\x03\x12\"\n\x08\x64\x65\x66\x61ults\x18\x08 \x01(\x0b\x32\x10.tap.v1.Defaults\x12\x19\n\x11\x61pi_compatibility\x18\t \x01(\r\"\x90\x01\n\x08\x44\x65\x66\x61ults\x12\x19\n\x11\x61\x63tion_timeout_ms\x18\x01 \x01(\x03\x12\x17\n\x0fwait_timeout_ms\x18\x02 \x01(\x03\x12\x1c\n\x14lifecycle_timeout_ms\x18\x03 \x01(\x03\x12\x16\n\x0eidle_stable_ms\x18\x04 \x01(\x03\x12\x1a\n\x12\x61\x63quire_timeout_ms\x18\x05 \x01(\x03\"\x18\n\x16ListConnectionsRequest\"U\n\x13\x41ttachedDeviceEntry\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x04 \x01(\x03\"\xaf\x01\n\x0f\x43onnectionEntry\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x1f\n\x04hold\x18\x03 \x01(\x0b\x32\x0c.tap.v1.HoldH\x00\x88\x01\x01\x12\x0f\n\x07idle_ms\x18\x04 \x01(\x03\x12\x35\n\x10\x61ttached_devices\x18\x05 \x03(\x0b\x32\x1b.tap.v1.AttachedDeviceEntryB\x07\n\x05_hold\"G\n\x17ListConnectionsResponse\x12,\n\x0b\x63onnections\x18\x01 \x03(\x0b\x32\x17.tap.v1.ConnectionEntry\"@\n\rEventsRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x11\n\tafter_seq\x18\x02 \x01(\x03\"F\n\x0e\x45ventsResponse\x12#\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x13.tap.v1.LoggedEvent\x12\x0f\n\x07\x64ropped\x18\x02 \x01(\x03\x32\x98\x03\n\x17\x43lientConnectionService\x12:\n\x07\x43onnect\x12\x16.tap.v1.ConnectRequest\x1a\x17.tap.v1.ConnectResponse\x12<\n\x07Observe\x12\x16.tap.v1.ObserveRequest\x1a\x17.tap.v1.ObserveResponse0\x01\x12\x43\n\nDisconnect\x12\x19.tap.v1.DisconnectRequest\x1a\x1a.tap.v1.DisconnectResponse\x12\x31\n\x04Info\x12\x13.tap.v1.InfoRequest\x1a\x14.tap.v1.InfoResponse\x12R\n\x0fListConnections\x12\x1e.tap.v1.ListConnectionsRequest\x1a\x1f.tap.v1.ListConnectionsResponse\x12\x37\n\x06\x45vents\x12\x15.tap.v1.EventsRequest\x1a\x16.tap.v1.EventsResponseB;\n io.github.noamcohen48.tap.api.v1B\x15\x43lientConnectionProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x17\x63lient_connection.proto\x12\x06tap.v1\x1a\x0f\x65vent_log.proto\"H\n\x0e\x43onnectRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x1f\n\x04hold\x18\x02 \x01(\x0b\x32\x0c.tap.v1.HoldH\x00\x88\x01\x01\x42\x07\n\x05_hold\"\x1f\n\x04Hold\x12\x17\n\x0fidle_timeout_ms\x18\x01 \x01(\x03\"/\n\x0f\x43onnectResponse\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\".\n\x0eObserveRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\")\n\tObserving\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\"\x0b\n\tHeartbeat\"\x19\n\x07\x43losing\x12\x0e\n\x06reason\x18\x01 \x01(\t\"\xa3\x01\n\x0fObserveResponse\x12\x13\n\x0b\x61t_epoch_ms\x18\x01 \x01(\x03\x12&\n\tobserving\x18\x02 \x01(\x0b\x32\x11.tap.v1.ObservingH\x00\x12&\n\theartbeat\x18\x03 \x01(\x0b\x32\x11.tap.v1.HeartbeatH\x00\x12\"\n\x07\x63losing\x18\x04 \x01(\x0b\x32\x0f.tap.v1.ClosingH\x00\x42\x07\n\x05\x65vent\"A\n\x11\x44isconnectRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x0e\n\x06reason\x18\x02 \x01(\t\"\xb4\x01\n\x12\x44isconnectResponse\x12!\n\x19\x61ttached_devices_detached\x18\x01 \x01(\x05\x12\x45\n\x0e\x63leanup_issues\x18\x02 \x03(\x0b\x32-.tap.v1.DisconnectResponse.CleanupIssuesEntry\x1a\x34\n\x12\x43leanupIssuesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\r\n\x0bInfoRequest\"\x9c\x04\n\x0cInfoResponse\x12\x16\n\x0e\x64\x61\x65mon_version\x18\x01 \x01(\t\x12\x15\n\rhost_build_id\x18\x02 \x01(\t\x12\x18\n\x10protocol_version\x18\x03 \x01(\t\x12\x16\n\x0e\x61\x64\x62_executable\x18\x04 \x01(\t\x12\x11\n\tstate_dir\x18\x05 \x01(\t\x12\x18\n\x10\x64river_available\x18\x06 \x01(\x08\x12\x0b\n\x03pid\x18\x07 \x01(\x03\x12\"\n\x08\x64\x65\x66\x61ults\x18\x08 \x01(\x0b\x32\x10.tap.v1.Defaults\x12\x19\n\x11\x61pi_compatibility\x18\t \x01(\r\x12\x41\n\x0fstartup_options\x18\n \x03(\x0b\x32(.tap.v1.InfoResponse.StartupOptionsEntry\x12N\n\x16startup_option_sources\x18\x0b \x03(\x0b\x32..tap.v1.InfoResponse.StartupOptionSourcesEntry\x12+\n#administrative_disconnect_supported\x18\x0c \x01(\x08\x1a\x35\n\x13StartupOptionsEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\x1a;\n\x19StartupOptionSourcesEntry\x12\x0b\n\x03key\x18\x01 \x01(\t\x12\r\n\x05value\x18\x02 \x01(\t:\x02\x38\x01\"\x90\x01\n\x08\x44\x65\x66\x61ults\x12\x19\n\x11\x61\x63tion_timeout_ms\x18\x01 \x01(\x03\x12\x17\n\x0fwait_timeout_ms\x18\x02 \x01(\x03\x12\x1c\n\x14lifecycle_timeout_ms\x18\x03 \x01(\x03\x12\x16\n\x0eidle_stable_ms\x18\x04 \x01(\x03\x12\x1a\n\x12\x61\x63quire_timeout_ms\x18\x05 \x01(\x03\"\x18\n\x16ListConnectionsRequest\"U\n\x13\x41ttachedDeviceEntry\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x12\n\ngeneration\x18\x04 \x01(\x03\"\x95\x02\n\x0f\x43onnectionEntry\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x1f\n\x04hold\x18\x03 \x01(\x0b\x32\x0c.tap.v1.HoldH\x00\x88\x01\x01\x12\x0f\n\x07idle_ms\x18\x04 \x01(\x03\x12\x35\n\x10\x61ttached_devices\x18\x05 \x03(\x0b\x32\x1b.tap.v1.AttachedDeviceEntry\x12\x1b\n\x13\x63reated_at_epoch_ms\x18\x06 \x01(\x03\x12!\n\x19last_activity_at_epoch_ms\x18\x07 \x01(\x03\x12\x11\n\tin_flight\x18\x08 \x01(\x05\x12\x11\n\tobserving\x18\t \x01(\x08\x42\x07\n\x05_hold\"G\n\x17ListConnectionsResponse\x12,\n\x0b\x63onnections\x18\x01 \x03(\x0b\x32\x17.tap.v1.ConnectionEntry\"@\n\rEventsRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x11\n\tafter_seq\x18\x02 \x01(\x03\"F\n\x0e\x45ventsResponse\x12#\n\x06\x65vents\x18\x01 \x03(\x0b\x32\x13.tap.v1.LoggedEvent\x12\x0f\n\x07\x64ropped\x18\x02 \x01(\x03\x32\x98\x03\n\x17\x43lientConnectionService\x12:\n\x07\x43onnect\x12\x16.tap.v1.ConnectRequest\x1a\x17.tap.v1.ConnectResponse\x12<\n\x07Observe\x12\x16.tap.v1.ObserveRequest\x1a\x17.tap.v1.ObserveResponse0\x01\x12\x43\n\nDisconnect\x12\x19.tap.v1.DisconnectRequest\x1a\x1a.tap.v1.DisconnectResponse\x12\x31\n\x04Info\x12\x13.tap.v1.InfoRequest\x1a\x14.tap.v1.InfoResponse\x12R\n\x0fListConnections\x12\x1e.tap.v1.ListConnectionsRequest\x1a\x1f.tap.v1.ListConnectionsResponse\x12\x37\n\x06\x45vents\x12\x15.tap.v1.EventsRequest\x1a\x16.tap.v1.EventsResponseB;\n io.github.noamcohen48.tap.api.v1B\x15\x43lientConnectionProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,6 +33,12 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'client_connection_pb2', _gl
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n io.github.noamcohen48.tap.api.v1B\025ClientConnectionProtoP\001'
+  _globals['_DISCONNECTRESPONSE_CLEANUPISSUESENTRY']._loaded_options = None
+  _globals['_DISCONNECTRESPONSE_CLEANUPISSUESENTRY']._serialized_options = b'8\001'
+  _globals['_INFORESPONSE_STARTUPOPTIONSENTRY']._loaded_options = None
+  _globals['_INFORESPONSE_STARTUPOPTIONSENTRY']._serialized_options = b'8\001'
+  _globals['_INFORESPONSE_STARTUPOPTIONSOURCESENTRY']._loaded_options = None
+  _globals['_INFORESPONSE_STARTUPOPTIONSOURCESENTRY']._serialized_options = b'8\001'
   _globals['_CONNECTREQUEST']._serialized_start=52
   _globals['_CONNECTREQUEST']._serialized_end=124
   _globals['_HOLD']._serialized_start=126
@@ -50,27 +56,33 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_OBSERVERESPONSE']._serialized_start=340
   _globals['_OBSERVERESPONSE']._serialized_end=503
   _globals['_DISCONNECTREQUEST']._serialized_start=505
-  _globals['_DISCONNECTREQUEST']._serialized_end=554
-  _globals['_DISCONNECTRESPONSE']._serialized_start=556
-  _globals['_DISCONNECTRESPONSE']._serialized_end=611
-  _globals['_INFOREQUEST']._serialized_start=613
-  _globals['_INFOREQUEST']._serialized_end=626
-  _globals['_INFORESPONSE']._serialized_start=629
-  _globals['_INFORESPONSE']._serialized_end=861
-  _globals['_DEFAULTS']._serialized_start=864
-  _globals['_DEFAULTS']._serialized_end=1008
-  _globals['_LISTCONNECTIONSREQUEST']._serialized_start=1010
-  _globals['_LISTCONNECTIONSREQUEST']._serialized_end=1034
-  _globals['_ATTACHEDDEVICEENTRY']._serialized_start=1036
-  _globals['_ATTACHEDDEVICEENTRY']._serialized_end=1121
-  _globals['_CONNECTIONENTRY']._serialized_start=1124
-  _globals['_CONNECTIONENTRY']._serialized_end=1299
-  _globals['_LISTCONNECTIONSRESPONSE']._serialized_start=1301
-  _globals['_LISTCONNECTIONSRESPONSE']._serialized_end=1372
-  _globals['_EVENTSREQUEST']._serialized_start=1374
-  _globals['_EVENTSREQUEST']._serialized_end=1438
-  _globals['_EVENTSRESPONSE']._serialized_start=1440
-  _globals['_EVENTSRESPONSE']._serialized_end=1510
-  _globals['_CLIENTCONNECTIONSERVICE']._serialized_start=1513
-  _globals['_CLIENTCONNECTIONSERVICE']._serialized_end=1921
+  _globals['_DISCONNECTREQUEST']._serialized_end=570
+  _globals['_DISCONNECTRESPONSE']._serialized_start=573
+  _globals['_DISCONNECTRESPONSE']._serialized_end=753
+  _globals['_DISCONNECTRESPONSE_CLEANUPISSUESENTRY']._serialized_start=701
+  _globals['_DISCONNECTRESPONSE_CLEANUPISSUESENTRY']._serialized_end=753
+  _globals['_INFOREQUEST']._serialized_start=755
+  _globals['_INFOREQUEST']._serialized_end=768
+  _globals['_INFORESPONSE']._serialized_start=771
+  _globals['_INFORESPONSE']._serialized_end=1311
+  _globals['_INFORESPONSE_STARTUPOPTIONSENTRY']._serialized_start=1197
+  _globals['_INFORESPONSE_STARTUPOPTIONSENTRY']._serialized_end=1250
+  _globals['_INFORESPONSE_STARTUPOPTIONSOURCESENTRY']._serialized_start=1252
+  _globals['_INFORESPONSE_STARTUPOPTIONSOURCESENTRY']._serialized_end=1311
+  _globals['_DEFAULTS']._serialized_start=1314
+  _globals['_DEFAULTS']._serialized_end=1458
+  _globals['_LISTCONNECTIONSREQUEST']._serialized_start=1460
+  _globals['_LISTCONNECTIONSREQUEST']._serialized_end=1484
+  _globals['_ATTACHEDDEVICEENTRY']._serialized_start=1486
+  _globals['_ATTACHEDDEVICEENTRY']._serialized_end=1571
+  _globals['_CONNECTIONENTRY']._serialized_start=1574
+  _globals['_CONNECTIONENTRY']._serialized_end=1851
+  _globals['_LISTCONNECTIONSRESPONSE']._serialized_start=1853
+  _globals['_LISTCONNECTIONSRESPONSE']._serialized_end=1924
+  _globals['_EVENTSREQUEST']._serialized_start=1926
+  _globals['_EVENTSREQUEST']._serialized_end=1990
+  _globals['_EVENTSRESPONSE']._serialized_start=1992
+  _globals['_EVENTSRESPONSE']._serialized_end=2062
+  _globals['_CLIENTCONNECTIONSERVICE']._serialized_start=2065
+  _globals['_CLIENTCONNECTIONSERVICE']._serialized_end=2473
 # @@protoc_insertion_point(module_scope)

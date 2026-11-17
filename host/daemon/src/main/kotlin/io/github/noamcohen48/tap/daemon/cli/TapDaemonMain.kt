@@ -59,149 +59,18 @@ private const val STOP_SLACK_MS = 5_000L
  * the descriptor names before trusting its pid.
  */
 fun main(args: Array<String>) {
-    val (command, options) =
-        try {
-            parseCommandLine(args.toList())
-        } catch (invalid: UsageException) {
-            invalid.message?.let(System.err::println)
-            usage()
-        }
-    val stateDir = Path.of(options["--state-dir"] ?: defaultStateDir()).toAbsolutePath()
-    val exitCode =
-        when (command) {
-            "start" -> {
-                start(options, stateDir).let { 0 }
-            }
-
-            "serve" -> {
-                serve(options, stateDir).let { 0 }
-            }
-
-            "status" -> {
-                status(stateDir)
-            }
-
-            "stop" -> {
-                stop(stateDir)
-            }
-
-            "doctor" -> {
-                runBlocking {
-                    doctor(stateDir, Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb"), options["--serial"], "--fix" in options)
-                }
-            }
-
-            "unquarantine" -> {
-                runBlocking {
-                    unquarantine(stateDir, Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb"), options.getValue("--serial"))
-                }
-            }
-
-            else -> {
-                println("tap daemon ${DAEMON_VERSION}").let { 0 }
-            }
-        }
-    if (exitCode != 0) exitProcess(exitCode)
+    val code = runCli(args.toList())
+    if (code != 0) exitProcess(code)
 }
-
-/** A command line `tap` refuses; the message (if any) is printed above the usage text. */
-internal class UsageException(
-    message: String? = null,
-) : IllegalArgumentException(message)
-
-internal data class CommandLine(
-    val command: String,
-    val options: Map<String, String>,
-)
-
-/** `tap <command> [--option value]...`, validated against [COMMAND_OPTIONS]; never exits. */
-internal fun parseCommandLine(args: List<String>): CommandLine {
-    val command = args.firstOrNull() ?: throw UsageException()
-    val allowed = COMMAND_OPTIONS[command] ?: throw UsageException("unknown command '$command'")
-    val options = parseOptions(args.drop(1))
-    (options.keys - allowed).firstOrNull()?.let { unknown ->
-        throw UsageException("option $unknown is not valid for `tap $command`")
-    }
-    options["--port"]?.let { value ->
-        if (value.toIntOrNull()?.takeIf { it in 0..65535 } == null) {
-            throw UsageException("--port must be an integer in 0..65535, got '$value'")
-        }
-    }
-    options["--driver-idle-timeout-ms"]?.let { value ->
-        val timeout = value.toLongOrNull()
-        if (timeout == null || (timeout != 0L && timeout !in 1_000L..300_000L)) {
-            throw UsageException("--driver-idle-timeout-ms must be 0 (off) or 1000..300000")
-        }
-    }
-    if (command == "unquarantine" && "--serial" !in options) {
-        throw UsageException("`tap unquarantine` needs --serial SERIAL")
-    }
-    if (("--driver-apk" in options) != ("--driver-test-apk" in options)) {
-        throw UsageException("--driver-apk and --driver-test-apk go together")
-    }
-    return CommandLine(command, options)
-}
-
-private fun usage(): Nothing {
-    System.err.println(
-        """
-        usage: tap start   [--port N] [--state-dir DIR] [--adb PATH] [--scrcpy PATH] [--scrcpy-server JAR] [--driver-apk APK --driver-test-apk APK] [--driver-idle-timeout-ms N]
-                           (background; reuses a running daemon)
-               tap serve   (same options as start; foreground)
-               tap status  [--state-dir DIR]
-               tap stop    [--state-dir DIR]
-               tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix]
-                           (what ended sessions left on the devices; --fix cleans it up)
-               tap unquarantine --serial SERIAL [--state-dir DIR] [--adb PATH]
-                           (put a quarantined device back in service once you have checked it)
-               tap version
-        """.trimIndent(),
-    )
-    exitProcess(2)
-}
-
-private val SERVE_OPTIONS =
-    setOf("--port", "--state-dir", "--adb", "--scrcpy", "--scrcpy-server", "--driver-apk", "--driver-test-apk", "--driver-idle-timeout-ms")
-private val COMMAND_OPTIONS =
-    mapOf(
-        "start" to SERVE_OPTIONS,
-        "serve" to SERVE_OPTIONS,
-        "status" to setOf("--state-dir"),
-        "stop" to setOf("--state-dir"),
-        "doctor" to setOf("--state-dir", "--adb", "--serial", "--fix"),
-        "unquarantine" to setOf("--state-dir", "--adb", "--serial"),
-        "version" to emptySet(),
-    )
-
-/** Options that take no value. */
-private val FLAGS = setOf("--fix")
 
 /** `serve` exit status when another process holds the state dir's lock. */
 private const val EXIT_LOCKED = 3
 
-private fun defaultStateDir(): String =
+internal fun defaultStateDir(): String =
     System.getenv("TAP_STATE_DIR")
         ?: Path.of(System.getProperty("user.home"), ".tap").toString()
 
-private fun parseOptions(args: List<String>): Map<String, String> {
-    val options = mutableMapOf<String, String>()
-    var i = 0
-    while (i < args.size) {
-        val key = args[i]
-        if (!key.startsWith("--")) throw UsageException("unexpected argument '$key'")
-        if (key in FLAGS) {
-            if (options.put(key, "true") != null) throw UsageException("option $key given twice")
-            i += 1
-            continue
-        }
-        val value = args.getOrNull(i + 1)?.takeUnless { it.startsWith("--") } ?: throw UsageException("option $key needs a value")
-        if (options.put(key, value) != null) throw UsageException("option $key given twice")
-        i += 2
-    }
-    return options
-}
-
-private fun serve(
+internal fun serve(
     options: Map<String, String>,
     stateDir: Path,
 ) {
@@ -212,7 +81,8 @@ private fun serve(
         exitProcess(EXIT_LOCKED)
     }
     val port = options["--port"]?.toInt() ?: 0
-    val adb = Adb(options["--adb"] ?: System.getenv("TAP_ADB") ?: "adb")
+    val startup = startupConfiguration(options, stateDir)
+    val adb = Adb(startup.values.getValue("--adb"))
     val log: (String) -> Unit = { line -> println("[tap] $line") }
 
     // The override replaces the bundled driver for every attach this daemon serves.
@@ -228,9 +98,9 @@ private fun serve(
     if (driver == null) log("no driver in this build and no --driver-apk; attach needs skip_driver_install")
 
     val token = DaemonDescriptor.newToken()
-    val scrcpy = options["--scrcpy"] ?: System.getenv("TAP_SCRCPY") ?: "scrcpy"
+    val scrcpy = startup.values.getValue("--scrcpy")
     // The scrcpy 4.1 server JAR WatchVideo pushes; without it the daemon serves no video.
-    val scrcpyServer = (options["--scrcpy-server"] ?: System.getenv("TAP_SCRCPY_SERVER"))?.let { Path.of(it).toAbsolutePath() }
+    val scrcpyServer = startup.values["--scrcpy-server"]?.let(Path::of)
     val daemon =
         TapDaemon(
             DaemonConfig(
@@ -241,6 +111,8 @@ private fun serve(
                 scrcpy = scrcpy,
                 scrcpyServer = scrcpyServer,
                 driverIdleTimeoutMs = options["--driver-idle-timeout-ms"]?.toLong() ?: 0,
+                startupOptions = startup.values,
+                startupOptionSources = startup.sources,
             ),
         )
     val server: Server =
@@ -300,9 +172,10 @@ private fun remainingShutdownMs(deadlineNanos: Long): Long = ((deadlineNanos - S
  * or `started 127.0.0.1:PORT pid=PID`; exits non-zero when the child died or never became ready.
  * A concurrent `start` that loses the state-dir lock waits for the winner instead of failing.
  */
-private fun start(
+internal fun start(
     options: Map<String, String>,
     stateDir: Path,
+    inheritVideoEnvironment: Boolean = true,
 ) {
     Files.createDirectories(stateDir)
     liveDaemon(stateDir)?.let {
@@ -318,6 +191,7 @@ private fun start(
             options.filterKeys { it != "--port" && it != "--state-dir" }.flatMap { (key, value) -> listOf(key, value) }
     val process =
         ProcessBuilder(command)
+            .apply { if (!inheritVideoEnvironment) environment().remove("TAP_SCRCPY_SERVER") }
             .redirectErrorStream(true)
             .redirectOutput(ProcessBuilder.Redirect.appendTo(log.toFile()))
             .redirectInput(ProcessBuilder.Redirect.from(File(if (File.separatorChar == '\\') "NUL" else "/dev/null")))
@@ -359,12 +233,13 @@ private fun probe(descriptor: DaemonDescriptor): Probe {
     val channel = ManagedChannelBuilder.forTarget("127.0.0.1:${descriptor.port}").usePlaintext().build()
     return try {
         val headers = Metadata().apply { put(TokenAuthInterceptor.AUTHORIZATION, "Bearer ${descriptor.token}") }
-        ClientConnectionServiceGrpc
-            .newBlockingStub(channel)
-            .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers))
-            .withDeadlineAfter(2, TimeUnit.SECONDS)
-            .info(InfoRequest.getDefaultInstance())
-        Probe.OK
+        val info =
+            ClientConnectionServiceGrpc
+                .newBlockingStub(channel)
+                .withInterceptors(MetadataUtils.newAttachHeadersInterceptor(headers))
+                .withDeadlineAfter(2, TimeUnit.SECONDS)
+                .info(InfoRequest.getDefaultInstance())
+        if (info.pid == descriptor.pid) Probe.OK else Probe.REJECTED
     } catch (error: StatusRuntimeException) {
         when (error.status.code) {
             Status.Code.UNAVAILABLE, Status.Code.DEADLINE_EXCEEDED -> Probe.DOWN
@@ -403,27 +278,9 @@ internal fun status(
     stateDir: Path,
     out: (String) -> Unit = ::println,
 ): Int {
-    val descriptor = DaemonDescriptor.read(stateDir)
-    if (descriptor == null) {
-        out("no daemon (no readable ${stateDir.resolve(DaemonDescriptor.FILE_NAME)})")
-        return 1
-    }
-    return when (probe(descriptor)) {
-        Probe.OK -> {
-            out("running 127.0.0.1:${descriptor.port} pid=${descriptor.pid} version=${descriptor.daemonVersion} adb=${descriptor.adb}")
-            0
-        }
-
-        Probe.REJECTED -> {
-            out("stale descriptor: port ${descriptor.port} is served by something else")
-            1
-        }
-
-        Probe.DOWN -> {
-            out("not responding: daemon pid ${descriptor.pid} at 127.0.0.1:${descriptor.port} does not answer")
-            1
-        }
-    }
+    val report = statusReport(stateDir)
+    out(terminalSafe(report.text))
+    return report.code
 }
 
 /**
