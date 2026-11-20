@@ -77,15 +77,15 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("-s", "--session", help="session name (default: $TAP_AGENT_SESSION or 'agent')")
     on_device = argparse.ArgumentParser(add_help=False, parents=[common])
     on_device.add_argument("-d", "--device", help="serial; needed only when the session has several devices")
-    # Every verb that can send input can report or require the device events it causes.
+    # Shared event options for verbs that support step observation.
     observe = argparse.ArgumentParser(add_help=False)
     observe.add_argument(
         "--events", action="append", default=[], metavar="KINDS",
-        help=f"also print the device events the step causes, of these kinds (comma list; {', '.join(EVENT_KINDS)})",
+        help=f"also print events observed during the step, of these kinds (comma list; {', '.join(EVENT_KINDS)}); not proof of causality or complete capture",
     )
     observe.add_argument(
         "--expect", dest="expect_events", action="append", default=[], metavar="KIND[:TEXT]",
-        help="the step must cause this event (TEXT: part of it, any case), e.g. toast:saved; repeat for several",
+        help="require this event to be observed (TEXT: part of it, any case), e.g. toast:saved; unrelated events may match; repeat for several",
     )
     observe.add_argument(
         "--event-timeout", type=_command_duration, default=None, metavar="DURATION",
@@ -96,7 +96,7 @@ def parser() -> argparse.ArgumentParser:
         "--expect-death", action="store_true",
         help="the step must make a watched app crash or stop responding (within 10 s after it); a command failing because of it is no failure",
     )
-    # Every verb that can send input can expect the app to die of it.
+    # These verbs can also settle after input.
     settle = argparse.ArgumentParser(add_help=False, parents=[expect])
     settle.add_argument("--settle", action="store_true", help="wait for the screen to settle, then print what changed")
 

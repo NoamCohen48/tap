@@ -218,7 +218,9 @@ async def test_mcp_steps_report_deaths_and_take_expect_death(fake, tmp_path):
             assert not (await client.call_tool("attach", {"serial": "emulator-5554"})).is_error
             fake.devices.deaths.append(death(1))
             result = await client.call_tool("tap", {"target": "text=Pay"})
-            assert result.is_error and f"! {PKG} crashed" in result.content[0].text and "relaunch it" in result.content[0].text
+            assert result.is_error and f"! {PKG} crashed" in result.content[0].text
+            assert "after an ANR, stop it before launching again" in result.content[0].text
+            assert "do not replay the step" in result.content[0].text
             crashes(fake, death(2))
             result = await client.call_tool("tap", {"target": "text=Crash", "expect_death": True})
             assert not result.is_error and f"✓ {PKG} crashed" in result.content[0].text

@@ -20,7 +20,7 @@ New releases use only `vX.Y.Z`. The Release set and Bundle workflows are removed
 
 ## Version sources
 
-- `gradle.properties`: **`tap.version=0.1.0`**, the canonical release version.
+- `gradle.properties`: **`tap.version=0.2.0`**, the canonical release version.
 - Root `build.gradle.kts`: every project uses that value and group
   `io.github.noamcohen48.tap`, including `device/sync-sdk` (version only; no synchronization
   behavior changes).
@@ -71,7 +71,7 @@ Entry points:
    the existing tag or republish it. `GITHUB_TOKEN` tag pushes do not create another run.
 2. **Explicit `v*` tag push:** also requires successful main CI for the tagged SHA and
    ancestry on `main`.
-3. **Recovery:** `gh workflow run Release --ref main -f tag=v0.1.0`. The tag must exist;
+3. **Recovery:** `gh workflow run Release --ref main -f tag=v0.2.0`. The tag must exist;
    checkout, assets and notes follow that tag, not the dispatch branch. It still checks CI.
 
 A repository-wide release concurrency group prevents two runs from mutating release state
@@ -124,7 +124,7 @@ dispatch failed, repair the access/transient issue and run `gh workflow run Docs
    together on a branch, and merge through a PR after its checks pass.
 2. Main CI must pass, including device and native lanes. The release workflow then tags and
    publishes the version automatically; a version-preparation commit alone is not a release.
-3. Wait for Release to succeed. Check `gh release view v0.1.0`, all three bundle downloads,
+3. Wait for Release to succeed. Check `gh release view v0.2.0`, all three bundle downloads,
    `SHA256SUMS`, and the website's Download page.
 4. For an interrupted run, use the recovery dispatch above; do not manually create per-family
    or bundle tags.
@@ -134,7 +134,7 @@ no device or credentials). Actionlint silently skips shell validation without Sh
 so check its presence explicitly, as the hosted job does:
 
 ```bash
-python .github/scripts/release_version.py v0.1.0
+python .github/scripts/release_version.py v0.2.0
 python -m unittest discover -s .github/scripts/tests -v
 shellcheck --version
 actionlint -shellcheck "$(command -v shellcheck)"
@@ -142,7 +142,7 @@ actionlint -shellcheck "$(command -v shellcheck)"
 
 The regression suite tests tag/mirror rejection, main-CI gating, immutable/resumable
 publication, every bundle's contents/checksums/modes and website download asset names.
-A real local Gradle staging build additionally proves all POMs and artifacts use 0.1.0.
+A real local Gradle staging build additionally proves all POMs and artifacts use 0.2.0.
 No local device matrix is required for this release-tooling change unless requested.
 
 ## CI and documentation deployment
@@ -168,8 +168,9 @@ site/Markdown artifacts, and deploys main to <https://noamcohen48.github.io/tap/
 version's release to be public: a missing tag or a draft is not enough. Release explicitly
 dispatches Docs after the public URL checks pass, because `GITHUB_TOKEN` release events do not
 start other workflows. This prevents publishing download links ahead of their assets.
-Website buttons and install snippets now point to `v0.1.0`, the same release the unified
-pipeline creates. Product labels in the site
+Website buttons and install snippets target `v0.2.0`, the version the unified pipeline will
+publish after main CI passes. The deployment gate keeps these links off the hosted site until
+the release is public. Product labels in the site
 are **Tap agent** and **Tap watcher**; CLI/package names stay unchanged.
 
 ## Repository settings and remaining limits
@@ -182,6 +183,60 @@ are **Tap agent** and **Tap watcher**; CLI/package names stay unchanged.
 - Native builds and registry uploads require hosted CI.
 - Maven Central, Windows native builds, signed binaries and an offline installer remain
   outside this change.
+
+## Preparation: 0.2.0 (2026-11-20)
+
+This is release preparation, not a published release or a new tag. All version mirrors and the
+generated Python engine baseline are 0.2.0. Agent/Studio/watcher require SDK 0.2.0: their logs,
+app-death and condition-wait messages are absent from 0.1.0. A metadata regression test guards
+the minimum; an isolated environment installed all four wheels built from source distributions.
+The installed agent prints the same packaged skill as the source.
+
+The hygiene audit found no substantiated tracked spam or build artifacts. Historical decisions
+and demos are retained; untracked session exports and existing worktrees in the primary checkout
+were not deleted. README and website install instructions, missing release notes, agent skill,
+MCP instructions and command help are aligned. The site built strictly with all references;
+local Chromium checks covered the home/download pages and a 390px home view (no overflow or
+broken images). Public 0.2.0 asset URLs are not claimed available before publication.
+
+Local checks passed: JVM unit suites and Android lint; Python SDK/agent/Studio/watcher unit
+suites (311/342/616/27 passed, four opt-in agent tests skipped); browser tests (Studio 183,
+watcher 39), type checks and builds; generated bindings and buf lint; 26 release-tooling tests;
+all five staged Maven POMs at 0.2.0; native compilation and CLI/RPC smokes on GraalVM 21.0.2.
+The native check uncovered main CI's crash-log coroutine compiler failure, fixed and recorded
+in `app-deaths.md` without skipping checks or changing toolchains.
+
+The first push surfaced six open Dependabot alerts, all for Vite 8.3.0–8.3.2 (including one
+high severity). Both pages now pin Vite 8.3.3, the first patched version, with narrowly
+regenerated locks. A manifest-and-resolution regression check prevents restoring a vulnerable
+version; the release-tooling suite now has 26 tests. These are build/development-server
+advisories, not evidence of a vulnerability in the shipped static pages. Default-branch alerts
+remain open until the patched change lands and GitHub refreshes its dependency graph. Both
+web test/build suites and backend suites passed again; rebuilt wheels contained exactly the
+patched static assets, and the installed-wheel Studio phone smoke passed again.
+
+Physical device: Samsung SM-J810G, API 29, serial `85e49002`. The Kotlin fixture suite passed
+45 tests (four skips: two-device cases, API 31 approximate location and a deliberate no-match
+criteria case). Non-reboot host validation passed 52 tests (two skips: two-device transport
+isolation and opt-in passive video). The native 0.2.0 Python device suite passed 43 tests with
+two skips; an explicit one-device pytest matrix case passed separately. The installed-wheel
+agent smoke passed attach, launch, snapshot refs, tap/settle, waits, log markers and exports.
+
+The installed-wheel Studio smoke passed a ten-step record/export/reopen/replay flow and clean
+SIGTERM shutdown; its exported recording also replayed through the SDK. A native/installed-SDK
+smoke collected 24 unique fixture rows with one scroll, stopped at `SCROLL_LIMIT` and retained
+`NOT_GUARANTEED` coverage; a `temporary_settings(font_scale=1.2)` block restored its entry value.
+The separately opted-in passive-video test passed with the checksum-verified scrcpy 4.1 server
+(tag resolves to the audited `2926c06c`): first key frame 1749 ms, ten frames decoded, child,
+private forward and JAR removed. The system scrcpy is 5.0.1 and was not substituted for the
+pinned server. Final native `devices`/`sessions`/`doctor` checks showed the phone free and clean,
+no sessions, and no forwards; the daemon was stopped.
+
+The first Studio smoke invocation lacked the installed wheel's executable directory on `PATH`;
+it failed before launching Studio and passed with that directory supplied. No product check
+was hidden or skipped to make the candidate pass. Reboot and two-device checks were not run.
+Hosted cross-platform builds, emulator CI, registries and public download checks remain release
+gates.
 
 ## Release record: 0.1.0 (2026-11-08)
 

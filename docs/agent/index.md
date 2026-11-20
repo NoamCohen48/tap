@@ -24,8 +24,8 @@ The [Download](../download.md) bundle installs it with everything else; on its o
 Python client first, then the agent tools, from the GitHub releases:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
-pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_agent-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_agent-0.2.0-py3-none-any.whl
 tap start
 ```
 

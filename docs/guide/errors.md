@@ -1,8 +1,9 @@
 # Errors
 
 !!! info "Names are Python's"
-    Each Python `…Error` is a Kotlin `…Exception` (`CommandError` → `CommandException`,
-    `TapError` → `TapException`), with the same fields in camelCase.
+    For shared APIs, Python's `…Error` is Kotlin's `…Exception` (`CommandError` →
+    `CommandException`, `TapError` → `TapException`), with the same fields in camelCase.
+    Python-only helpers, such as `SettingsRestorationError`, have no Kotlin counterpart.
 
 Tap distinguishes these kinds of failure, each its own exception type, and never converts one
 into another:
@@ -85,7 +86,7 @@ The codes, grouped by what they tell you:
 | Code | Meaning / details |
 |---|---|
 | `AUT_MISMATCH` | the app's process identity changed between observations (`PROCESS_RESTARTED`, `PROCESS_MISMATCH`) |
-| `AUT_CRASHED`, `AUT_ANR` | an app this attachment started crashed or stopped responding, and that explains why the command failed. The message names the app and the exception; the detail is the code it replaces (`NOT_FOUND`, `WAIT_TIMEOUT`, …). Each crash is reported once. See [below](#a-crashed-app) |
+| `AUT_CRASHED`, `AUT_ANR` | a watched app crashed or stopped responding, and that explains why the command failed. The message names the app and the exception; the detail is the code it replaces (`NOT_FOUND`, `WAIT_TIMEOUT`, …). Each crash is reported once. See [below](#a-crashed-app) |
 | `SYNC_PROVIDER_UNAVAILABLE` | `await_idle` cannot read the app's sync provider: `CERTIFICATE_MISMATCH`, `UNINITIALIZED`, `PROVIDER_TIMEOUT`, … |
 | `DRIVER_UNHEALTHY` | the driver's watchdog poisoned the session (`WATCHDOG`, `HEARTBEAT_EXPIRED`); the next open rebuilds it |
 | `TRANSPORT_LOST` | no response and *no* mutation risk (the request never got out) |

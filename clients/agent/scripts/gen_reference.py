@@ -110,8 +110,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     (
         "Device events",
         "Android reports toasts, window changes, clicks, scrolls, text edits and content changes as "
-        "they happen. Any input verb takes `--events KINDS` to print the events it caused and "
-        "`--expect KIND[:TEXT]` to require one; `wait-event` waits for the next one, and `watch` "
+        "they happen. Supported verbs take `--events KINDS` to print events observed during the "
+        "step and `--expect KIND[:TEXT]` to require one (see each verb's options; not "
+        "`scroll-until`). Capture is finite and observations do not prove causality. "
+        "`wait-event` waits for the next one, and `watch` "
         "streams them (run it in the background to be told when something happens). Events are "
         "hints: read the screen again before acting on one.",
         ["wait-event", "watch"],

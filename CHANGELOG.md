@@ -6,7 +6,18 @@ name the components affected. Earlier releases used independent version lines. T
 
 ## Unreleased
 
+## 0.2.0
+
+All components use 0.2.0. Install the server and clients from this release together; Tap agent,
+Studio and watcher now require `tap-e2e>=0.2.0` for the SDK and protobuf APIs they use. The
+API compatibility epoch is unchanged; the internal device protocol is 5.3 (also negotiates
+5.2 and 5.1). Downloads are published only after main CI and the release pipeline succeed.
+
 ### Engine
+
+- Native builds no longer fail in GraalVM 21.0.2 while compiling the crash-log follower. Its
+  blocking read, error handling and cleanup are isolated from suspension; detach still stops
+  the child and closes the reader, and crash records and restart backoff are unchanged.
 
 - `device.info()` and attachment metadata no longer wait for accessibility idle just to read
   rotation and the current package. They read the current platform display and a fresh active
@@ -46,7 +57,8 @@ name the components affected. Earlier releases used independent version lines. T
   read-only rotation/process probes and avoid external processes for fixed diagnostic markers;
   fresh PID/token checks and per-attach APK byte verification remain mandatory. Rotation cleanup
   also batches readbacks, retaining its full stability interval, restore writes and fresh final
-  verification. Internal wire protocol is 5.2; 5.1 still works without process reuse.
+  verification. Process reuse requires internal wire protocol 5.2 or newer; 5.1 still works
+  without it.
 - Native `tap stop` runs the shutdown hooks, restoring active settings and cleaning idle
   driver processes/forwards before exit, like the JVM server.
 - Read per-device operation support with `device.capabilities()` in Kotlin/Python,
@@ -119,6 +131,39 @@ name the components affected. Earlier releases used independent version lines. T
   `allow_reach_below`).
 
 ### Clients and tools
+
+- Python: bulk collection `snapshots()` / `texts()` read exposed matches in one call;
+  `tap-agent elements [--texts]` returns the same values without parsing snapshots. Python
+  and Kotlin `Element.scan` collect across viewports with explicit time, scroll and item budgets,
+  caller-chosen business keys and honest stop reasons. Scroll results report movement/edge
+  evidence where available, not a guarantee of complete enumeration. See
+  [collections and scanning](docs/guide/gestures.md#read-a-scrollable-collection).
+- Python: `temporary_settings(...)` restores block-scoped device settings, supports nesting,
+  and reports restoration failures without hiding an error in the block. This helper is
+  Python-only; session cleanup remains the fallback. See
+  [device conditions](docs/guide/device-conditions.md).
+- Python and Tap agent: subscribe to accessibility events (toasts, windows, content, clicks,
+  scrolls and edits). Agent actions that support observation accept `--events` / `--expect`
+  (MCP `events` / `expect_events`); `watch` and `wait-event` observe between actions. Capture
+  is finite and reports stream loss; an observed event is not proof of causality. Toast
+  history retains 128 observations, and snapshots/settle deliver unread toasts with explicit
+  cursor gaps/resets. See [events](docs/guide/events.md) and
+  [agent sessions](docs/agent/session.md).
+- Tap agent: snapshots preserve displayed ancestry and labeled groups, and borrow passive
+  descendant labels as container context without pretending they are selector text. Package,
+  window and system-chrome filters affect presentation, not refs. See
+  [reading the screen](docs/agent/session.md).
+- pytest: explicit device-matrix execution selects and runs each declared device case
+  separately, with capability filters and per-case reports. See
+  [the Python SDK](docs/sdk/python.md#device-matrix-execution).
+- Daemon: discoverable command help, device/session administration and diagnostics, including
+  JSON output and typed exit codes. See [server commands](docs/guide/server.md).
+- Build: pin Studio and watcher to Vite 8.3.3, fixing the six reported development-server
+  advisories affecting 8.3.0–8.3.2. A regression check guards both manifests and committed
+  resolutions against the vulnerable versions. Production pages remain static assets.
+- Release sanity: correct agent event-option scope and uncertain-input/ANR recovery guidance,
+  update Studio/watcher installation instructions and fix the unified-release badge. Developer
+  test commands run conflicting Python test packages separately.
 
 - Kotlin: `device.logs.read(LogStart, LogFilter)`, `follow(...)` (a `Flow`), `mark(name)` and
   `redact(patterns)` read the device log; `withStep { id -> … }` runs calls as one step and

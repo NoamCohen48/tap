@@ -28,8 +28,8 @@ from .targets import SELECTOR_KEYS
 
 INSTRUCTIONS = """\
 Drive an Android device through the Tap daemon (it must be running: `tap start`).
-Flow: devices -> attach(serial) -> app(cold-launch, package) -> snapshot -> act (tap, fill,
-scroll, key, ...) -> release. Selectors search the whole screen unless `pkg=` names a package.
+Flow: devices -> attach(serial="SERIAL") -> app(action="cold-launch", package="com.example.app")
+-> snapshot -> act (tap, fill, scroll, press_key(key="back"), ...) -> release. Selectors search the whole screen unless `pkg=` names a package.
 snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pass `@e3` as
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen; an
 action with settle=true waits for the screen to settle and returns what changed (+ added,
@@ -37,14 +37,24 @@ action with settle=true waits for the screen to settle and returns what changed 
 elements reads all current selector matches as a JSON array (or texts=true for raw text),
 including checkbox state, in one bulk read without a diagnostic snapshot. It accepts written
 selectors with pkg and relations, not refs or first/index. It returns values, not refs.
+Only exposed nodes are read, not an entire virtualized dataset. For collection across viewports,
+bound total scrolls, items and time; choose stable business keys yourself. Repeated labels or
+resource IDs and no new rows do not prove end-of-list. A successful scroll does not prove
+movement or an edge. There is no scan tool; Python SDK Element.scan is a bounded collector.
+Never replay an uncertain/INDETERMINATE mutation: inspect the screen first. A watched app death
+may accompany an action that already ran; after an ANR stop the app before launching it again.
+Use expect_death only for deliberate reproductions on tools that accept it.
 The session lives in the daemon and ends after 15 idle minutes or on release.
 log reads the device log: the app's lines with your steps and Tap's actions between them; mark
 a name (log action=mark) before a flow and read since it afterwards. Every action and wait is
 recorded as a step without being asked; export returns that history (with logs/calls for the
 device log and the server's calls, which end with the session: export before release, or
-release with export set). history lists saved histories; media_record is video/audio. Input tools take events (kinds to
-report: toast, window, content, click, scroll, text) and expect_events (`toast:saved`: the step
-fails unless it causes one); wait_event waits for the next event, watch collects them for a while.
+release with export set). history lists saved histories; media_record is video/audio.
+Tools with events/expect_events parameters observe toast, window, content, click, scroll and
+text events, subscribing before input. Not every mutation supports them (scroll_until does not).
+expect_events=["toast:saved"] fails unless that event is observed within the budget, not proof
+of causality: unrelated events may arrive. Collection is finite, Android may emit no event and
+stream loss is reported. wait_event waits for the next event; watch collects for a bounded time.
 CLI and MCP share histories through the same TAP_AGENT_DIR.
 Snapshots and settle append unread toast events, including ones that disappeared while you
 were thinking. Use await_toast with history=true to inspect retained toasts without consuming them.
@@ -70,11 +80,11 @@ ExpectDeath = Annotated[
 EventKind = Literal["toast", "window", "content", "click", "scroll", "text"]
 Events = Annotated[
     list[EventKind],
-    Field(description="Also return the device events the step causes, of these kinds (`events:` lines after its output)."),
+    Field(description="Also return device events observed during the step, of these kinds (`events:` lines after its output); not proof of causality or complete capture."),
 ]
 ExpectEvents = Annotated[
     list[str],
-    Field(description="Events the step must cause: KIND or KIND:TEXT (TEXT a part of it, any case), e.g. `toast:saved`; the step fails, listing what did happen, when one does not."),
+    Field(description="Events that must be observed during the step's collection window: KIND or KIND:TEXT (TEXT a part of it, any case), e.g. `toast:saved`; the step fails when one is not observed. Unrelated events may match."),
 ]
 EventTimeout = Annotated[float | None, Field(ge=0.001, le=120, description="How long expect_events waits after the step; default 10 s.")]
 Direction = Literal["up", "down", "left", "right"]
@@ -102,7 +112,7 @@ def _error(error: AgentError) -> CallToolResult:
     elif error.exit_code == EXIT_USAGE:
         text += "\n(invalid arguments)"
     elif error.exit_code == EXIT_APP_DIED:
-        text += "\n(the step ran, but a watched app died: relaunch it before going on)"
+        text += "\n(the step ran, but a watched app died: after an ANR, stop it before launching again; do not replay the step)"
     return CallToolResult(content=[TextContent(type="text", text=text)], is_error=True)
 
 

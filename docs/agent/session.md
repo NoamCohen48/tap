@@ -247,10 +247,10 @@ which the SDK polls from the host. A state wait whose node never reached the sta
 the node looked at the end. CLI/core/MCP command budgets share the protocol's
 120-second maximum. Standalone MCP `settle` accepts `timeout_seconds`, matching CLI `--timeout`.
 
-## See the events a step causes
+## Observe events during a step
 
-Some results never show in a snapshot: a toast, a dialog that comes and goes. Ask the step for
-the device events it causes, or require one:
+Some results may disappear before a snapshot: a toast, a dialog that comes and goes. Observe
+device events during a step, or require one:
 
 ```console
 $ tap-agent tap "text=Save" --expect toast:saved --events window
@@ -260,14 +260,18 @@ events:
 ✓ toast "Draft saved" (com.example)
 ```
 
-Listening starts before the tap, so nothing it causes is missed. `--expect KIND[:TEXT]` fails the
+Listening starts before the tap, but capture is finite: Android may emit no event, late events
+may arrive after collection ends, and stream loss is reported. Unrelated events can also match,
+so observations do not prove causality. `--expect KIND[:TEXT]` fails the
 step (exit 1, still listing what did happen) when no such event arrives within
 `--event-timeout` (10 s). Kinds are `toast`, `window`, `content`, `click`, `scroll` and `text`.
 `wait-event KIND [TEXT]` waits for the next event from now on, and `watch KIND…` streams them,
 one line each, until you stop it: run it in the background to hear about a push message or a
 background sync while the session goes on. Events are hints: check the screen before acting on
-one. MCP tools take `events`, `expect_events` and `event_timeout_seconds`; MCP `watch` collects
-for at most 120 s.
+one. Event options are available on element inputs, gestures other than `scroll-until`, keys,
+panels, rotation, screen, keyboard, permission, notification and app commands; check each
+command's [options](commands.md). MCP tools that support observation take `events`,
+`expect_events` and `event_timeout_seconds`; MCP `watch` collects for at most 120 s.
 
 ## When a step fails
 

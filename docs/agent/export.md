@@ -94,7 +94,7 @@ Every resolved target contains the actual, package-bound SDK selector used, neve
 a recording can contain steps on several attached devices.
 
 The format is **`tap-agent-recording/2`**. It is high-level intent, not a list of raw daemon calls
-and not Studio's separate `tap-recording/1` protobuf document. For example:
+and not Studio's separate `tap-recording/2` protobuf document. For example:
 
 ```json
 {

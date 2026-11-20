@@ -79,6 +79,13 @@ sequential, not atomic UI transactions. Empty matches return `[]`; staleness or 
 (1000 matches / 1 MiB snapshot list) fails the whole read, never truncates or returns partial
 values. Full state may contain sensitive text, as `inspect` does.
 
+For a virtualized list, compose `elements` reads with `scroll` calls using explicit total
+scroll, item and time limits. Choose a stable business identity yourself; repeated text or a
+resource ID is not a unique row key, and no new rows does not prove end-of-list. A successful
+scroll does not prove movement or an edge. Stop on uncertain input and inspect the screen;
+never rewind or replay it automatically. Complete enumeration is not guaranteed. For a
+code-based bounded collector, use Python SDK `Element.scan`; there is no `tap-agent scan`.
+
 ## Targets
 
 - A ref from the latest snapshot: `@e3`. A ref keeps naming the same node while it stays on
@@ -211,18 +218,23 @@ new `snapshot`. `settle` alone does the same without acting.
 
 Android reports what happens on the screen as events: `toast`, `window` (an activity, dialog,
 popup or pane appeared, went away or changed), `content` (frequent), `click`, `scroll` and
-`text` (an edit). Toasts and short-lived dialogs never show in a snapshot; events catch them.
+`text` (an edit). Toasts and short-lived dialogs may disappear before a snapshot; events can
+help observe them.
 
 ```sh
-tap-agent tap @e7 --events toast,window      # also print the events the tap caused
+tap-agent tap @e7 --events toast,window      # also print events observed during the step
 tap-agent tap @e7 --expect toast:saved       # fail unless it shows a toast containing "saved"
 tap-agent wait-event window --package com.example --timeout 30s
 tap-agent watch toast window                 # stream, one line per event; Ctrl-C or --for 2m
 ```
 
-`--events`/`--expect` work on every input verb (and `app`): listening starts before the input,
-so nothing it causes is missed, and an `events:` block follows the step's output (`✓` marks
-the event an expectation met; content changes are summed per app). `--expect KIND[:TEXT]`
+`--events`/`--expect` are available on `tap`, `fill`, `type`, `clear`, `submit`, `action`,
+`progress`, `keyboard`, `scroll`, `swipe`, `fling`, `drag`, `pinch`, `key`, `panel`, `rotate`,
+`screen`, `permission`, `notification` and `app`, not on `scroll-until` or every mutation.
+Listening starts before input, and an `events:` block follows the step's output (`✓` marks
+the event an expectation met; content changes are summed per app). Collection is finite:
+Android may emit no event, a late event may arrive after collection ends, and stream loss is
+reported. Observed events can include unrelated activity; an expectation is not proof of causality. `--expect KIND[:TEXT]`
 waits up to `--event-timeout` (10 s) after the step; TEXT is part of the event, any case: a
 toast's message, a window's title or class, a click's label, an edit's text. Repeat it for
 several. `wait-event KIND [TEXT]` waits for the next one from now on: it cannot see an event
@@ -303,7 +315,8 @@ ends at once with `AUT_CRASHED` / `AUT_ANR` (detail `CANCELLED`); the error name
 the frames follow it. After an ANR the app may still be stuck: stop it before launching again.
 A reported death explains nothing later: the next miss on the dead app is a plain `NOT_FOUND`.
 
-`--expect-death` (MCP `expect_death: true`) on an action means the step must crash the app, for
+`--expect-death` (MCP `expect_death: true`) on the actions listed for event options above means
+the step must crash the app, for
 crash reproductions: the death prints as `✓ … (expected)`, the command failing because of it is
 no failure, and no death within 10 s is one (exit 1).
 
