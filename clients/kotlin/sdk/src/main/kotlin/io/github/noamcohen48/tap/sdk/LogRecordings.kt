@@ -210,14 +210,22 @@ class LogRecordings internal constructor(
         return exportSources(recording.connectionId, recording, sources, logs)
     }
 
-    /** Export ordinary retained calls for the original connection after release/restart; missing evidence remains explicit. */
+    /**
+     * Export original-connection activity after release/restart, including independent crashes/ANRs.
+     * [fromTime] is inclusive and [untilTime] exclusive, on the host receipt clock for every entry
+     * kind. [logs] only controls device-log inclusion, never death diagnostics. Missing evidence
+     * remains explicit; this does not invoke a CLI, recreate a session or infer query results.
+     */
     suspend fun history(
         connectionId: String,
         logs: Boolean = false,
+        fromTime: java.time.Instant? = null,
+        untilTime: java.time.Instant? = null,
     ): HistoryExport {
         require(connectionId.isNotBlank()) { "history needs the original connection id" }
+        require(fromTime == null || untilTime == null || !untilTime.isBefore(fromTime)) { "untilTime must not precede fromTime" }
         val sources = archives(connectionId, includeEvents = true).filter { it.events || logs }.map { it to null }
-        return exportSources(connectionId, null, sources, logs)
+        return exportSources(connectionId, null, sources, logs, fromTime, untilTime)
     }
 
     private suspend fun exportSources(
@@ -225,6 +233,8 @@ class LogRecordings internal constructor(
         recording: LogRecording?,
         sources: List<Pair<RetainedLog, String?>>,
         logsIncluded: Boolean,
+        fromTime: java.time.Instant? = null,
+        untilTime: java.time.Instant? = null,
     ): HistoryExport {
         val captured = mutableListOf<HistoryCapture>()
         val logs = linkedMapOf<String, LogEntries>()
@@ -233,7 +243,14 @@ class LogRecordings internal constructor(
         for ((archive, name) in sources) {
             val request = ReadLogRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(archive.attachedDeviceId)
             name?.let { request.recording = it }
-            val entries = readRequest(request, LogFilter(), 30.seconds)
+            val received = readRequest(request, LogFilter(), 30.seconds)
+            val entries =
+                received.copy(
+                    entries =
+                        received.entries.filter {
+                            (fromTime == null || !it.at.isBefore(fromTime)) && (untilTime == null || it.at.isBefore(untilTime))
+                        },
+                )
             if (archive.events) {
                 captured += HistoryCapture(archive, entries)
             } else {

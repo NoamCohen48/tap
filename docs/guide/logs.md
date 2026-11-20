@@ -143,8 +143,14 @@ evidence use Python `history(original_connection_id, logs=True)` or Kotlin
 `history(originalConnectionId, logs = true)`; no device reattachment or CLI is needed. See
 [history and recordings](../agent/export.md#sdk-exports).
 
-A recording protects the
-attachment set present at start. It does not restart capture, record video or automatically
+Crashes/ANRs are independently retained, including between calls, and are included in SDK
+exports even when `logs=False`. Redacted messages and available stacks are in JSON;
+`evidence.render_text(details=True)` / `evidence.renderText(details = true)` expands text.
+Time bounds (`from_time`/`until_time`, or Kotlin `fromTime`/`untilTime`) select the full host
+receipt window, not only step durations. The agent offers `history --last 30s --logs --details`.
+No flag can retrieve an uncaptured historical screen, full inaccessible ANR dump or expired log.
+
+A recording protects the attachment set present at start. It does not restart capture, record video or automatically
 replay a flow. Boundaries are receipt cursors: a logcat line delivered after stop may fall
 outside the range even if the app emitted it earlier. Complete capture is not a passing test.
 

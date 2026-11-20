@@ -19,8 +19,13 @@ tap-agent release
   [--until STEP|TIME] [--limit N]` reads it, defaulting to the latest 200 steps. Step cursors
   survive pruning; from is inclusive and until exclusive. Output is readable stdout text
   or `tap-history/1` JSON; redirect it yourself to save a file.
+- For an unexpected incident, `history --last 30s --logs --details` reads the full retained
+  window, including idle periods and archives with no local steps. `--last` excludes other
+  bounds; `--limit` affects the intent page, not window evidence. Crashes/ANRs are explicit in
+  text and JSON regardless of `--logs`; redacted diagnostic stacks are available with
+  `--details` (always in JSON). Missing/inaccessible source data stays explicit.
 - `record start NAME` protects a named range of the same steps, durable RPC events and device
-  logs; `record stop NAME` freezes it. `record export NAME [--logs] [--json]` reads the range
+  logs; `record stop NAME` freezes it. `record export NAME [--logs] [--json] [--details]` reads the range
   without stopping it, including after release/restart. `record list` prints names, `-L`
   adds state/times/shared backing-segment bytes. `record clean NAME` removes stopped protection.
   No standalone `export`, `history clean` or release-time export option exists.

@@ -1,4 +1,5 @@
 [
+  {"name": "io.github.noamcohen48.tap.api.v1.RecordedAppDeath", "allDeclaredFields": true},
   {"name": "io.github.noamcohen48.tap.api.v1.ListLogRecordingsRequest", "allDeclaredFields": true},
   {"name": "io.github.noamcohen48.tap.api.v1.ListLogRecordingsResponse", "allDeclaredFields": true},
   {"name": "io.github.noamcohen48.tap.api.v1.ListRetainedLogsRequest", "allDeclaredFields": true},

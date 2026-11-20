@@ -210,6 +210,25 @@ internal class RetainedLogs(
 
     /** Event receipts and interruption boundaries share one atomic cursor allocator. */
     @Synchronized
+    fun appendDeath(
+        archive: Archive,
+        death: io.github.noamcohen48.tap.api.v1.RecordedAppDeath,
+    ) {
+        append(
+            archive,
+            LogEntry
+                .newBuilder()
+                .setCursor(archive.cursor + 1)
+                .setHostTimeMs(now())
+                .setHostMonotonicNs(
+                    io.github.noamcohen48.tap.host.MediaClock
+                        .nowNs(),
+                ).setDeath(death)
+                .build(),
+        )
+    }
+
+    @Synchronized
     fun appendEvent(
         archive: Archive,
         event: io.github.noamcohen48.tap.api.v1.LoggedEvent,

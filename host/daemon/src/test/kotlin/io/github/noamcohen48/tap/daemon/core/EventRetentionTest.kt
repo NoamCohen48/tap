@@ -18,6 +18,32 @@ import kotlin.test.assertTrue
 class EventRetentionTest {
     @TempDir lateinit var root: Path
 
+    @Test fun `independent death diagnostics recover after restart without raw registered secrets`() = runBlocking {
+        val daemon = TapDaemon(DaemonConfig(Adb("unused-adb"), root, driver = null))
+        val connection = daemon.connectClient("incident", 60_000)
+        val archive = daemon.retainedLogs.archive(connection.id, connection.id)
+        daemon.retainedLogs.start("incident", connection.id, listOf(connection.id))
+        val redactor = LogRedactor().apply { literal("hidden-stack") }
+        val death = io.github.noamcohen48.tap.api.v1.RecordedAppDeath.newBuilder()
+            .setAttachedDeviceId("original-attachment").setSerial("original-serial")
+            .setDeath(io.github.noamcohen48.tap.api.v1.AppDeath.newBuilder().setSequence(1)
+                .setKind(io.github.noamcohen48.tap.api.v1.AppDeath.Kind.KIND_CRASH).setPackageName("com.shop")
+                .setMessage("password=hidden-message").setStackTrace("at Cart.pay hidden-stack"))
+            .build()
+        daemon.retainedLogs.appendDeath(archive, durableDeath(death, redactor))
+        daemon.retainedLogs.stop("incident")
+        daemon.close()
+        val recovered = RetainedLogs(root)
+        val receipt = recovered.entries(recovered.archive(connection.id, connection.id), "incident").single().death
+        assertEquals("original-attachment", receipt.attachedDeviceId)
+        assertEquals("password=<redacted>", receipt.death.message)
+        assertEquals("at Cart.pay <redacted>", receipt.death.stackTrace)
+        Files.walk(root.resolve("history-logs")).use { paths -> paths.filter(Files::isRegularFile).forEach {
+            val data = String(Files.readAllBytes(it))
+            assertFalse("hidden-message" in data || "hidden-stack" in data)
+        } }
+    }
+
     @Test fun `late completion keeps its original attachment redactor and identity`() =
         runBlocking {
             val daemon = TapDaemon(DaemonConfig(Adb("unused-adb"), root, driver = null))
@@ -81,7 +107,7 @@ class EventRetentionTest {
                             io.github.noamcohen48.tap.api.v1.AppDeath
                                 .newBuilder()
                                 .setMessage(
-                                    "private crash output",
+                                    "password=private-crash-output",
                                 ).setExceptionClass("ExampleException"),
                         ),
                     ).build()
@@ -94,7 +120,7 @@ class EventRetentionTest {
                     .single()
                     .event
             assertFalse(String(event.toByteArray()).contains("future-private-value"))
-            assertEquals("", event.error.appDeath.message)
+            assertEquals("password=<redacted>", event.error.appDeath.message)
             assertEquals("ExampleException", event.error.appDeath.exceptionClass)
             daemon.close()
         }
