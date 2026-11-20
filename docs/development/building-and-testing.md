@@ -128,9 +128,13 @@ guide alone.
 
 ## Continuous integration and releases
 
-CI (`.github/workflows/ci.yml`) runs the proto checks, the JVM and Python unit tests, the
-native image, the `tap-studio` and `tap-watcher` pages and back ends, and both client suites
-plus the `tap-agent` and `tap-studio` smokes on an API 34 emulator. Every component shares
+CI (`.github/workflows/ci.yml`) uses the same validation jobs on PRs and main: proto checks,
+JVM and Python unit tests, native compilation and CLI/RPC smokes, the `tap-studio` and
+`tap-watcher` pages and back ends, and both client suites plus the `tap-agent` and `tap-studio`
+smokes on an API 34 emulator. A workflow regression test guards this coverage parity.
+Runner timing and cache hits may still differ: concurrent tests must synchronize explicitly,
+including before advancing a fake clock. Publishing and Pages deployment remain separately
+gated; PRs never publish a release. Every component shares
 `tap.version` in `gradle.properties`; the Python packages mirror it in their `pyproject.toml`
 files so source packages remain self-contained. CI rejects version drift and tests the release
 packaging and publication guards. After successful CI on `main`, the Release workflow creates

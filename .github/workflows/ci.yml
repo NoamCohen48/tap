@@ -353,14 +353,13 @@ jobs:
             samples/fixture-tests/build/reports/tests
           if-no-files-found: ignore
 
-  # The native image is what unified releases ship; build it on main so a
-  # new reflective dependency (missing native-image metadata) is caught before
-  # a release.
+  # Run the same native build and RPC smokes on PRs and main: compilation or
+  # reflection-metadata failures must be caught before merge, not only before
+  # publication. Release builds still run separately from the exact release SHA.
   native-image:
     name: Native image (linux-x86_64)
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    if: github.event_name != 'pull_request'
     needs: [jvm]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
