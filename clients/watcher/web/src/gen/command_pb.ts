@@ -1736,21 +1736,25 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
   animationsEnabled: boolean;
 
   /**
-   * the current configuration is night (UI_MODE_NIGHT_YES)
+   * The display conditions are read where a change lands first, so a read right after a change
+   * or its restore sees it: dark mode, density and locales from the system's configuration,
+   * font scale and bold text from their settings. Running apps receive changes later.
+   *
+   * the system configuration is night (UI_MODE_NIGHT_YES)
    *
    * @generated from field: bool dark_mode = 15;
    */
   darkMode: boolean;
 
   /**
-   * Configuration.fontScale
+   * Settings.System font_scale
    *
    * @generated from field: float font_scale = 16;
    */
   fontScale: number;
 
   /**
-   * Configuration.densityDpi
+   * the system configuration's densityDpi
    *
    * @generated from field: int32 density_dpi = 17;
    */
@@ -1805,7 +1809,7 @@ export type DeviceInfo = Message<"tap.v1.DeviceInfo"> & {
   colorInversion?: boolean | undefined;
 
   /**
-   * Configuration.fontWeightAdjustment > 0 (API 31+; false below)
+   * Settings.Secure font_weight_adjustment > 0 (API 31+; false below)
    *
    * @generated from field: bool bold_text = 25;
    */

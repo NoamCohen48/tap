@@ -15,6 +15,13 @@ API compatibility epoch is unchanged; the internal device protocol is 5.3 (also 
 
 ### Engine
 
+- `device.info()` reports dark mode, font scale, density, the device locales and bold text as
+  the device has them right after a change or its restore. It read them from the driver's own
+  configuration, which Android updates after the change returns, so a read straight after
+  `set_system_locales` or after detaching and attaching again could still show the old value
+  (an intermittent CI failure). Dark mode, density and the locales now come from the system's
+  configuration, the font scale and bold text from their settings. Running apps still receive
+  the change on Android's schedule.
 - Native builds no longer fail in GraalVM 21.0.2 while compiling the crash-log follower. Its
   blocking read, error handling and cleanup are isolated from suspension; detach still stops
   the child and closes the reader, and crash records and restart backoff are unchanged.

@@ -513,9 +513,12 @@ message DeviceInfo {
   bool keyboard_shown = 12; // an input-method window is on screen
   bool auto_rotate = 13; // Settings.System.ACCELEROMETER_ROTATION: the sensor picks the rotation
   bool animations_enabled = 14; // any of the three animation scales is not 0
-  bool dark_mode = 15; // the current configuration is night (UI_MODE_NIGHT_YES)
-  float font_scale = 16; // Configuration.fontScale
-  int32 density_dpi = 17; // Configuration.densityDpi
+  // The display conditions are read where a change lands first, so a read right after a change
+  // or its restore sees it: dark mode, density and locales from the system's configuration,
+  // font scale and bold text from their settings. Running apps receive changes later.
+  bool dark_mode = 15; // the system configuration is night (UI_MODE_NIGHT_YES)
+  float font_scale = 16; // Settings.System font_scale
+  int32 density_dpi = 17; // the system configuration's densityDpi
   bool airplane_mode = 18; // Settings.Global.AIRPLANE_MODE_ON
   bool wifi_enabled = 19; // Settings.Global.WIFI_ON is 1, or 2 (on under airplane mode)
   bool mobile_data_enabled = 20; // Settings.Global `mobile_data`; false without telephony
@@ -525,7 +528,7 @@ message DeviceInfo {
   // absent when Android does not let the driver read them.
   optional bool high_contrast_text = 23;
   optional bool color_inversion = 24;
-  bool bold_text = 25; // Configuration.fontWeightAdjustment > 0 (API 31+; false below)
+  bool bold_text = 25; // Settings.Secure font_weight_adjustment > 0 (API 31+; false below)
   // The Linux uid the driver runs as: how the daemon tells the driver's own log lines (the
   // actions it ran, `device_log.proto`) from an app's that use the same tag.
   int32 driver_uid = 26;

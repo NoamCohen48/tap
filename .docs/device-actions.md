@@ -248,14 +248,24 @@ display density. All are restored on detach, which needed one generic mechanism.
 | Call | Device | Read back (driver) | Notes |
 |---|---|---|---|
 | `setAnimations(enabled)` | the three `Settings.Global` scales, all `0` or all `1` | any scale ≠ 0 (unset = 1) | Restore writes the exact strings captured (`1.0` on the Samsung; an unset scale is deleted again) |
-| `setDarkMode(enabled)` | `cmd uimode night yes/no` | night bit of `Configuration.uiMode` | API 29+: `UNSUPPORTED_API` below, before anything is captured. The Samsung (One UI, API 29) locks the day/night mode (`dumpsys uimode`: `mNightModeLocked=true`): the shell command is accepted and ignored, so the read-back fails with `DEVICE_SETTING` and the message names the lock (found 2026-10-01) |
-| `setFontScale(scale)` | `settings put system font_scale` | `Configuration.fontScale` | 0.5..2.0 (the Settings app offers about 0.85..1.3; 2.0 is Android's own accessibility maximum) |
-| `setDensity(dpi?)` | `wm density N` / `wm density reset` | `Configuration.densityDpi` | 100..1000; `null` = the physical density |
+| `setDarkMode(enabled)` | `cmd uimode night yes/no` | night bit of the system configuration's `uiMode` | API 29+: `UNSUPPORTED_API` below, before anything is captured. The Samsung (One UI, API 29) locks the day/night mode (`dumpsys uimode`: `mNightModeLocked=true`): the shell command is accepted and ignored, so the read-back fails with `DEVICE_SETTING` and the message names the lock (found 2026-10-01) |
+| `setFontScale(scale)` | `settings put system font_scale` | `Settings.System.FONT_SCALE` | 0.5..2.0 (the Settings app offers about 0.85..1.3; 2.0 is Android's own accessibility maximum) |
+| `setDensity(dpi?)` | `wm density N` / `wm density reset` | the system configuration's `densityDpi` | 100..1000; `null` = the physical density |
 | `App.setLocales(tags)` | `cmd locale set-app-locales <pkg> --user current [--locales a,b]` | `get-app-locales` (host) | API 33+. Android accepts ill-formed tags, so the server validates and canonicalizes (`fr-fr` → `fr-FR`), max 16, no repeats |
 
 - The host reads every change back over ADB (the same parse the capture uses); a value the device
-  did not take is `FAILED_PRECONDITION` / `DEVICE_SETTING`. The driver's `DeviceInfo` fields are
-  what an app sees (its own resources' `Configuration`), which is the read-back a test asserts.
+  did not take is `FAILED_PRECONDITION` / `DEVICE_SETTING`. The driver's `DeviceInfo` reads each
+  value where the change lands first, which is the read-back a test asserts: dark mode, density
+  and the locales from the system's configuration (`IActivityManager.getConfiguration`, updated
+  before `cmd uimode`, `wm density` and the locale receiver return), the font scale and bold text
+  from their settings. Not from the driver process's own `Configuration`: Android delivers a
+  change to each process after the call returns, and copies `font_scale` and
+  `font_weight_adjustment` into its configuration asynchronously too. On the API 34 emulator the
+  bold-text copy lagged its setting by up to 7 consecutive `dumpsys window` reads (2026-11-20),
+  and an `info()` straight after a restore and reattach read the old value in 2 of 8 rounds
+  (also seen in CI); reading the sources gave 0 stale reads in 24 rounds there and 16 on the
+  API 29 Samsung. Android allows the reflective call there (API 29 greylist, API 34 unsupported
+  but allowed); if it is ever refused, the driver falls back to its own configuration.
 - Configuration changes recreate a running app's activities (unless it handles them); the call
   does not wait for the app — "report, don't judge".
 - Upstream (pinned commits): Appium's `disableWindowAnimation` starts its instrumentation with
@@ -434,7 +444,7 @@ change.
 | Call | Device | Read back | Notes |
 |---|---|---|---|
 | `setStayAwake(enabled)` | `Settings.Global` `stay_on_while_plugged_in` `7` (USB, AC, wireless) or `0` | the setting (host); `DeviceInfo.stay_awake` (driver) | What Developer options › Stay awake sets (`svc power stayon true` writes the same) |
-| `setAccessibilityDisplay(highContrastText?, colorInversion?, boldText?)` | `Settings.Secure` `high_text_contrast_enabled`, `accessibility_display_inversion_enabled` (`1`/`0`), `font_weight_adjustment` (`300`/`0`) | the settings (host); `DeviceInfo.high_contrast_text` / `color_inversion` (absent when unreadable) / `bold_text` (`Configuration.fontWeightAdjustment`) | Bold text is API 31+ (`UNSUPPORTED_API` below, before anything changes); `300` is what Settings writes (bold − normal weight). Colour inversion happens in the display pipeline: screenshots are not inverted |
+| `setAccessibilityDisplay(highContrastText?, colorInversion?, boldText?)` | `Settings.Secure` `high_text_contrast_enabled`, `accessibility_display_inversion_enabled` (`1`/`0`), `font_weight_adjustment` (`300`/`0`) | the settings (host); `DeviceInfo.high_contrast_text` / `color_inversion` (absent when unreadable) / `bold_text` (`Settings.Secure` `font_weight_adjustment` > 0) | Bold text is API 31+ (`UNSUPPORTED_API` below, before anything changes); `300` is what Settings writes (bold − normal weight). Colour inversion happens in the display pipeline: screenshots are not inverted |
 
 While adding these, the read-back in `DeviceSession.change` (group 2 code) turned out to accept a
 setting the device reported absent: `takeIf { it != value }` on a null read gave null, so the
