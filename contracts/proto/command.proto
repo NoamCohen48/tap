@@ -319,6 +319,13 @@ message AwaitToast {
   optional string package_name = 3;
 }
 
+// Reads the driver's bounded toast history, oldest first, without waiting or consuming it.
+// A different nonempty stream_id reports reset and returns the new stream from its beginning.
+message ReadToastHistory {
+  int64 after_sequence = 1; // >= 0; exclusive, within stream_id
+  string stream_id = 2; // empty for an initial read
+}
+
 // An accessibility action on the one matching node, as a screen reader performs it (no touch,
 // so no occlusion check): a standard action, or a custom one by its exact label (≤ 1024 chars).
 // The node must offer it: ACTION_REJECTED (ACTION_NOT_OFFERED) before input otherwise.
@@ -428,6 +435,7 @@ message Command {
     WaitState wait_state = 49;
     TapOutsidePanel tap_outside_panel = 50;
     Snapshots snapshots = 51;
+    ReadToastHistory read_toast_history = 52;
   }
 }
 
@@ -545,6 +553,24 @@ message Toast {
   string package_name = 2;
 }
 
+// Immutable observation, not a current UI element. Text is capped at 1024 UTF-16 code units.
+message ToastEvent {
+  int64 sequence = 1;
+  int64 at_epoch_ms = 2; // device wall clock, informational; order by sequence
+  Toast toast = 3;
+  bool text_truncated = 4;
+}
+
+// Last 128 observations for the lifetime of this driver listener; not disk-persistent.
+message ToastHistory {
+  string stream_id = 1;
+  repeated ToastEvent events = 2;
+  int64 next_sequence = 3; // high-water mark (last observed sequence, 0 when empty)
+  int64 oldest_sequence = 4; // first retained sequence; next_sequence + 1 when empty
+  bool gap = 5; // observations after the requested cursor were evicted, or stream reset
+  bool reset = 6; // requested stream no longer exists, or cursor is ahead of this stream
+}
+
 // The runtime-permission dialog on screen: the package of its window (what a selector's package
 // scope names; Google builds rename the controller, so it differs from the resource ids' package)
 // and the choices it offers, in PermissionChoice order.
@@ -659,5 +685,6 @@ message CommandResult {
     NotificationList notifications = 17; // list_notifications
     OutsideTouch outside_touch = 18; // tap_outside_panel
     ElementSnapshotList snapshots = 19;
+    ToastHistory toast_history = 20;
   }
 }

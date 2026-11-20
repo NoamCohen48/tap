@@ -271,8 +271,8 @@ def test_settle_waits_for_the_focused_window_then_prints_the_diff(fake, agent):
     out = agent.fill("text=Name", "Ada", settle=True)
     assert out == 'filled text=Name\n# com.example\n+ @e4  [Button]  "Allow"'
     kinds = [c.WhichOneof("op") for c in fake.devices.commands]
-    assert kinds[-3:] == ["set_text", "device_info", "wait_screen_stable"]
-    wait = fake.devices.commands[-1].wait_screen_stable
+    assert kinds[-4:] == ["set_text", "device_info", "wait_screen_stable", "read_toast_history"]
+    wait = fake.devices.commands[-2].wait_screen_stable
     assert wait.package_name == "com.android.permissioncontroller" and wait.signal == pb.STABILITY_TREE
 
 

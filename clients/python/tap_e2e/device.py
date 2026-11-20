@@ -43,6 +43,8 @@ from .models import (
     Screenshot,
     StabilitySignal,
     Toast,
+    ToastEvent,
+    ToastHistory,
 )
 from .logs import DeviceLog
 from .selectors import Selector
@@ -715,6 +717,32 @@ class Device:
             getattr(self.client.device_stub, rpc)(
                 request, timeout=self.timeouts.lifecycle + RPC_DEADLINE_SLACK
             )
+
+    def toast_history(self, after_sequence: int = 0, *, stream_id: str = "") -> ToastHistory:
+        """Read retained toasts immediately, oldest first, without consuming them.
+
+        The driver keeps its last 128 observations while this session's listener lives, even
+        between commands. Pass the previous result's ``next_sequence`` and ``stream_id`` for
+        an incremental read. ``gap``/``reset`` explicitly report eviction or a lost stream.
+        Release/reuse and driver restart clear history. This never changes snapshot refs.
+        """
+        if isinstance(after_sequence, bool) or not isinstance(after_sequence, int) or not 0 <= after_sequence <= 2**63 - 1:
+            raise ValueError("after_sequence must be a nonnegative int64")
+        if not isinstance(stream_id, str) or len(stream_id) > 128:
+            raise ValueError("stream_id must be a string of at most 128 characters")
+        result = self._execute(self.timeouts.action, read_toast_history=pb.ReadToastHistory(
+            after_sequence=after_sequence, stream_id=stream_id,
+        ))
+        if result.HasField("error"):
+            raise CommandError._from_result(result, "read_toast_history", self.serial, None)
+        if not result.HasField("toast_history"):
+            raise TapError("Driver returned no toast history")
+        history = result.toast_history
+        return ToastHistory(
+            history.stream_id,
+            tuple(ToastEvent(e.sequence, e.at_epoch_ms, _proto.toast(e.toast), e.text_truncated) for e in history.events),
+            history.next_sequence, history.oldest_sequence, history.gap, history.reset,
+        )
 
     def await_toast(
         self,

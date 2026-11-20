@@ -296,10 +296,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="dialog wait/action budget, at most 120s (default 10s)")
     p.add_argument("--accuracy", choices=ACCURACIES, help="pick Precise or Approximate first (location dialog, Android 12+)")
 
-    p = verb("toast", "wait for a toast (shown in the last 3.5s or coming) and print it", on_device)
+    p = verb("toast", "wait for a toast, or read retained toast history", on_device)
     p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
     p.add_argument("--contains", action="store_true", help="text is only part of the toast")
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
+    p.add_argument("--history", action="store_true", help="read retained toasts immediately, oldest first; never consumes")
+    p.add_argument("--after-seq", type=int, default=0, help="history: exclusive sequence cursor (default 0)")
+    p.add_argument("--stream", default="", help="history: stream ID from the previous read")
+    p.add_argument("--json", dest="as_json", action="store_true", help="history: structured observations and cursor metadata")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
 
     p = verb("notification", "list the device's notifications, or wait for, open or dismiss one (read as data; the shade stays closed)", on_device, settle)
@@ -473,7 +477,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
             button=args.button, timeout=args.timeout, settle=settle,
         )
     if v == "toast":
-        return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout)
+        return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout,
+                           history=args.history, after_seq=args.after_seq, stream=args.stream, as_json=args.as_json)
     if v == "scroll":
         return agent.scroll(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "swipe":

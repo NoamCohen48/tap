@@ -7,6 +7,7 @@ import android.view.accessibility.AccessibilityEvent
 import io.github.noamcohen48.tap.api.v1.AwaitToast
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Toast
+import io.github.noamcohen48.tap.driver.engine.ToastEventBuffer
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.ErrorDetail
@@ -28,6 +29,7 @@ internal class ToastWatcher(
         val atMs: Long,
     )
 
+    val history = ToastEventBuffer()
     private val lock = Object()
     private val recent = ArrayDeque<Seen>()
 
@@ -35,11 +37,19 @@ internal class ToastWatcher(
         instrumentation.uiAutomation.setOnAccessibilityEventListener(::onEvent)
     }
 
+    fun reset() {
+        synchronized(lock) {
+            recent.clear()
+            history.reset()
+        }
+    }
+
     private fun onEvent(event: AccessibilityEvent) {
         if (event.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return
         if (event.parcelableData is Notification) return
         val seen = Seen(event.text.joinToString(""), event.packageName?.toString().orEmpty(), SystemClock.uptimeMillis())
         synchronized(lock) {
+            history.record(seen.text, seen.packageName, System.currentTimeMillis())
             recent.addLast(seen)
             while (recent.size > CAPACITY) recent.removeFirst()
         }

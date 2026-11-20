@@ -50,7 +50,8 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
 
 from . import deaths as deaths_output
 from . import render
-from .output import json_text, save_private
+from .toast_inbox import ToastInbox
+from .output import json_text, json_value, save_private
 from .records import RecordError, RecordStore
 from .step_capture import CURRENT, instrument, sending
 from .targets import Target, UsageError, format_duration, parse_condition, parse_int32, parse_key, parse_target
@@ -533,7 +534,8 @@ class Agent:
             device.app(package).await_screen_stable(stable_for, timeout, signal)
         except WaitTimeoutError:
             note = f"(screen still changing after {format_duration(timeout)})\n"
-        return note + render.diff_text(device.screen_snapshot(), level, full)
+        output = note + render.diff_text(device.screen_snapshot(), level, full)
+        return self._with_toasts(device, output)
 
     def _act(self, device_serial: str | None, target: str, verb: str, action: Callable, settle: bool) -> str:
         def step() -> str:
@@ -777,9 +779,27 @@ class Agent:
         if candidates and (level != render.DEFAULT or filters != render.SnapshotFilter()):
             raise AgentError("candidates returns complete structured data; use the default view without filters", EXIT_USAGE)
         def step() -> str:
-            snapshot = self._device(device).screen_snapshot(selector_candidates=candidates)
-            return json_text(snapshot) if candidates else render.snapshot_text(snapshot, level, filters=filters)
+            selected = self._device(device)
+            snapshot = selected.screen_snapshot(selector_candidates=candidates)
+            output = json_text(snapshot) if candidates else render.snapshot_text(snapshot, level, filters=filters)
+            return self._with_toasts(selected, output, structured=json_value(snapshot) if candidates else None)
         return self._run(step)
+
+    def _with_toasts(self, device: Device, output: str, *, structured: dict | None = None) -> str:
+        """Attach unread historical evidence, never replace a successful screen read with an inbox error."""
+        def render_page(page) -> str:
+            if structured is not None:
+                return json_text({**structured, "toast_events": page})
+            if not page.events and not page.gap:
+                return output
+            return output + "\n\nToast events since the previous inbox read (history, not current UI):\n" + _toast_history_text(page)
+        try:
+            return ToastInbox(self.out_dir).read(device, render_page)
+        except (TapError, OSError, ValueError) as error:
+            warning = f"toast inbox unavailable (cursor not advanced): {error}"
+            if structured is not None:
+                return json_text({**structured, "toast_events_error": warning})
+            return output + "\n! " + warning
 
     def settle(self, device: str | None = None, full: bool = False, timeout: float = SETTLE_TIMEOUT, *, package: str | None = None, stable_for: float = SETTLE_STABLE_FOR, signal: str = "tree") -> str:
         """Wait for tree/pixel/both stability, then report a diff or an explicit changing-screen note."""
@@ -1625,16 +1645,29 @@ class Agent:
         contains: bool = False,
         package: str | None = None,
         timeout: float = DEFAULT_WAIT,
+        *, history: bool = False, after_seq: int = 0, stream: str = "", as_json: bool = False,
     ) -> str:
         """Waits for a toast of any app (only ``package``'s when given), shown in the last 3.5 s
         or arriving within ``timeout``; ``text`` must match it exactly, or be part of it with
-        ``contains``."""
+        ``contains``. With ``history``, reads the retained observations immediately instead;
+        ``after_seq``/``stream`` form a non-consuming cursor. History is not current UI state."""
         command_timeout(timeout)
         if contains and text is None:
             raise AgentError("toast --contains needs a text", EXIT_USAGE)
+        _integer(after_seq, "after_seq", 0, 2**63 - 1)
+        if not isinstance(stream, str) or len(stream) > 128:
+            raise AgentError("stream must be a string of at most 128 characters", EXIT_USAGE)
+        if not history and (after_seq or stream or as_json):
+            raise AgentError("after_seq, stream and json need toast history", EXIT_USAGE)
 
         def step() -> str:
             d = self._device(device)
+            if history:
+                page = d.toast_history(after_seq, stream_id=stream)
+                kept = tuple(e for e in page.events if (package is None or e.toast.package_name == package)
+                             and (text is None or (text in e.toast.text if contains else text == e.toast.text)))
+                page = replace(page, events=kept)
+                return json_text(page) if as_json else _toast_history_text(page)
             mode = MatchMode.CONTAINS if contains else MatchMode.EXACT
             seen = d.await_toast(text, mode, package_name=package, timeout=timeout)
             return f"toast {seen.text!r} from {seen.package_name}"
@@ -2020,6 +2053,21 @@ def _carried_death(error: BaseException | None) -> AppDeath | None:
             return error.app_death
         error = error.__cause__
     return None
+
+
+def _toast_history_text(page) -> str:
+    lines = []
+    if page.reset:
+        lines.append("! toast stream reset; earlier observations are unavailable")
+    elif page.gap:
+        lines.append(f"! toast history gap; first retained sequence is {page.oldest_sequence}")
+    for event in page.events:
+        note = " [text truncated]" if event.text_truncated else ""
+        lines.append(f"#{event.sequence} {event.at_epoch_ms} toast {event.toast.text!r} from {event.toast.package_name!r}{note}")
+    if not page.events:
+        lines.append("No retained toasts matched.")
+    lines.append(f"toast cursor: --after-seq {page.next_sequence} --stream {page.stream_id}")
+    return "\n".join(lines)
 
 
 def _notification_line(n: Notification) -> str:

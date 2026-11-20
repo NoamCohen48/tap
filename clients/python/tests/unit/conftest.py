@@ -270,7 +270,8 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
             fail(context, *self.execute_failure)
         self.commands.append(request.command)
         self.steps.append(dict(context.invocation_metadata()).get("tap-step"))
-        result = pb.CommandResult(done=pb.Done())
+        result = (pb.CommandResult(toast_history=pb.ToastHistory(stream_id="fake-toast-stream", oldest_sequence=1))
+                  if request.command.HasField("read_toast_history") else pb.CommandResult(done=pb.Done()))
         if self.responder is not None:
             result = self.responder(request.command) or result
         if self.log is not None and request.command.WhichOneof("op") not in ("device_info", "dump_hierarchy"):

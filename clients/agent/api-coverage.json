@@ -38,7 +38,7 @@
     "set_text": ["fill"], "type_text": ["type_text"], "clear_text": ["clear"], "swipe": ["swipe"], "scroll": ["scroll", "scroll_until"], "drag": ["drag"], "pinch": ["pinch"], "fling": ["fling"],
     "open_system_panel": ["open_panel"], "set_orientation": ["rotate"], "set_display_rotation": ["rotate"], "unfreeze_rotation": ["rotate"], "dismiss_keyguard": ["screen"],
     "wait_permission_prompt": ["permission"], "choose_permission": ["permission"], "hide_keyboard": ["keyboard"], "perform_ime_action": ["submit"],
-    "set_clipboard": ["clipboard"], "get_clipboard": ["clipboard"], "await_toast": ["await_toast"], "perform_accessibility_action": ["accessibility_action"], "set_progress": ["set_progress"], "set_location": ["set_location"],
+    "set_clipboard": ["clipboard"], "get_clipboard": ["clipboard"], "await_toast": ["await_toast"], "read_toast_history": ["await_toast", "snapshot", "settle"], "perform_accessibility_action": ["accessibility_action"], "set_progress": ["set_progress"], "set_location": ["set_location"],
     "await_notification": ["notification"], "list_notifications": ["notification"], "open_notification": ["notification"], "dismiss_notification": ["notification"]
   },
   "sdk": {
@@ -69,7 +69,7 @@
       {"methods": ["app", "info", "press_back", "press_home", "press_key", "open_notifications", "open_quick_settings", "set_orientation", "set_display_rotation", "unfreeze_rotation", "wake", "sleep", "dismiss_keyguard"], "tools": ["app", "device_info", "press_key", "open_panel", "rotate", "screen"]},
       {"methods": ["await_permission_prompt", "choose_permission", "keyboard_shown", "hide_keyboard", "set_clipboard", "clipboard"], "tools": ["permission", "keyboard", "clipboard"]},
       {"methods": ["set_animations", "set_dark_mode", "set_font_scale", "set_density", "set_network", "set_system_locales", "set_stay_awake", "set_accessibility_display", "set_location"], "tools": ["condition", "set_location"]},
-      {"methods": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "await_notification", "notifications", "open_notification", "dismiss_notification", "type_text"], "tools": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "notification", "type_text"]},
+      {"methods": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "toast_history", "await_notification", "notifications", "open_notification", "dismiss_notification", "type_text"], "tools": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "notification", "type_text"]},
       {"methods": ["screenshot", "start_recording", "stop_recording", "dump_hierarchy", "screen_snapshot", "resolve_ref", "driver_log", "device_logs", "capture", "detach"], "tools": ["screenshot", "media_record", "log", "snapshot", "capture", "detach", "tap"]},
       {"methods": ["temporary_settings"], "tools": [], "reason": "Python-only scoped context manager over existing condition setters; agent tools have no Python block lifetime or automatic block-exit cleanup."},
       {"methods": ["await_until", "detached"], "tools": [], "reason": "Local handle state and arbitrary Python predicates remain client-side; use held-session inventory and bounded waits, not user-code execution."}
