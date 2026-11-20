@@ -108,6 +108,15 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         ["history", "export"],
     ),
     (
+        "Device events",
+        "Android reports toasts, window changes, clicks, scrolls, text edits and content changes as "
+        "they happen. Any input verb takes `--events KINDS` to print the events it caused and "
+        "`--expect KIND[:TEXT]` to require one; `wait-event` waits for the next one, and `watch` "
+        "streams them (run it in the background to be told when something happens). Events are "
+        "hints: read the screen again before acting on one.",
+        ["wait-event", "watch"],
+    ),
+    (
         "Agent setup",
         "Register the MCP server with your agent, or give it the CLI with the skill text.",
         ["mcp", "skill"],
@@ -133,6 +142,7 @@ MCP_NAMES: dict[str, str | None] = {
     "key": "press_key",
     "panel": "open_panel",
     "wait": "wait_for",
+    "wait-event": "wait_event",
     "mcp": None,
     "skill": None,
 }

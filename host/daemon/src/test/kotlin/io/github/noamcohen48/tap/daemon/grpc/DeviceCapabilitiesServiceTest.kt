@@ -37,7 +37,7 @@ class DeviceCapabilitiesServiceTest {
                 val first = devices.withDeadlineAfter(2, TimeUnit.SECONDS).getDeviceCapabilities(request)
                 val second = devices.withDeadlineAfter(2, TimeUnit.SECONDS).getDeviceCapabilities(request)
                 assertEquals(first, second)
-                assertEquals(92, first.capabilitiesCount)
+                assertEquals(93, first.capabilitiesCount)
                 assertTrue(first.capabilitiesList.any { it.id == CapabilityId.CAPABILITY_SNAPSHOTS })
                 assertTrue(first.capabilitiesList.any { it.id == CapabilityId.CAPABILITY_READ_TOAST_HISTORY })
                 assertTrue(first.capabilitiesList.any { it.id == CapabilityId.CAPABILITY_APP_SET_LOCALES })

@@ -9,6 +9,7 @@ from collections.abc import Sequence
 from importlib import resources
 
 from . import render
+from .events import KIND_NAMES as EVENT_KINDS
 from .core import (
     ACCURACIES,
     APP_ACTIONS,
@@ -43,6 +44,7 @@ Drive an Android device through a running Tap daemon (`tap start`), one step per
   tap-agent snapshot                 # one line per node: @e3  [Button] "Log in"  id=login
   tap-agent tap @e3 --settle         # act on a ref; --settle prints what changed
   tap-agent fill id=email me@example.com
+  tap-agent tap @e7 --expect toast:saved   # the tap must show a toast containing "saved"
   tap-agent wait text=Welcome
   tap-agent release
 
@@ -75,7 +77,21 @@ def parser() -> argparse.ArgumentParser:
     common.add_argument("-s", "--session", help="session name (default: $TAP_AGENT_SESSION or 'agent')")
     on_device = argparse.ArgumentParser(add_help=False, parents=[common])
     on_device.add_argument("-d", "--device", help="serial; needed only when the session has several devices")
-    expect = argparse.ArgumentParser(add_help=False)
+    # Every verb that can send input can report or require the device events it causes.
+    observe = argparse.ArgumentParser(add_help=False)
+    observe.add_argument(
+        "--events", action="append", default=[], metavar="KINDS",
+        help=f"also print the device events the step causes, of these kinds (comma list; {', '.join(EVENT_KINDS)})",
+    )
+    observe.add_argument(
+        "--expect", dest="expect_events", action="append", default=[], metavar="KIND[:TEXT]",
+        help="the step must cause this event (TEXT: part of it, any case), e.g. toast:saved; repeat for several",
+    )
+    observe.add_argument(
+        "--event-timeout", type=_command_duration, default=None, metavar="DURATION",
+        help="how long --expect waits after the step, at most 120s; default 10s",
+    )
+    expect = argparse.ArgumentParser(add_help=False, parents=[observe])
     expect.add_argument(
         "--expect-death", action="store_true",
         help="the step must make a watched app crash or stop responding (within 10 s after it); a command failing because of it is no failure",
@@ -315,6 +331,18 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--button", help="open: press the action button with this title instead")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="command/wait budget, at most 120s; default 10s")
 
+    p = verb("wait-event", "wait for the next device event of a kind (from now on) and print it", on_device)
+    p.add_argument("kind", choices=EVENT_KINDS)
+    p.add_argument("text", nargs="?", help="part of the event's text, any case: a toast's message, a window's title or class, a click's label, an edit's text")
+    p.add_argument("--package", help="only this package's events (default: any app's)")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
+
+    p = verb("watch", "print device events as they happen, one per line, until stopped (Ctrl-C), --for ends or the device is detached", on_device)
+    p.add_argument("kinds", nargs="+", metavar="KIND", help=f"event kinds, each or comma lists: {', '.join(EVENT_KINDS)}")
+    p.add_argument("--package", help="only this package's events (default: any app's)")
+    p.add_argument("--for", dest="duration", type=_duration, default=None, metavar="DURATION", help="stop after this long (default: until stopped)")
+    p.add_argument("--json", dest="as_json", action="store_true", help="one JSON object per line")
+
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
     state = p.add_mutually_exclusive_group()
@@ -387,7 +415,7 @@ def parser() -> argparse.ArgumentParser:
 
 # Verbs after which no app deaths are reported: they need no device or session (record, export
 # and the inventory work without one), end the session, or list deaths themselves.
-UNREPORTED = frozenset({"attach", "sessions", "release", "devices", "unquarantine", "server-info", "history", "export", "deaths"})
+UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "unquarantine", "server-info", "history", "export", "deaths"})
 
 
 def run(args: argparse.Namespace, agent: Agent) -> str:
@@ -505,6 +533,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value, until=args.until)
+    if v == "wait-event":
+        return agent.wait_event(args.kind, args.text, device, package=args.package, timeout=args.timeout)
     if v == "settle":
         return agent.settle(device, full=args.full, timeout=args.timeout, package=args.package, stable_for=args.stable_for, signal=args.signal)
     if v == "screenshot":
@@ -525,6 +555,14 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     raise AssertionError(v)
 
 
+def _observed(args: argparse.Namespace, agent: Agent) -> str:
+    """The step, with the device events it causes when it was asked for them."""
+    return agent.observing_events(
+        lambda: run(args, agent), device=getattr(args, "device", None), events=getattr(args, "events", ()),
+        expect=getattr(args, "expect_events", ()), timeout=getattr(args, "event_timeout", None),
+    )
+
+
 def skill_text() -> str:
     return resources.files("tap_agent").joinpath("SKILL.md").read_text(encoding="utf-8")
 
@@ -541,12 +579,20 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
     agent = Agent(args.session)
     try:
+        if args.verb == "watch":
+            for line in agent.watch(args.kinds, getattr(args, "device", None), package=args.package, duration=args.duration, as_json=args.as_json):
+                print(line, flush=True)
+            return EXIT_OK
         if args.verb in UNREPORTED:
             print(run(args, agent))
         else:
-            print(agent.reporting_deaths(lambda: run(args, agent), expect=getattr(args, "expect_death", False)))
+            print(agent.reporting_deaths(lambda: _observed(args, agent), expect=getattr(args, "expect_death", False)))
         sys.stdout.flush()
         return EXIT_OK
+    except KeyboardInterrupt:
+        if args.verb == "watch":
+            return EXIT_OK  # the way to stop a watch without --for
+        raise
     except BrokenPipeError:
         # The reader went away (`log | head`): not an error of ours. Point stdout at nothing so
         # the interpreter's own flush at exit does not fail again.

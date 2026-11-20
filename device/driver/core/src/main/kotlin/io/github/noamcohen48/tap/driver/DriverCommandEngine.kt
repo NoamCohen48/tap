@@ -115,7 +115,8 @@ internal class DriverCommandEngine(
     private val accessibilityActions = AccessibilityActionCommands(objects)
     private val clipboard = ClipboardCommands(instrumentation)
     private val location = LocationCommands(instrumentation)
-    private val toasts = ToastWatcher(instrumentation)
+    val events = AccessibilityEvents()
+    private val toasts = ToastWatcher(instrumentation, events::onEvent)
     private val notifications = NotificationCommands(instrumentation)
     private val queries =
         QueryCommands(

@@ -9,7 +9,7 @@
       "ListDevices": ["devices"], "Unquarantine": ["unquarantine"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
       "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["log", "capture"], "DeviceLogs": ["log"], "ListAppDeaths": ["deaths", "tap"], "AcknowledgeAppDeaths": ["tap"],
       "StartRecording": ["media_record"], "StopRecording": ["media_record"],
-      "ScreenSnapshot": ["snapshot", "settle"], "ResolveRef": ["tap"],
+      "ScreenSnapshot": ["snapshot", "settle"], "ResolveRef": ["tap"], "WatchDeviceEvents": ["wait_event", "watch", "tap"],
       "SetAnimations": ["condition"], "SetDarkMode": ["condition"], "SetFontScale": ["condition"], "SetDensity": ["condition"], "SetNetwork": ["condition"], "SetSystemLocales": ["condition"], "SetLocation": ["set_location"], "SetStayAwake": ["condition"], "SetAccessibilityDisplay": ["condition"],
       "GetForegroundActivity": ["foreground_activity"], "PushFile": ["push_file"], "PullFile": ["pull_file"], "AddMedia": ["add_media"]
     },
@@ -96,10 +96,10 @@
     ]
   },
   "cli_field_aliases": {
-    "*": {"timeout": "timeout_seconds", "focus_timeout": "focus_timeout_seconds", "idle": "idle_minutes", "wait_for_device": "wait_for_device_seconds", "level": "view", "accuracy": "accuracy_m", "altitude": "altitude_m", "local": "local_path", "out": "path", "extra": "extras"},
-    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}
+    "*": {"timeout": "timeout_seconds", "focus_timeout": "focus_timeout_seconds", "idle": "idle_minutes", "wait_for_device": "wait_for_device_seconds", "level": "view", "accuracy": "accuracy_m", "altitude": "altitude_m", "local": "local_path", "out": "path", "extra": "extras", "event_timeout": "event_timeout_seconds"},
+    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}
   },
-  "cli_only_fields": {"capabilities": ["as_json"], "devices": ["session"], "unquarantine": ["session"], "sessions": ["session"], "server-info": ["session"], "deaths": ["wait", "timeout"]},
+  "cli_only_fields": {"capabilities": ["as_json"], "devices": ["session"], "unquarantine": ["session"], "sessions": ["session"], "server-info": ["session"], "deaths": ["wait", "timeout"], "watch": ["as_json"]},
   "limitations": [
     "The Kotlin SDK mirrors these protocol-backed capabilities; its coroutine/test-run utilities and model/artifact helpers are not tool endpoints. Reflection tests cover the operational Python classes named above, not all SDK modules.",
     "Parameter-name parity does not prove value semantics: CLI durations use units, MCP uses seconds/minutes; absent optional strings normalize to None. Tests cover forwarded fields, limits and effects.",
@@ -109,6 +109,7 @@
     "Scroll-until bounds iterations and time, not end-of-list detection. Input acceptance does not prove an app-specific effect.",
     "Collection reads return only exposed accessibility nodes in accessibility order, not a backing dataset or atomic UI transaction; no refs, positional picks, auto-scroll or silent truncation.",
     "Media recordings use the existing host scrcpy capture, API/timing limits and checksum verification; no implicit app lifecycle. Start readiness and recorder shutdown-budget limits remain deferred. Stop saves privately before an optional custom copy; local errors never trigger replay.",
+    "Device events are accessibility hints, not UI state: --events/--expect and wait-event listen from the start of the call only (no history). The CLI watch streams until stopped; the MCP watch collects for at most 120 s, since a tool call returns once.",
     "No arbitrary shell, SQL, root, coordinates, XPath, persistent node handles or raw Execute RPC. Agent sessions are held, never observed. Watcher internals and awaitIdle remain excluded."
   ]
 }

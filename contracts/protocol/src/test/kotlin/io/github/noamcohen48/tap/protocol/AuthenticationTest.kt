@@ -127,10 +127,10 @@ class AuthenticationTest {
 
     @Test
     fun protocolVersionsOrderByMajorThenMinor() {
-        assertEquals("5.2", PROTOCOL_VERSION.render())
+        assertEquals("5.3", PROTOCOL_VERSION.render())
         assertTrue(protocolVersion(2, 9) < protocolVersion(3, 0))
         assertTrue(protocolVersion(3, 1) > protocolVersion(3, 0))
-        assertEquals(listOf(protocolVersion(5, 1), PROTOCOL_VERSION), SUPPORTED_PROTOCOL_VERSIONS)
+        assertEquals(listOf(protocolVersion(5, 1), protocolVersion(5, 2), PROTOCOL_VERSION), SUPPORTED_PROTOCOL_VERSIONS)
     }
 
     private fun hello(versions: List<io.github.noamcohen48.tap.wire.v1.ProtocolVersion> = SUPPORTED_PROTOCOL_VERSIONS): Hello =

@@ -12,6 +12,9 @@ import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
 import io.github.noamcohen48.tap.daemon.core.VideoReaderOverflowException
 import io.github.noamcohen48.tap.daemon.snapshot.RefNotAddressableException
 import io.github.noamcohen48.tap.daemon.snapshot.UnknownRefException
+import io.github.noamcohen48.tap.host.DeviceEventOverflowException
+import io.github.noamcohen48.tap.host.DeviceEventSubscriptionLimitException
+import io.github.noamcohen48.tap.host.DeviceEventsUnsupportedException
 import io.github.noamcohen48.tap.host.AdbCommandException
 import io.github.noamcohen48.tap.host.AdbReapUncertainException
 import io.github.noamcohen48.tap.host.AdbRunnerGatedException
@@ -193,6 +196,10 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 Status.FAILED_PRECONDITION
             }
 
+            is DeviceEventsUnsupportedException -> {
+                Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
             is DriverBuildMismatchException -> {
                 Status.FAILED_PRECONDITION.also { failure.reason = FailureReason.FAILURE_REASON_DRIVER_BUILD_MISMATCH }
             }
@@ -215,6 +222,11 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
             }
 
             // A watcher fell behind: it reconnects from its last seq (activity) or key frame (video).
+            // Accessibility events were lost, or the attachment has too many event streams.
+            is DeviceEventOverflowException, is DeviceEventSubscriptionLimitException -> {
+                Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
+            }
+
             is ActivityReaderOverflowException, is VideoReaderOverflowException, is LogReaderOverflowException -> {
                 Status.RESOURCE_EXHAUSTED.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             }

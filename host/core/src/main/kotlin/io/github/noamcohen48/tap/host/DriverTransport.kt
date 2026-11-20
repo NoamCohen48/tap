@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.host
 
+import io.github.noamcohen48.tap.api.v1.DeviceEventBatch
+import io.github.noamcohen48.tap.api.v1.DeviceEventType
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.Frame
 import io.github.noamcohen48.tap.protocol.FrameCodec
@@ -11,6 +13,7 @@ import io.github.noamcohen48.tap.protocol.render
 import io.github.noamcohen48.tap.protocol.targetSelector
 import io.github.noamcohen48.tap.wire.v1.BlobEnd
 import io.github.noamcohen48.tap.wire.v1.BlobStart
+import io.github.noamcohen48.tap.wire.v1.DeviceEventFilter
 import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.wire.v1.Response
 import kotlinx.coroutines.CancellationException
@@ -53,6 +56,9 @@ internal class DriverTransport(
     private val parked = kotlinx.coroutines.CompletableDeferred<io.github.noamcohen48.tap.wire.v1.RuntimeParked>()
 
     @Volatile private var parking = false
+
+    /** The connection's accessibility event fanout; it ends with the transport. */
+    val events = DeviceEvents(::sendEventFilter)
 
     @Volatile private var poisoned = false
 
@@ -245,7 +251,13 @@ internal class DriverTransport(
                             parsePayload("RUNTIME_PARKED", frame.payload, io.github.noamcohen48.tap.wire.v1.RuntimeParked::parseFrom)
                         closed = true
                         runCatching { socket.close() }
+                        events.end(null)
                         parked.complete(result)
+                    }
+
+                    FrameType.DEVICE_EVENTS -> {
+                        if (frame.requestId != 0L) throw ProtocolException("DEVICE_EVENTS must use request ID 0")
+                        events.publish(parsePayload("DEVICE_EVENTS", frame.payload, DeviceEventBatch::parseFrom))
                     }
 
                     FrameType.CLOSE -> {
@@ -296,6 +308,21 @@ internal class DriverTransport(
                 runCatching { socket.close() }
             }
             failPending(IllegalStateException("Driver connection closed"))
+            events.end(null)
+        }
+    }
+
+    /** Writes an `EVENT_FILTER` frame; a failed write poisons the transport like any other. */
+    private suspend fun sendEventFilter(types: Set<DeviceEventType>) {
+        val payload = DeviceEventFilter.newBuilder().addAllTypes(types.sortedBy { it.number }).build().toByteArray()
+        mutex.withLock {
+            check(!poisoned && !closed) { "Driver connection is closed or poisoned" }
+            try {
+                writeFrame(Frame(FrameType.EVENT_FILTER, 0, payload), remainingTimeoutMs(5_000))
+            } catch (error: Throwable) {
+                poison(error)
+                throw error
+            }
         }
     }
 
@@ -321,6 +348,7 @@ internal class DriverTransport(
         }
         parked.completeExceptionally(cause)
         failPending(cause)
+        events.end(cause)
     }
 
     private fun failPending(cause: Throwable) {

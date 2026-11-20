@@ -1,0 +1,179 @@
+// tap.v1 — live accessibility events from an attached device (DeviceService.WatchDeviceEvents).
+//
+// Events are hints that the screen changed, not authoritative UI state: Android merges and drops
+// them, and they carry no node handle. A client that reacts to one re-reads the screen through
+// a selector. Watching is read-only: subscribing changes nothing on the device.
+//
+// Text fields are at most 512 characters (longer text is cut), class names at most 256. A text
+// field can hold what the user typed; Android masks a password field's text itself.
+syntax = "proto3";
+
+package tap.v1;
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "DeviceEventProto";
+
+// The kinds of event a subscription can ask for; each is one DeviceEvent `kind` case.
+enum DeviceEventType {
+  DEVICE_EVENT_TYPE_UNSPECIFIED = 0;
+  DEVICE_EVENT_TOAST = 1; // toast_shown
+  DEVICE_EVENT_WINDOW_CHANGED = 2; // window_changed
+  DEVICE_EVENT_CONTENT_CHANGED = 3; // content_changed
+  DEVICE_EVENT_VIEW_CLICKED = 4; // view_clicked
+  DEVICE_EVENT_VIEW_SCROLLED = 5; // view_scrolled
+  DEVICE_EVENT_TEXT_CHANGED = 6; // text_changed
+}
+
+// One event, copied from the AccessibilityEvent when it fired.
+message DeviceEvent {
+  // Increases by one per event the driver forwards on one driver connection; a gap between two
+  // a subscription receives means only that other events were not of its types or package.
+  int64 sequence = 1;
+  // Android uptime (SystemClock.uptimeMillis) when the event fired, not the wall clock.
+  int64 uptime_ms = 2;
+  // The package that raised it; empty when Android names none.
+  string package_name = 3;
+  oneof kind {
+    ToastShown toast_shown = 4;
+    WindowChanged window_changed = 5;
+    ContentChanged content_changed = 6;
+    ViewClicked view_clicked = 7;
+    ViewScrolled view_scrolled = 8;
+    TextChanged text_changed = 9;
+  }
+}
+
+// A toast was shown (TYPE_NOTIFICATION_STATE_CHANGED without a Notification).
+message ToastShown {
+  // The message, its text items joined as `await_toast` joins them.
+  string text = 1;
+}
+
+// What changed about a window. STATE is TYPE_WINDOW_STATE_CHANGED (an activity, dialog, popup
+// or pane appeared or changed state); the rest are TYPE_WINDOWS_CHANGED flags (API 28+).
+enum WindowChange {
+  WINDOW_CHANGE_UNSPECIFIED = 0;
+  WINDOW_CHANGE_STATE = 1;
+  WINDOW_CHANGE_ADDED = 2;
+  WINDOW_CHANGE_REMOVED = 3;
+  WINDOW_CHANGE_TITLE = 4;
+  WINDOW_CHANGE_BOUNDS = 5;
+  WINDOW_CHANGE_LAYER = 6;
+  WINDOW_CHANGE_ACTIVE = 7;
+  WINDOW_CHANGE_FOCUSED = 8;
+  WINDOW_CHANGE_ACCESSIBILITY_FOCUSED = 9;
+  WINDOW_CHANGE_PARENT = 10;
+  WINDOW_CHANGE_CHILDREN = 11;
+  WINDOW_CHANGE_PIP = 12;
+}
+
+// A window appeared, went away or changed (TYPE_WINDOW_STATE_CHANGED, TYPE_WINDOWS_CHANGED).
+message WindowChanged {
+  // The activity, dialog or view class; empty when Android names none.
+  string class_name = 1;
+  // The window's title or the pane's text; empty when there is none.
+  string title = 2;
+  // -1 when Android names none.
+  int32 window_id = 3;
+  // At least one: STATE for a state change, the flags Android set for TYPE_WINDOWS_CHANGED
+  // (none below API 28, where such an event is not forwarded).
+  repeated WindowChange changes = 4;
+}
+
+// What changed inside a window (AccessibilityEvent.getContentChangeTypes).
+enum ContentChange {
+  CONTENT_CHANGE_UNSPECIFIED = 0;
+  CONTENT_CHANGE_SUBTREE = 1;
+  CONTENT_CHANGE_TEXT = 2;
+  CONTENT_CHANGE_CONTENT_DESCRIPTION = 3;
+  CONTENT_CHANGE_STATE_DESCRIPTION = 4;
+  CONTENT_CHANGE_PANE_TITLE = 5;
+  CONTENT_CHANGE_PANE_APPEARED = 6;
+  CONTENT_CHANGE_PANE_DISAPPEARED = 7;
+  CONTENT_CHANGE_DRAG_STARTED = 8;
+  CONTENT_CHANGE_DRAG_DROPPED = 9;
+  CONTENT_CHANGE_DRAG_CANCELLED = 10;
+  CONTENT_CHANGE_CONTENT_INVALID = 11;
+  CONTENT_CHANGE_ERROR = 12;
+  CONTENT_CHANGE_ENABLED = 13;
+}
+
+// Content inside a window changed (TYPE_WINDOW_CONTENT_CHANGED); frequent during animations.
+message ContentChanged {
+  string class_name = 1;
+  int32 window_id = 2;
+  // Empty when Android did not say what changed (CONTENT_CHANGE_TYPE_UNDEFINED).
+  repeated ContentChange changes = 3;
+}
+
+// A view was clicked (TYPE_VIEW_CLICKED), by Tap or anyone else.
+message ViewClicked {
+  string class_name = 1;
+  // The view's text items joined; empty when it has none.
+  string label = 2;
+  int32 window_id = 3;
+}
+
+// A view scrolled (TYPE_VIEW_SCROLLED). Absent values are ones the view did not report.
+message ViewScrolled {
+  string class_name = 1;
+  int32 window_id = 2;
+  // The scroll position and its maximum, in pixels (a list such as RecyclerView reports items
+  // instead).
+  optional int32 scroll_x = 3;
+  optional int32 scroll_y = 4;
+  optional int32 max_scroll_x = 5;
+  optional int32 max_scroll_y = 6;
+  // How far this scroll moved, in pixels (API 28+).
+  optional int32 delta_x = 7;
+  optional int32 delta_y = 8;
+  // For a list: the first and last visible item and how many there are.
+  optional int32 from_index = 9;
+  optional int32 to_index = 10;
+  optional int32 item_count = 11;
+}
+
+// An editable view's text changed (TYPE_VIEW_TEXT_CHANGED): raised for typed input, once per key.
+// Text set in one step (the set-text accessibility action, `set_text`) is a ContentChanged with
+// TEXT instead, on the devices checked.
+message TextChanged {
+  string class_name = 1;
+  // The text after and before the change.
+  string text = 2;
+  string before_text = 3;
+  // Where the change starts, and how many characters were added and removed there.
+  optional int32 from_index = 4;
+  optional int32 added_count = 5;
+  optional int32 removed_count = 6;
+  // The field is a password field: Android masks `text` and `before_text`.
+  bool password = 7;
+  int32 window_id = 8;
+}
+
+// Events in the order they fired. Also the payload of the driver's DEVICE_EVENTS frame.
+message DeviceEventBatch {
+  repeated DeviceEvent events = 1;
+  // Events the driver dropped before this batch because the host did not read fast enough.
+  // On the server API it is always 0: a loss ends the stream with RESOURCE_EXHAUSTED instead.
+  int64 dropped = 2;
+}
+
+message WatchDeviceEventsRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  // The types to deliver: at least one, each a known value.
+  repeated DeviceEventType types = 3;
+  // Only events this package raised (exact match); absent delivers every package's.
+  optional string package_name = 4;
+}
+
+message WatchDeviceEventsResponse {
+  oneof kind {
+    // The first response, always true: the subscription is installed, so every command sent
+    // after it is received has its events delivered.
+    bool ready = 1;
+    // Matching events, in order.
+    DeviceEventBatch batch = 2;
+  }
+}

@@ -46,6 +46,7 @@ from .models import (
     ToastEvent,
     ToastHistory,
 )
+from .events import DeviceEvents
 from .logs import DeviceLog
 from .selectors import Selector
 from .screen import Screen
@@ -125,6 +126,10 @@ class Device:
         self.logs: DeviceLog = DeviceLog(self)
         """The device log since the attachment opened: logcat lines, Tap's actions and markers
         (``read``, ``follow``, ``mark``, ``redact``)."""
+        self.events: DeviceEvents = DeviceEvents(self)
+        """Live accessibility events (toasts, window and content changes, clicks, scrolls, text
+        edits), each kind its own class: ``on_toast`` and the other ``on_*`` callbacks, ``register``, or
+        ``expect`` / ``wait_for`` one event."""
         self.timeouts: Timeouts = timeouts
         """Default timeouts for actions, waits and app lifecycle calls on this device."""
         self._detached = False

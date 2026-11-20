@@ -10,6 +10,7 @@ package tap.v1;
 
 import "command.proto";
 import "capabilities.proto";
+import "device_event.proto";
 import "selector.proto";
 
 option java_package = "io.github.noamcohen48.tap.api.v1";
@@ -31,6 +32,13 @@ service DeviceService {
   // the owning attachment, like Execute. Not a guarantee that a specific invocation succeeds.
   rpc GetDeviceCapabilities(GetDeviceCapabilitiesRequest) returns (GetDeviceCapabilitiesResponse);
   rpc Execute(ExecuteRequest) returns (ExecuteResponse);
+  // Live accessibility events of the requested types (device_event.proto): a `ready` response
+  // once subscribed, then batches as they arrive. No history: events from before `ready` are
+  // never sent. Read-only; cancelling the call unsubscribes. The stream completes when the device
+  // is detached, ends ABORTED (SESSION_UNUSABLE) when the driver connection is lost and
+  // RESOURCE_EXHAUSTED when events were lost (the reader fell behind or the driver's buffer
+  // overflowed); at most 64 streams per attached device, RESOURCE_EXHAUSTED beyond.
+  rpc WatchDeviceEvents(WatchDeviceEventsRequest) returns (stream WatchDeviceEventsResponse);
   rpc Screenshot(ScreenshotRequest) returns (ScreenshotResponse);
   rpc DriverLog(DriverLogRequest) returns (DriverLogResponse);
   // The device's own record since the attachment opened, for failure evidence: logcat, the

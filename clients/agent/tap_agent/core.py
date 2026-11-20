@@ -12,6 +12,7 @@ import contextlib
 import datetime
 import json
 import math
+import queue
 import os
 import pathlib
 import time
@@ -49,6 +50,7 @@ from tap_e2e import (  # pyright: ignore[reportMissingImports]
 )
 
 from . import deaths as deaths_output
+from . import events as device_events
 from . import render
 from .toast_inbox import ToastInbox
 from .output import json_text, json_value, save_private
@@ -1673,6 +1675,126 @@ class Agent:
             return f"toast {seen.text!r} from {seen.package_name}"
 
         return self._run(step)
+
+    # --- device events ----------------------------------------------------------------------------
+
+    def observing_events(
+        self,
+        step: Callable[[], str],
+        *,
+        device: str | None = None,
+        events: Sequence[str] = (),
+        expect: Sequence[str] = (),
+        timeout: float | None = None,
+    ) -> str:
+        """Runs one step while listening for device events, then appends an ``events:`` block
+        with what it caused: the kinds in ``events`` (names or comma lists: ``toast,window``)
+        and those the ``expect`` specs name (``KIND`` or ``KIND:TEXT``, TEXT a case-insensitive
+        part of the event). Listening starts before the step, so nothing it causes is missed,
+        and goes on ``GRACE_SECONDS`` after it, or with ``expect`` until every expectation was
+        met or ``timeout`` seconds (default the wait timeout) passed: then the step fails, its
+        output saying what did happen. A step that fails is reported as it is. The CLI and the
+        MCP server wrap every input step in this when either option is given."""
+        if not events and not expect:
+            return step()
+        wait = command_timeout(DEFAULT_WAIT if timeout is None else timeout)
+        assert wait is not None
+
+        def start() -> tuple[device_events.Observation, list[device_events.Expectation]]:
+            classes = device_events.kinds(events)
+            expectations = [device_events.Expectation.parse(spec) for spec in expect]
+            classes += [x.kind for x in expectations if x.kind not in classes]
+            return device_events.Observation(self._device(device), classes), expectations
+
+        observation, expectations = self._run(start)
+        try:
+            result = step()
+            if expectations:
+                unmet = observation.wait(expectations, wait)
+            else:
+                unmet = []
+                time.sleep(device_events.GRACE_SECONDS)
+        finally:
+            observation.close()
+        report = device_events.block(observation.snapshot(), expectations, observation.lost())
+        output = f"{result}\n{report}" if result else report
+        if unmet:
+            missing = ", ".join(str(x) for x in unmet)
+            raise AgentError(f"{output}\nexpected event did not happen within {format_duration(wait)}: {missing}")
+        return output
+
+    def wait_event(
+        self,
+        kind: str,
+        text: str | None = None,
+        device: str | None = None,
+        package: str | None = None,
+        timeout: float = DEFAULT_WAIT,
+    ) -> str:
+        """Waits up to ``timeout`` for the first event of ``kind`` (``toast``, ``window``,
+        ``content``, ``click``, ``scroll``, ``text``) from now on, whose subject contains
+        ``text`` (ignoring case) when given, from ``package`` only when given, and prints it.
+        Only events after the call count: for what an input causes, use ``--expect`` on it."""
+        command_timeout(timeout)
+
+        def step() -> str:
+            expectation = device_events.Expectation(device_events.kind(kind), text or None)
+            event = self._device(device).events.wait_for(expectation.kind, where=expectation.matches, package=package, timeout=timeout)
+            return device_events.line(event)
+
+        return self._run(step)
+
+    def watch(
+        self,
+        kinds: Sequence[str],
+        device: str | None = None,
+        package: str | None = None,
+        duration: float | None = None,
+        as_json: bool = False,
+    ) -> Iterator[str]:
+        """Yields one line per device event of ``kinds`` as it happens (a JSON object per line
+        with ``as_json``), for ``duration`` seconds or, without one, until the device is detached
+        or the caller stops iterating. Read-only: other steps run meanwhile, from this session
+        or another process. A last line says why it ended when that was not ``duration``."""
+        if duration is not None and duration <= 0:
+            raise AgentError("watch duration must be positive", EXIT_USAGE)
+        arrived: queue.Queue[device_events.DeviceEvent] = queue.Queue()
+
+        def start() -> list:
+            classes = device_events.kinds(kinds)
+            if not classes:
+                raise UsageError(f"name at least one event kind: {', '.join(device_events.KIND_NAMES)}")
+            d = self._device(device)
+            registrations = []
+            try:
+                for cls in classes:
+                    registrations.append(d.events.register(cls, arrived.put, package=package))
+            except BaseException:
+                for registration in registrations:
+                    registration.close()
+                raise
+            return registrations
+
+        registrations = self._run(start)
+        deadline = None if duration is None else time.monotonic() + duration
+        try:
+            while True:
+                remaining = None if deadline is None else deadline - time.monotonic()
+                if remaining is not None and remaining <= 0:
+                    return
+                try:
+                    event = arrived.get(timeout=0.2 if remaining is None else min(remaining, 0.2))
+                except queue.Empty:
+                    ended = [r for r in registrations if not r.active]
+                    if ended:
+                        errors = [str(r.error) for r in ended if r.error is not None]
+                        yield f"(watch ended: {errors[0]})" if errors else "(watch ended: the device was detached)"
+                        return
+                    continue
+                yield json.dumps(device_events.json_event(event), ensure_ascii=False) if as_json else device_events.line(event)
+        finally:
+            for registration in registrations:
+                registration.close()
 
     def notification(
         self,

@@ -717,7 +717,7 @@ EXPECTED_TOOLS = {
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count", "elements",
     "detach", "server_info", "device_info", "capabilities", "log", "media_record", "scroll_until", "history",
-    "unquarantine", "deaths",
+    "unquarantine", "deaths", "wait_event", "watch",
 }
 
 

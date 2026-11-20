@@ -29,6 +29,8 @@ const val DRIVER_TEST_APK_BUILD_ID = ENGINE_VERSION
 const val UIAUTOMATOR_BUILD_ID = UIAUTOMATOR_VERSION
 
 /**
+ * 5.3: accessibility events: the host's EVENT_FILTER names the types the driver forwards in
+ * DEVICE_EVENTS batches (both request ID 0).
  * 5.2: capability-gated clean runtime parking with fresh next-session credentials.
  * 5.1: adds the `STALE_BEFORE_INPUT` error code.
  * 5.0: no selector scopes (package ownership is a `PROPERTY_PACKAGE_NAME` predicate, every lookup
@@ -37,15 +39,19 @@ const val UIAUTOMATOR_BUILD_ID = UIAUTOMATOR_VERSION
  * 4.0: no `scroll_until`, `swipe`/`scroll` report `done`, any-package and any-window selector
  * scopes. 3.0: payloads are protobuf (`tap.wire.v1`); 2.0 was canonical JSON.
  */
-val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(5, 2)
-val SUPPORTED_PROTOCOL_VERSIONS: List<ProtocolVersion> = listOf(protocolVersion(5, 1), PROTOCOL_VERSION)
+val PROTOCOL_VERSION: ProtocolVersion = protocolVersion(5, 3)
+val SUPPORTED_PROTOCOL_VERSIONS: List<ProtocolVersion> = listOf(protocolVersion(5, 1), protocolVersion(5, 2), PROTOCOL_VERSION)
 const val RUNTIME_PARK_CAPABILITY = "runtime.park.v1"
+
+/** Accessibility events (`EVENT_FILTER` / `DEVICE_EVENTS`); used only when 5.3 is negotiated too. */
+const val DEVICE_EVENTS_CAPABILITY = "events.accessibility.v1"
 const val MIN_RUNTIME_IDLE_MS = 1_000L
 const val MAX_RUNTIME_IDLE_MS = 300_000L
 val SUPPORTED_CAPABILITIES =
     listOf(
         "artifact.screenshot.v1",
         "diagnostic.hierarchy.v1",
+        DEVICE_EVENTS_CAPABILITY,
         "input.key-events.v1",
         "product.probe.v1",
         RUNTIME_PARK_CAPABILITY,
@@ -90,6 +96,8 @@ enum class FrameType(
     BLOB_END(13),
     PARK_RUNTIME(14),
     RUNTIME_PARKED(15),
+    DEVICE_EVENTS(16),
+    EVENT_FILTER(17),
     ;
 
     companion object {

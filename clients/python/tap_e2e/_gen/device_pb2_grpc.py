@@ -4,6 +4,7 @@ import grpc
 import warnings
 
 from . import capabilities_pb2 as capabilities__pb2
+from . import device_event_pb2 as device__event__pb2
 from . import device_pb2 as device__pb2
 
 GRPC_GENERATED_VERSION = '1.84.0'
@@ -64,6 +65,11 @@ class DeviceServiceStub:
                 '/tap.v1.DeviceService/Execute',
                 request_serializer=device__pb2.ExecuteRequest.SerializeToString,
                 response_deserializer=device__pb2.ExecuteResponse.FromString,
+                _registered_method=True)
+        self.WatchDeviceEvents = channel.unary_stream(
+                '/tap.v1.DeviceService/WatchDeviceEvents',
+                request_serializer=device__event__pb2.WatchDeviceEventsRequest.SerializeToString,
+                response_deserializer=device__event__pb2.WatchDeviceEventsResponse.FromString,
                 _registered_method=True)
         self.Screenshot = channel.unary_unary(
                 '/tap.v1.DeviceService/Screenshot',
@@ -220,6 +226,18 @@ class DeviceServiceServicer:
 
     def Execute(self, request, context):
         """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def WatchDeviceEvents(self, request, context):
+        """Live accessibility events of the requested types (device_event.proto): a `ready` response
+        once subscribed, then batches as they arrive. No history: events from before `ready` are
+        never sent. Read-only; cancelling the call unsubscribes. The stream completes when the device
+        is detached, ends ABORTED (SESSION_UNUSABLE) when the driver connection is lost and
+        RESOURCE_EXHAUSTED when events were lost (the reader fell behind or the driver's buffer
+        overflowed); at most 64 streams per attached device, RESOURCE_EXHAUSTED beyond.
+        """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
@@ -439,6 +457,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.Execute,
                     request_deserializer=device__pb2.ExecuteRequest.FromString,
                     response_serializer=device__pb2.ExecuteResponse.SerializeToString,
+            ),
+            'WatchDeviceEvents': grpc.unary_stream_rpc_method_handler(
+                    servicer.WatchDeviceEvents,
+                    request_deserializer=device__event__pb2.WatchDeviceEventsRequest.FromString,
+                    response_serializer=device__event__pb2.WatchDeviceEventsResponse.SerializeToString,
             ),
             'Screenshot': grpc.unary_unary_rpc_method_handler(
                     servicer.Screenshot,
@@ -713,6 +736,33 @@ class DeviceService:
             '/tap.v1.DeviceService/Execute',
             device__pb2.ExecuteRequest.SerializeToString,
             device__pb2.ExecuteResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def WatchDeviceEvents(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_stream(
+            request,
+            target,
+            '/tap.v1.DeviceService/WatchDeviceEvents',
+            device__event__pb2.WatchDeviceEventsRequest.SerializeToString,
+            device__event__pb2.WatchDeviceEventsResponse.FromString,
             options,
             channel_credentials,
             insecure,

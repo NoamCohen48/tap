@@ -83,6 +83,55 @@ class GoldenWireTest {
                     .setNextGeneration(4)
                     .build() to io.github.noamcohen48.tap.wire.v1.RuntimeParked::parseFrom
             ),
+            "device-event-filter" to (
+                io.github.noamcohen48.tap.wire.v1.DeviceEventFilter
+                    .newBuilder()
+                    .addTypes(io.github.noamcohen48.tap.api.v1.DeviceEventType.DEVICE_EVENT_TOAST)
+                    .addTypes(io.github.noamcohen48.tap.api.v1.DeviceEventType.DEVICE_EVENT_WINDOW_CHANGED)
+                    .build() to io.github.noamcohen48.tap.wire.v1.DeviceEventFilter::parseFrom
+            ),
+            "device-event-batch" to (
+                io.github.noamcohen48.tap.api.v1.DeviceEventBatch
+                    .newBuilder()
+                    .addEvents(
+                        io.github.noamcohen48.tap.api.v1.DeviceEvent
+                            .newBuilder()
+                            .setSequence(7)
+                            .setUptimeMs(123_456)
+                            .setPackageName("io.github.noamcohen48.tap.fixture")
+                            .setToastShown(io.github.noamcohen48.tap.api.v1.ToastShown.newBuilder().setText("Saved")),
+                    ).addEvents(
+                        io.github.noamcohen48.tap.api.v1.DeviceEvent
+                            .newBuilder()
+                            .setSequence(8)
+                            .setUptimeMs(123_460)
+                            .setPackageName("io.github.noamcohen48.tap.fixture")
+                            .setTextChanged(
+                                io.github.noamcohen48.tap.api.v1.TextChanged
+                                    .newBuilder()
+                                    .setClassName("android.widget.EditText")
+                                    .setText("ab")
+                                    .setBeforeText("a")
+                                    .setFromIndex(1)
+                                    .setAddedCount(1)
+                                    .setRemovedCount(0)
+                                    .setWindowId(12),
+                            ),
+                    ).addEvents(
+                        io.github.noamcohen48.tap.api.v1.DeviceEvent
+                            .newBuilder()
+                            .setSequence(9)
+                            .setWindowChanged(
+                                io.github.noamcohen48.tap.api.v1.WindowChanged
+                                    .newBuilder()
+                                    .setClassName("android.app.Dialog")
+                                    .setWindowId(-1)
+                                    .addChanges(io.github.noamcohen48.tap.api.v1.WindowChange.WINDOW_CHANGE_ADDED)
+                                    .addChanges(io.github.noamcohen48.tap.api.v1.WindowChange.WINDOW_CHANGE_FOCUSED),
+                            ),
+                    ).setDropped(2)
+                    .build() to io.github.noamcohen48.tap.api.v1.DeviceEventBatch::parseFrom
+            ),
             "hello" to (
                 Hello
                     .newBuilder()

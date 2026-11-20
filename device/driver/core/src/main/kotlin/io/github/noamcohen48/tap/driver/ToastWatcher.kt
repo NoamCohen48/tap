@@ -22,6 +22,7 @@ import io.github.noamcohen48.tap.protocol.ErrorDetail
  */
 internal class ToastWatcher(
     instrumentation: Instrumentation,
+    private val observe: (AccessibilityEvent) -> Unit = {},
 ) {
     private class Seen(
         val text: String,
@@ -45,6 +46,7 @@ internal class ToastWatcher(
     }
 
     private fun onEvent(event: AccessibilityEvent) {
+        observe(event)
         if (event.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return
         if (event.parcelableData is Notification) return
         val seen = Seen(event.text.joinToString(""), event.packageName?.toString().orEmpty(), SystemClock.uptimeMillis())
@@ -77,7 +79,13 @@ internal class ToastWatcher(
                             (text == null || text.matches(seen.text))
                     }
                 }
-            if (match != null) return Toast.newBuilder().setText(match.text).setPackageName(match.packageName).build()
+            if (match != null) {
+                return Toast
+                    .newBuilder()
+                    .setText(match.text)
+                    .setPackageName(match.packageName)
+                    .build()
+            }
             if (context.remainingMs() <= 0) {
                 val from = packageName ?: "any app"
                 throw CommandFailure(ErrorCode.ERR_WAIT_TIMEOUT, ErrorDetail.NO_TOAST, "No matching toast from $from")

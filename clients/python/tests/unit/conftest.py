@@ -151,6 +151,17 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         return pb.InfoResponse(daemon_version=self.daemon_version, api_compatibility=self.api_compatibility)
 
 
+# A DeviceEvent's `kind` case and the type a subscription asks for.
+_EVENT_TYPES = {
+    "toast_shown": pb.DEVICE_EVENT_TOAST,
+    "window_changed": pb.DEVICE_EVENT_WINDOW_CHANGED,
+    "content_changed": pb.DEVICE_EVENT_CONTENT_CHANGED,
+    "view_clicked": pb.DEVICE_EVENT_VIEW_CLICKED,
+    "view_scrolled": pb.DEVICE_EVENT_VIEW_SCROLLED,
+    "text_changed": pb.DEVICE_EVENT_TEXT_CHANGED,
+}
+
+
 class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
     """Attach/Execute/Detach/Screenshot/DriverLog. ``responder(command) -> CommandResult | None``
     scripts Execute; ``owners`` logs (rpc, client_connection_id) for every call on a device."""
@@ -196,6 +207,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.attached: dict[str, list[pb.AttachRequest]] = {}
         self.snapshot = pb.ScreenSnapshotResponse()
         self.snapshot_requests: list[pb.ScreenSnapshotRequest] = []
+        # WatchDeviceEvents: what the open streams receive, their requests and how many are open.
+        self.event_feeds: list[queue.Queue] = []
+        self.event_lock = threading.Lock()
+        self.event_requests: list[pb.WatchDeviceEventsRequest] = []
+        self.event_cancelled = threading.Event()
         # ref -> selector; any other ref is UNKNOWN_REF.
         self.refs: dict[str, pb.Selector] = {}
 
@@ -208,6 +224,50 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
                 pb.FAILURE_REASON_NOT_OWNER,
                 "not your device",
             )
+
+    def WatchDeviceEvents(self, request, context):
+        """``ready``, then whatever ``feed_events`` sends: a list of DeviceEvents is one batch
+        (filtered by the request's types and package like the server), ``None`` ends the stream
+        as a detach does, and a (code, reason, message) tuple fails it."""
+        self._own("WatchDeviceEvents", request, context)
+        self.event_requests.append(request)
+        if not request.types:
+            fail(context, grpc.StatusCode.INVALID_ARGUMENT, pb.FAILURE_REASON_INVALID_ARGUMENT, "types must name at least one event type")
+        feed: queue.Queue = queue.Queue()
+        with self.event_lock:
+            self.event_feeds.append(feed)
+        context.add_callback(self.event_cancelled.set)
+        try:
+            yield pb.WatchDeviceEventsResponse(ready=True)
+            while context.is_active():
+                try:
+                    item = feed.get(timeout=0.05)
+                except queue.Empty:
+                    continue
+                if item is None:
+                    return
+                if isinstance(item, tuple):
+                    fail(context, *item)
+                wanted = [
+                    e for e in item
+                    if _EVENT_TYPES[e.WhichOneof("kind")] in request.types and (not request.HasField("package_name") or e.package_name == request.package_name)
+                ]
+                if wanted:
+                    yield pb.WatchDeviceEventsResponse(batch=pb.DeviceEventBatch(events=wanted))
+        finally:
+            with self.event_lock:
+                self.event_feeds.remove(feed)
+
+    def feed_events(self, item) -> None:
+        """Sends ``item`` (see WatchDeviceEvents) to every open event stream."""
+        with self.event_lock:
+            for feed in self.event_feeds:
+                feed.put(item)
+
+    @property
+    def event_streams(self) -> int:
+        with self.event_lock:
+            return len(self.event_feeds)
 
     def GetDeviceCapabilities(self, request, context):
         self._own("GetDeviceCapabilities", request, context)

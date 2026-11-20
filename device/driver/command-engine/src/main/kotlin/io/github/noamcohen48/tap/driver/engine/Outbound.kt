@@ -8,6 +8,8 @@ import io.github.noamcohen48.tap.wire.v1.Response
 sealed interface Outbound {
     data class TerminalResponse(val requestId: Long, val response: Response) : Outbound
     data class Pong(val requestId: Long) : Outbound
+    /** A `DEVICE_EVENTS` frame (request ID 0). */
+    data class Events(val batch: io.github.noamcohen48.tap.api.v1.DeviceEventBatch) : Outbound
     data class BlobStartFrame(val requestId: Long, val start: BlobStart) : Outbound
 
     /** [payload] is the complete `BLOB_CHUNK` payload (header included). */

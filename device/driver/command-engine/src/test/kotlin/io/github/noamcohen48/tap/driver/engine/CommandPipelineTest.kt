@@ -41,6 +41,8 @@ class CommandPipelineTest {
     private val failWrites = AtomicBoolean(false)
     private val cancelOnFirstChunk = AtomicBoolean(false)
     private val pingOnFirstChunk = AtomicBoolean(false)
+    /** When set, writing an event batch waits for it: a busy writer while events pile up. */
+    private val eventGate = java.util.concurrent.atomic.AtomicReference<CountDownLatch?>(null)
     /** Each `onExecuted` call: the request, its error code, and whether nothing had been written yet. */
     private val executed = LinkedBlockingQueue<Triple<Long, ErrorCode?, Boolean>>()
     private val listener = object : PipelineListener {
@@ -52,6 +54,7 @@ class CommandPipelineTest {
         sink = { message ->
             if (failWrites.get()) throw IllegalStateException("transport down")
             written.put(message)
+            if (message is Outbound.Events) eventGate.get()?.await(5, TimeUnit.SECONDS)
             if (message is Outbound.BlobChunkFrame && cancelOnFirstChunk.compareAndSet(true, false)) {
                 pipeline.cancel(message.requestId)
             }
@@ -67,6 +70,38 @@ class CommandPipelineTest {
     @AfterTest
     fun tearDown() {
         pipeline.awaitTermination(1_000)
+    }
+
+    private fun deviceEvent(sequence: Long) =
+        io.github.noamcohen48.tap.api.v1.DeviceEvent
+            .newBuilder()
+            .setToastShown(io.github.noamcohen48.tap.api.v1.ToastShown.newBuilder().setText("toast $sequence"))
+            .setSequence(sequence)
+            .build()
+
+    @Test
+    fun eventsPilingUpBehindABusyWriterAreBatchedAndTheDropCounted() {
+        val gate = CountDownLatch(1)
+        eventGate.set(gate)
+        pipeline.event(deviceEvent(0))
+        // The writer is now held inside the first batch's write; the rest wait in the driver.
+        val first = written.poll(2, TimeUnit.SECONDS) as Outbound.Events
+        assertEquals(listOf(0L), first.batch.eventsList.map { it.sequence })
+        val extra = 5
+        for (sequence in 1..(CommandPipeline.MAX_PENDING_EVENTS + extra).toLong()) pipeline.event(deviceEvent(sequence))
+        gate.countDown()
+
+        val batches = mutableListOf<Outbound.Events>()
+        while (batches.sumOf { it.batch.eventsCount } < CommandPipeline.MAX_PENDING_EVENTS) {
+            batches += written.poll(2, TimeUnit.SECONDS) as Outbound.Events
+        }
+        assertTrue(batches.all { it.batch.eventsCount <= CommandPipeline.EVENTS_PER_BATCH })
+        // The oldest were dropped; the first batch after the gap reports how many, later ones none.
+        assertEquals(extra.toLong(), batches.first().batch.dropped)
+        assertTrue(batches.drop(1).all { it.batch.dropped == 0L })
+        val sequences = batches.flatMap { batch -> batch.batch.eventsList.map { it.sequence } }
+        assertEquals(((1L + extra)..(CommandPipeline.MAX_PENDING_EVENTS + extra).toLong()).toList(), sequences)
+        assertNull(written.poll(100, TimeUnit.MILLISECONDS))
     }
 
     @Test
