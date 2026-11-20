@@ -12,6 +12,7 @@ with TapClient.create() as client, client.connect("smoke") as connection:  # `ta
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _dist_version
 
+from ._deaths import AllowedDeaths, DeathGuard, ExpectedDeath
 from .app import App
 from .app_data import AppData, AppDataAccess, DatabaseBundle, PrivateFileEntry
 from .capabilities import (
@@ -22,9 +23,31 @@ from .capabilities import (
     DeviceCapabilities,
     DeviceCapability,
 )
+from .client import (
+    DaemonStartResult,
+    Endpoint,
+    TapClient,
+    TapConnection,
+    resolve_address,
+    running_server,
+    start_daemon,
+    stop_daemon,
+)
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .elements import Elements
+from .errors import (
+    AppDataError,
+    AppDiedError,
+    AppLifecycleError,
+    CommandError,
+    DeviceBusyError,
+    DeviceQuarantinedError,
+    ServerError,
+    SettingsRestorationError,
+    TapError,
+    WaitTimeoutError,
+)
 from .events import (
     ContentChange,
     ContentChangedEvent,
@@ -39,21 +62,14 @@ from .events import (
     WindowChange,
     WindowChangedEvent,
 )
-from .steps import current_step, step
-from .logs import DeviceLog, LogAction, LogEntries, LogEntry, LogFollower, LogLine, LogPriority
-from .screen import Screen
-from ._deaths import AllowedDeaths, DeathGuard, ExpectedDeath
-from .errors import (
-    AppDiedError,
-    AppLifecycleError,
-    AppDataError,
-    CommandError,
-    DeviceBusyError,
-    DeviceQuarantinedError,
-    ServerError,
-    SettingsRestorationError,
-    TapError,
-    WaitTimeoutError,
+from .logs import (
+    DeviceLog,
+    LogAction,
+    LogEntries,
+    LogEntry,
+    LogFollower,
+    LogLine,
+    LogPriority,
 )
 from .models import (
     AppDeath,
@@ -63,20 +79,17 @@ from .models import (
     AttachedDeviceEntry,
     Bounds,
     Capture,
+    ConditionPart,
     ConnectionEntry,
     DeviceEntry,
-    UnquarantineResult,
-    DeviceProperties,
     DeviceInfo,
+    DeviceLogs,
+    DeviceProperties,
     DeviceState,
     Direction,
     DisplayRotation,
-    DeviceLogs,
     DriverLog,
-    ConditionPart,
     ElementSnapshot,
-    NarrowingPart,
-    SelectorNarrowing,
     ErrorCode,
     EventLog,
     FailureReason,
@@ -87,9 +100,10 @@ from .models import (
     LoggedEvent,
     Long,
     MatchMode,
-    Notification,
+    NarrowingPart,
     NodeChange,
     NodeFlag,
+    Notification,
     Orientation,
     OutsideTouch,
     PermissionChoice,
@@ -98,20 +112,31 @@ from .models import (
     RangeType,
     Recording,
     ScreenNode,
-    ScreenSnapshot,
     Screenshot,
-    TextLog,
+    ScreenSnapshot,
     SelectorCandidate,
     SelectorKind,
+    SelectorNarrowing,
     ServerDefaults,
     ServerInfo,
     StabilitySignal,
     StandardAction,
+    TextLog,
     Toast,
     ToastEvent,
     ToastHistory,
+    UnquarantineResult,
     WaitReason,
 )
+from .scanning import (
+    CollectedObservation,
+    Movement,
+    ScanResult,
+    ScanStopReason,
+    ScrollEdge,
+    ScrollResult,
+)
+from .screen import Screen
 from .selectors import (
     CONTAINS,
     ENDS_WITH,
@@ -140,16 +165,7 @@ from .selectors import (
     text_matches,
     text_starts_with,
 )
-from .client import (
-    DaemonStartResult,
-    Endpoint,
-    TapClient,
-    TapConnection,
-    resolve_address,
-    running_server,
-    start_daemon,
-    stop_daemon,
-)
+from .steps import current_step, step
 
 __all__ = [
     "Capability",
@@ -165,6 +181,12 @@ __all__ = [
     "KEYCODE_BACK",
     "KEYCODE_HOME",
     "LEFT",
+    "CollectedObservation",
+    "Movement",
+    "ScanResult",
+    "ScanStopReason",
+    "ScrollEdge",
+    "ScrollResult",
     "REGEX",
     "RIGHT",
     "STARTS_WITH",

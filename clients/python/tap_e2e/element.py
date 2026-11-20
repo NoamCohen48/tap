@@ -3,14 +3,16 @@ again on the device, so nothing goes stale between calls."""
 
 from __future__ import annotations
 
-import time
 import math
+import time
+from collections.abc import Callable
 from typing import TYPE_CHECKING
 
 from . import _gen as pb
 from . import _proto
 from .errors import CommandError, WaitTimeoutError
 from .models import Direction, ElementSnapshot, OutsideTouch, StandardAction
+from .scanning import K, ScanResult, ScrollResult
 from .selectors import Selector
 
 if TYPE_CHECKING:
@@ -267,18 +269,45 @@ class Element:
         direction: Direction,
         distance_percent: int = DEFAULT_GESTURE_PERCENT,
         timeout: float | None = None,
-    ) -> None:
-        """One scroll gesture on the one matching node towards ``direction``'s content edge
-        (UiAutomator semantics: DOWN reveals content below). Nothing is reported about whether
-        content moved; observe that with a query or wait."""
-        self._run(
+    ) -> ScrollResult:
+        """Scroll towards the content edge (DOWN reveals content below).
+
+        Returns source-attributed movement/edge evidence when available; unknown does not
+        mean unchanged or at end. Older drivers return unknown evidence.
+        """
+        return ScrollResult._from_proto(self._run(
             timeout,
             scroll=pb.Scroll(
                 selector=self._target,
                 direction=_proto.direction(direction),
                 distance_percent=distance_percent,
             ),
-        )
+        ))
+
+    def scan(
+        self,
+        items: Selector,
+        key: Callable[[ElementSnapshot], K],
+        *,
+        max_scrolls: int,
+        max_items: int,
+        timeout: float,
+        direction: Direction = DOWN,
+        distance_percent: int = 60,
+        no_progress_limit: int = 2,
+    ) -> ScanResult[K]:
+        """Collect bounded descendant observations from the current scroll position.
+
+        Explicit stable, non-null hashable keys merge overlap; duplicate keys in one read
+        fail. Distinct rows sharing keys across reads may be merged incorrectly. Stops at an
+        observed edge, a budget or repeated unchanged viewports, never claiming completeness.
+        Does not rewind or implicitly wait for loading. Read limits remain 1000 nodes / 1 MiB.
+        Failures keep their original type/code and carry ``scan_partial`` observations.
+        """
+        from .scanning import _scan
+        return _scan(self, items, key, direction=direction, max_scrolls=max_scrolls,
+                    max_items=max_items, timeout=timeout, distance_percent=distance_percent,
+                    no_progress_limit=no_progress_limit)
 
     def scroll_until(
         self,

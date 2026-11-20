@@ -75,6 +75,7 @@
       {"methods": ["await_until", "detached"], "tools": [], "reason": "Local handle state and arbitrary Python predicates remain client-side; use held-session inventory and bounded waits, not user-code execution."}
     ],
     "Element": [
+      {"methods": ["scan"], "tools": [], "reason": "SDK-only bounded orchestration with caller-defined identity callbacks. No arbitrary user-code execution or key grammar is exposed through CLI/MCP; agents can compose the existing elements and scroll tools."},
       {"methods": ["exists", "count", "snapshot", "text", "is_enabled", "is_checked"], "tools": ["exists", "count", "inspect"]},
       {"methods": ["tap", "triple_tap", "long_tap", "double_tap", "tap_outside_panel", "ime_action", "perform_action", "perform_custom_action", "set_progress", "drag_to", "pinch_open", "pinch_close", "fling", "set_text", "type_text", "clear_text", "swipe", "scroll", "scroll_until"], "tools": ["tap", "submit", "accessibility_action", "set_progress", "drag", "pinch", "fling", "fill", "type_text", "clear", "swipe", "scroll", "scroll_until"]},
       {"methods": ["wait", "descendant", "child", "first", "at"], "tools": ["wait_for", "tap"], "reason": "Targets support equivalent relational JSON and explicit first/index."}

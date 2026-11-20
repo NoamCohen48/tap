@@ -52,6 +52,10 @@ include them without approval.
 - [ ] **Scroll-end feedback.** Expose whether content can move further after a fling, so
   scroll-until loops can terminate with useful diagnostics. Define what the feedback proves
   and exercise it on both device families rather than inferring app-specific behavior.
+  Partial: ordinary scrolls now expose optional source-attributed offset/movement evidence,
+  and SDKs provide explicitly bounded collection scans (`bounded-scanning.md`, JVM/Python
+  regression tests). Fling feedback and the two-family device validation remain unimplemented /
+  not run; this item stays open.
 - [ ] **WebView accessibility boundaries.** Document and test accessibility-visible HTML
   controls and provide clear limitations for inaccessible content. Keep the accessibility-only
   boundary: no WebDriver surface, XPath hot path or persistent element handles. Follow the

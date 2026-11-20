@@ -95,6 +95,8 @@ internal class DriverCommandEngine(
     private val compiler = SelectorCompiler()
     private val objects = UiObjectAccess(device)
     private val visibleBounds = VisibleBounds(instrumentation.context)
+    val events = AccessibilityEvents()
+    private val toasts = ToastWatcher(instrumentation, events::onEvent)
     private val gestures =
         GestureCommands(
             instrumentation,
@@ -104,6 +106,7 @@ internal class DriverCommandEngine(
             visibleBounds,
             OutsidePanel(instrumentation.context) { instrumentation.uiAutomation },
             faults,
+            toasts,
         )
     private val textInput = TextInputCommands(instrumentation, objects)
     private val rotation = RotationCommands(instrumentation, device)
@@ -115,8 +118,6 @@ internal class DriverCommandEngine(
     private val accessibilityActions = AccessibilityActionCommands(objects)
     private val clipboard = ClipboardCommands(instrumentation)
     private val location = LocationCommands(instrumentation)
-    val events = AccessibilityEvents()
-    private val toasts = ToastWatcher(instrumentation, events::onEvent)
     private val notifications = NotificationCommands(instrumentation)
     private val queries =
         QueryCommands(
@@ -333,7 +334,11 @@ internal class DriverCommandEngine(
 
         override fun swipe(command: Swipe) = gestures.swipe(context, command, selectors[command.selector])
 
-        override fun scroll(command: Scroll) = gestures.scroll(context, command, selectors[command.selector])
+        override fun scroll(command: Scroll) {
+            gestures.scroll(context, command, selectors[command.selector])
+        }
+
+        override fun scrollObserved(command: Scroll) = gestures.scroll(context, command, selectors[command.selector])
 
         override fun doubleTap(command: DoubleTap) = gestures.doubleTap(context, selectors[command.selector])
 

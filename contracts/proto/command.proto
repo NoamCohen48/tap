@@ -664,13 +664,31 @@ message NarrowingPart {
   repeated string near_misses = 3;
 }
 
+// Source-attributed accessibility evidence during one scroll. Unknown is not an end.
+message ScrollObservation {
+  enum Movement {
+    MOVEMENT_UNSPECIFIED = 0; // unknown
+    MOVEMENT_MOVED = 1;
+    MOVEMENT_UNCHANGED = 2;
+  }
+  enum Edge {
+    EDGE_UNSPECIFIED = 0; // unknown
+    EDGE_REACHED = 1;
+    EDGE_NOT_REACHED = 2;
+  }
+  Movement movement = 1;
+  Edge edge = 2;
+}
+
 // One protocol response: exactly one `outcome`, named like the protocol result `kind`.
 message CommandResult {
+  // Optional metadata: older drivers omit it. Scroll still reports done.
+  ScrollObservation scroll_observation = 21;
   int64 duration_ms = 1;
   // Identity of the protocol request the server issued, for diagnostics.
   int64 request_id = 2;
   int64 session_generation = 3;
-  // swipe and scroll report `done`: whether content moved is for the test to observe.
+  // Swipe and scroll report done; scroll may additionally provide observed evidence.
   oneof outcome {
     Done done = 4;
     bool bool = 5; // exists

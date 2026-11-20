@@ -12,3 +12,17 @@ number. `element.wait()` returns an `ElementWait`. `app.elements(selector)` and
 ::: tap_e2e.element.ElementWait
 
 ::: tap_e2e.elements.Elements
+
+## Bounded scanning
+
+::: tap_e2e.scanning.ScanResult
+
+::: tap_e2e.scanning.CollectedObservation
+
+::: tap_e2e.scanning.ScanStopReason
+
+::: tap_e2e.scanning.ScrollResult
+
+::: tap_e2e.scanning.Movement
+
+::: tap_e2e.scanning.ScrollEdge

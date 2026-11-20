@@ -23,48 +23,49 @@ import io.github.noamcohen48.tap.api.v1.Drag
 import io.github.noamcohen48.tap.api.v1.DumpHierarchy
 import io.github.noamcohen48.tap.api.v1.ElementSnapshot
 import io.github.noamcohen48.tap.api.v1.ElementSnapshotList
-import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.GetClipboard
 import io.github.noamcohen48.tap.api.v1.HideKeyboard
 import io.github.noamcohen48.tap.api.v1.ListNotifications
+import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.LongTap
+import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.MultiTap
 import io.github.noamcohen48.tap.api.v1.Node
-import io.github.noamcohen48.tap.api.v1.OutsideTouch
-import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
-import io.github.noamcohen48.tap.api.v1.TimedPress
-import io.github.noamcohen48.tap.api.v1.MatchMode
 import io.github.noamcohen48.tap.api.v1.NotificationList
 import io.github.noamcohen48.tap.api.v1.NotificationMatch
 import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.Orientation
-import io.github.noamcohen48.tap.api.v1.LocationAccuracy
-import io.github.noamcohen48.tap.api.v1.PermissionChoice
+import io.github.noamcohen48.tap.api.v1.OutsideTouch
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
-import io.github.noamcohen48.tap.api.v1.SetProgress
-import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.PermissionChoice
 import io.github.noamcohen48.tap.api.v1.PermissionPrompt
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
+import io.github.noamcohen48.tap.api.v1.ScrollObservation
 import io.github.noamcohen48.tap.api.v1.Selector
+import io.github.noamcohen48.tap.api.v1.SelectorNarrowing
 import io.github.noamcohen48.tap.api.v1.SetClipboard
-import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetDisplayRotation
+import io.github.noamcohen48.tap.api.v1.SetLocation
 import io.github.noamcohen48.tap.api.v1.SetOrientation
+import io.github.noamcohen48.tap.api.v1.SetProgress
 import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Snapshots
 import io.github.noamcohen48.tap.api.v1.StabilitySignal
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.Toast
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.UnfreezeRotation
@@ -96,11 +97,19 @@ import io.github.noamcohen48.tap.api.v1.Error as CommandError
 object Operations {
     /** Public commands: the `tap.v1.Command.op` cases, named like their proto field. */
     val PUBLIC: List<String> =
-        OpCase.values().filter { it != OpCase.OP_NOT_SET }.map { it.wireName }.sorted()
+        OpCase
+            .values()
+            .filter { it != OpCase.OP_NOT_SET }
+            .map { it.wireName }
+            .sorted()
 
     /** Host-internal operations: the other `tap.wire.v1.Request.body` cases. */
     val HOST_INTERNAL: List<String> =
-        BodyCase.values().filter { it != BodyCase.COMMAND && it != BodyCase.BODY_NOT_SET }.map { it.wireName }.sorted()
+        BodyCase
+            .values()
+            .filter { it != BodyCase.COMMAND && it != BodyCase.BODY_NOT_SET }
+            .map { it.wireName }
+            .sorted()
 
     val ALL: List<String> = (PUBLIC + HOST_INTERNAL).sorted()
 }
@@ -148,28 +157,51 @@ val Command.targetSelector: Selector?
     get() =
         when (opCase) {
             OpCase.EXISTS -> exists.selector
+
             OpCase.COUNT -> count.selector
+
             OpCase.SNAPSHOT -> snapshot.selector
+
             OpCase.SNAPSHOTS -> snapshots.selector
+
             OpCase.WAIT_VISIBLE -> waitVisible.selector
+
             OpCase.WAIT_GONE -> waitGone.selector
+
             OpCase.WAIT_STATE -> waitState.selector
+
             OpCase.TAP -> tap.selector
+
             OpCase.LONG_TAP -> longTap.selector
+
             OpCase.MULTI_TAP -> multiTap.selector
+
             OpCase.HOLD -> hold.selector
+
             OpCase.TAP_OUTSIDE_PANEL -> tapOutsidePanel.selector
+
             OpCase.SET_TEXT -> setText.selector
+
             OpCase.CLEAR_TEXT -> clearText.selector
+
             OpCase.SWIPE -> swipe.selector
+
             OpCase.SCROLL -> scroll.selector
+
             OpCase.DOUBLE_TAP -> doubleTap.selector
+
             OpCase.DRAG -> drag.selector
+
             OpCase.PINCH -> pinch.selector
+
             OpCase.FLING -> fling.selector
+
             OpCase.PERFORM_IME_ACTION -> performImeAction.selector
+
             OpCase.PERFORM_ACCESSIBILITY_ACTION -> performAccessibilityAction.selector
+
             OpCase.SET_PROGRESS -> setProgress.selector
+
             OpCase.DEVICE_INFO, OpCase.PRESS_KEY, OpCase.TYPE_TEXT, OpCase.DUMP_HIERARCHY, OpCase.WAIT_APP_VISIBLE,
             OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.SET_ORIENTATION,
             OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD,
@@ -200,13 +232,11 @@ object Commands {
     fun setDisplayRotation(rotation: DisplayRotation): Command =
         Command.newBuilder().setSetDisplayRotation(SetDisplayRotation.newBuilder().setRotation(rotation)).build()
 
-    fun unfreezeRotation(): Command =
-        Command.newBuilder().setUnfreezeRotation(UnfreezeRotation.getDefaultInstance()).build()
+    fun unfreezeRotation(): Command = Command.newBuilder().setUnfreezeRotation(UnfreezeRotation.getDefaultInstance()).build()
 
     fun dismissKeyguard(): Command = Command.newBuilder().setDismissKeyguard(DismissKeyguard.getDefaultInstance()).build()
 
-    fun waitPermissionPrompt(): Command =
-        Command.newBuilder().setWaitPermissionPrompt(WaitPermissionPrompt.getDefaultInstance()).build()
+    fun waitPermissionPrompt(): Command = Command.newBuilder().setWaitPermissionPrompt(WaitPermissionPrompt.getDefaultInstance()).build()
 
     fun choosePermission(
         choice: PermissionChoice,
@@ -225,12 +255,14 @@ object Commands {
         mode: MatchMode = MatchMode.MATCH_UNSPECIFIED,
         packageName: String? = null,
     ): Command =
-        Command.newBuilder().setAwaitToast(
-            AwaitToast.newBuilder().setMode(mode).apply {
-                text?.let { setText(it) }
-                packageName?.let { setPackageName(it) }
-            },
-        ).build()
+        Command
+            .newBuilder()
+            .setAwaitToast(
+                AwaitToast.newBuilder().setMode(mode).apply {
+                    text?.let { setText(it) }
+                    packageName?.let { setPackageName(it) }
+                },
+            ).build()
 
     /** Ordered retained toast observations after an exclusive cursor; never waits or consumes. */
     fun readToastHistory(afterSequence: Long = 0, streamId: String = ""): Command =
@@ -249,9 +281,11 @@ object Commands {
         match: NotificationMatch,
         action: String? = null,
     ): Command =
-        Command.newBuilder().setOpenNotification(
-            OpenNotification.newBuilder().setMatch(match).apply { action?.let { setAction(it) } },
-        ).build()
+        Command
+            .newBuilder()
+            .setOpenNotification(
+                OpenNotification.newBuilder().setMatch(match).apply { action?.let { setAction(it) } },
+            ).build()
 
     fun dismissNotification(match: NotificationMatch): Command =
         Command.newBuilder().setDismissNotification(DismissNotification.newBuilder().setMatch(match)).build()
@@ -263,11 +297,14 @@ object Commands {
         text: String? = null,
         mode: MatchMode = MatchMode.MATCH_UNSPECIFIED,
     ): NotificationMatch =
-        NotificationMatch.newBuilder().setMode(mode).apply {
-            packageName?.let { setPackageName(it) }
-            title?.let { setTitle(it) }
-            text?.let { setText(it) }
-        }.build()
+        NotificationMatch
+            .newBuilder()
+            .setMode(mode)
+            .apply {
+                packageName?.let { setPackageName(it) }
+                title?.let { setTitle(it) }
+                text?.let { setText(it) }
+            }.build()
 
     fun dumpHierarchy(): Command = Command.newBuilder().setDumpHierarchy(DumpHierarchy.getDefaultInstance()).build()
 
@@ -299,30 +336,46 @@ object Commands {
         stableForMs: Long? = null,
         signal: StabilitySignal? = null,
     ): Command =
-        Command.newBuilder().setWaitScreenStable(
-            WaitScreenStable.newBuilder().setPackageName(packageName).apply {
-                stableForMs?.let { setStableForMs(it) }
-                signal?.let { setSignal(it) }
-            },
-        ).build()
+        Command
+            .newBuilder()
+            .setWaitScreenStable(
+                WaitScreenStable.newBuilder().setPackageName(packageName).apply {
+                    stableForMs?.let { setStableForMs(it) }
+                    signal?.let { setSignal(it) }
+                },
+            ).build()
 
     fun tap(selector: Selector): Command = Command.newBuilder().setTap(Tap.newBuilder().setSelector(selector)).build()
 
     fun longTap(selector: Selector): Command = Command.newBuilder().setLongTap(LongTap.newBuilder().setSelector(selector)).build()
 
-    fun multiTap(selector: Selector, count: Int, intervalMs: Long? = null): Command =
-        Command.newBuilder().setMultiTap(MultiTap.newBuilder().setSelector(selector).setCount(count).apply {
-            intervalMs?.let { setIntervalMs(it) }
-        }).build()
+    fun multiTap(
+        selector: Selector,
+        count: Int,
+        intervalMs: Long? = null,
+    ): Command =
+        Command
+            .newBuilder()
+            .setMultiTap(
+                MultiTap.newBuilder().setSelector(selector).setCount(count).apply {
+                    intervalMs?.let { setIntervalMs(it) }
+                },
+            ).build()
 
     fun tapOutsidePanel(
         selector: Selector,
         allowReachBelow: Boolean = false,
     ): Command =
-        Command.newBuilder().setTapOutsidePanel(TapOutsidePanel.newBuilder().setSelector(selector).setAllowReachBelow(allowReachBelow)).build()
+        Command
+            .newBuilder()
+            .setTapOutsidePanel(
+                TapOutsidePanel.newBuilder().setSelector(selector).setAllowReachBelow(allowReachBelow),
+            ).build()
 
-    fun hold(selector: Selector, durationMs: Long): Command =
-        Command.newBuilder().setHold(TimedPress.newBuilder().setSelector(selector).setDurationMs(durationMs)).build()
+    fun hold(
+        selector: Selector,
+        durationMs: Long,
+    ): Command = Command.newBuilder().setHold(TimedPress.newBuilder().setSelector(selector).setDurationMs(durationMs)).build()
 
     fun setText(
         selector: Selector,
@@ -339,22 +392,26 @@ object Commands {
         direction: Direction,
         distancePercent: Int? = null,
     ): Command =
-        Command.newBuilder().setSwipe(
-            Swipe.newBuilder().setSelector(selector).setDirection(direction).apply {
-                distancePercent?.let { setDistancePercent(it) }
-            },
-        ).build()
+        Command
+            .newBuilder()
+            .setSwipe(
+                Swipe.newBuilder().setSelector(selector).setDirection(direction).apply {
+                    distancePercent?.let { setDistancePercent(it) }
+                },
+            ).build()
 
     fun scroll(
         selector: Selector,
         direction: Direction,
         distancePercent: Int? = null,
     ): Command =
-        Command.newBuilder().setScroll(
-            Scroll.newBuilder().setSelector(selector).setDirection(direction).apply {
-                distancePercent?.let { setDistancePercent(it) }
-            },
-        ).build()
+        Command
+            .newBuilder()
+            .setScroll(
+                Scroll.newBuilder().setSelector(selector).setDirection(direction).apply {
+                    distancePercent?.let { setDistancePercent(it) }
+                },
+            ).build()
 
     fun performImeAction(selector: Selector): Command =
         Command.newBuilder().setPerformImeAction(PerformImeAction.newBuilder().setSelector(selector)).build()
@@ -363,13 +420,21 @@ object Commands {
         selector: Selector,
         action: StandardAction,
     ): Command =
-        Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(selector).setStandard(action)).build()
+        Command
+            .newBuilder()
+            .setPerformAccessibilityAction(
+                PerformAccessibilityAction.newBuilder().setSelector(selector).setStandard(action),
+            ).build()
 
     fun performCustomAction(
         selector: Selector,
         label: String,
     ): Command =
-        Command.newBuilder().setPerformAccessibilityAction(PerformAccessibilityAction.newBuilder().setSelector(selector).setCustom(label)).build()
+        Command
+            .newBuilder()
+            .setPerformAccessibilityAction(
+                PerformAccessibilityAction.newBuilder().setSelector(selector).setCustom(label),
+            ).build()
 
     fun setProgress(
         selector: Selector,
@@ -408,11 +473,13 @@ object Commands {
         direction: PinchDirection,
         percent: Int? = null,
     ): Command =
-        Command.newBuilder().setPinch(
-            Pinch.newBuilder().setSelector(selector).setDirection(direction).apply {
-                percent?.let { setPercent(it) }
-            },
-        ).build()
+        Command
+            .newBuilder()
+            .setPinch(
+                Pinch.newBuilder().setSelector(selector).setDirection(direction).apply {
+                    percent?.let { setPercent(it) }
+                },
+            ).build()
 
     fun fling(
         selector: Selector,
@@ -437,13 +504,16 @@ object Requests {
         packageName: String,
         authority: String,
     ): Request =
-        Request.newBuilder().setSyncBootstrap(
-            SyncBootstrap.newBuilder()
-                .setObservedPid(observedPid)
-                .setObservedStartToken(observedStartToken)
-                .setPackageName(packageName)
-                .setAuthority(authority),
-        ).build()
+        Request
+            .newBuilder()
+            .setSyncBootstrap(
+                SyncBootstrap
+                    .newBuilder()
+                    .setObservedPid(observedPid)
+                    .setObservedStartToken(observedStartToken)
+                    .setPackageName(packageName)
+                    .setAuthority(authority),
+            ).build()
 
     fun syncPoll(
         observedPid: Int,
@@ -453,15 +523,18 @@ object Requests {
         packageName: String,
         authority: String,
     ): Request =
-        Request.newBuilder().setSyncPoll(
-            SyncPoll.newBuilder()
-                .setObservedPid(observedPid)
-                .setObservedStartToken(observedStartToken)
-                .setExpectedProcessStartUuid(expectedProcessStartUuid)
-                .setExpectedSessionIdentity(expectedSessionIdentity)
-                .setPackageName(packageName)
-                .setAuthority(authority),
-        ).build()
+        Request
+            .newBuilder()
+            .setSyncPoll(
+                SyncPoll
+                    .newBuilder()
+                    .setObservedPid(observedPid)
+                    .setObservedStartToken(observedStartToken)
+                    .setExpectedProcessStartUuid(expectedProcessStartUuid)
+                    .setExpectedSessionIdentity(expectedSessionIdentity)
+                    .setPackageName(packageName)
+                    .setAuthority(authority),
+            ).build()
 }
 
 fun Command.toRequest(): Request = Requests.of(this)
@@ -471,11 +544,18 @@ fun Request.withEnvelope(
     sessionId: String,
     generation: Long,
     timeoutMs: Long,
-): Request = toBuilder().setSessionId(sessionId).setGeneration(generation).setTimeoutMs(timeoutMs).build()
+): Request =
+    toBuilder()
+        .setSessionId(sessionId)
+        .setGeneration(generation)
+        .setTimeoutMs(timeoutMs)
+        .build()
 
 // Results -----------------------------------------------------------------------------------------
 
-val CommandResult.ok: Boolean get() = outcomeCase != CommandResult.OutcomeCase.ERROR && outcomeCase != CommandResult.OutcomeCase.OUTCOME_NOT_SET
+val CommandResult.ok: Boolean get() =
+    outcomeCase != CommandResult.OutcomeCase.ERROR &&
+        outcomeCase != CommandResult.OutcomeCase.OUTCOME_NOT_SET
 
 /** The error, or null for a successful outcome. */
 val CommandResult.errorOrNull: CommandError? get() = if (outcomeCase == CommandResult.OutcomeCase.ERROR) error else null
@@ -528,9 +608,14 @@ fun Response.stamped(
     requestId: Long,
     generation: Long,
 ): Response =
-    toBuilder().setResult(
-        result.toBuilder().setDurationMs(durationMs).setRequestId(requestId).setSessionGeneration(generation),
-    ).build()
+    toBuilder()
+        .setResult(
+            result
+                .toBuilder()
+                .setDurationMs(durationMs)
+                .setRequestId(requestId)
+                .setSessionGeneration(generation),
+        ).build()
 
 // Dispatch ----------------------------------------------------------------------------------------
 
@@ -591,6 +676,12 @@ interface CommandHandler {
     fun swipe(command: Swipe)
 
     fun scroll(command: Scroll)
+
+    /** Older handlers retain unknown evidence without changing input behavior. */
+    fun scrollObserved(command: Scroll): ScrollObservation {
+        scroll(command)
+        return ScrollObservation.getDefaultInstance()
+    }
 
     fun openSystemPanel(command: OpenSystemPanel)
 
@@ -704,7 +795,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.TYPE_TEXT -> result.setDone(done).also { handler.typeText(typeText) }
         OpCase.CLEAR_TEXT -> result.setDone(done).also { handler.clearText(clearText) }
         OpCase.SWIPE -> result.setDone(done).also { handler.swipe(swipe) }
-        OpCase.SCROLL -> result.setDone(done).also { handler.scroll(scroll) }
+        OpCase.SCROLL -> result.setDone(done).setScrollObservation(handler.scrollObserved(scroll))
         OpCase.OPEN_SYSTEM_PANEL -> result.setDone(done).also { handler.openSystemPanel(openSystemPanel) }
         OpCase.SET_ORIENTATION -> result.setDone(done).also { handler.setOrientation(setOrientation) }
         OpCase.SET_DISPLAY_ROTATION -> result.setDone(done).also { handler.setDisplayRotation(setDisplayRotation) }
