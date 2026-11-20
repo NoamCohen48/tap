@@ -1,5 +1,7 @@
 package io.github.noamcohen48.tap.driver.engine
 
+import io.github.noamcohen48.tap.api.v1.DeviceEvent
+import io.github.noamcohen48.tap.api.v1.DeviceEventBatch
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.protocol.DRIVER_UNINTERRUPTIBLE_GRACE_MS
 import io.github.noamcohen48.tap.protocol.ErrorDetail
@@ -67,6 +69,49 @@ class CommandPipeline(
     @Volatile private var lastInboundMs = clock.nowMs()
 
     private val outbound = LinkedBlockingQueue<OutboundItem>()
+    private val eventLock = Any()
+    private val pendingEvents = ArrayDeque<DeviceEvent>()
+    private var eventWakeupQueued = false
+    private var droppedEvents = 0L
+
+    /**
+     * Queues an accessibility event for the host; called on Android's event thread, so it never
+     * blocks. Past [MAX_PENDING_EVENTS] the oldest is dropped and the next batch reports the
+     * count: the host ends its subscriptions rather than hide the gap.
+     */
+    fun event(event: DeviceEvent) =
+        synchronized(eventLock) {
+            if (pendingEvents.size == MAX_PENDING_EVENTS) {
+                pendingEvents.removeFirst()
+                droppedEvents++
+            }
+            pendingEvents.addLast(event)
+            if (!eventWakeupQueued) {
+                eventWakeupQueued = true
+                outbound.offer(OutboundItem.EventsPending)
+            }
+        }
+
+    /** Writes what is queued in batches of at most [EVENTS_PER_BATCH], so a frame stays well under the payload limit. */
+    private fun writePendingEvents() {
+        while (true) {
+            val batch =
+                synchronized(eventLock) {
+                    if (pendingEvents.isEmpty()) {
+                        eventWakeupQueued = false
+                        return
+                    }
+                    val events = List(minOf(EVENTS_PER_BATCH, pendingEvents.size)) { pendingEvents.removeFirst() }
+                    DeviceEventBatch
+                        .newBuilder()
+                        .addAllEvents(events)
+                        .setDropped(droppedEvents)
+                        .build()
+                        .also { droppedEvents = 0 }
+                }
+            if (!write(Outbound.Events(batch))) return
+        }
+    }
 
     /** PING answers, a priority lane: the writer drains it between blob chunks too (E-4). */
     private val pendingPongs = LinkedBlockingQueue<Long>()
@@ -446,6 +491,10 @@ class CommandPipeline(
                         if (!writeFailed) write(item.message)
                     }
 
+                    OutboundItem.EventsPending -> {
+                        writePendingEvents()
+                    }
+
                     OutboundItem.PongsPending -> {
                         writePendingPongs()
                     }
@@ -537,6 +586,8 @@ class CommandPipeline(
             val handled: CountDownLatch,
         ) : OutboundItem
 
+        data object EventsPending : OutboundItem
+
         data object PongsPending : OutboundItem
 
         data object Stop : OutboundItem
@@ -546,5 +597,11 @@ class CommandPipeline(
         const val DEFAULT_QUEUE_CAPACITY = 16
         const val DEFAULT_UNINTERRUPTIBLE_GRACE_MS = DRIVER_UNINTERRUPTIBLE_GRACE_MS
         const val DEFAULT_WATCHDOG_POLL_MS = 100L
+
+        /** Accessibility events the driver holds for a busy writer before dropping the oldest. */
+        const val MAX_PENDING_EVENTS = 1_024
+
+        /** A batch of at most this many events (each holds ≤ 4 KiB of text) fits one control frame. */
+        const val EVENTS_PER_BATCH = 128
     }
 }

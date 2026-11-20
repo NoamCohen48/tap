@@ -96,12 +96,14 @@ class FrameCodecTest {
 
     @Test
     fun frameTypesHaveStableWireValues() {
-        assertEquals((1..15).map(Int::toByte), FrameType.entries.map(FrameType::wireValue))
+        assertEquals((1..17).map(Int::toByte), FrameType.entries.map(FrameType::wireValue))
         assertEquals(FrameType.BLOB_END, FrameType.fromWireValue(13))
         assertFailsWith<ProtocolException> { FrameType.fromWireValue(0) }
         assertEquals(FrameType.PARK_RUNTIME, FrameType.fromWireValue(14))
         assertEquals(FrameType.RUNTIME_PARKED, FrameType.fromWireValue(15))
-        assertFailsWith<ProtocolException> { FrameType.fromWireValue(16) }
+        assertEquals(FrameType.DEVICE_EVENTS, FrameType.fromWireValue(16))
+        assertEquals(FrameType.EVENT_FILTER, FrameType.fromWireValue(17))
+        assertFailsWith<ProtocolException> { FrameType.fromWireValue(18) }
     }
 
     private fun encode(frame: Frame): ByteArray = ByteArrayOutputStream().also { FrameCodec.write(it, frame) }.toByteArray()

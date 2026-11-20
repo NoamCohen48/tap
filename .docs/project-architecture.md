@@ -135,6 +135,7 @@ tap/
 |   |   |   |                        set_orientation/set_display_rotation/unfreeze_rotation / screen + keyguard state, dismiss_keyguard / permission dialog by controller resource id
 |   |   |   +-- KeyboardCommands.kt, ClipboardCommands.kt, ToastWatcher.kt
 |   |   |   |                        keyboard_shown, hide_keyboard, perform_ime_action / set/get_clipboard (main thread, shell read permission) / await_toast (session-long accessibility listener, 32-entry buffer)
+|   |   |   +-- AccessibilityEvents.kt  the same listener's events as typed tap.v1.DeviceEvent kinds, for the types the host's EVENT_FILTER names (protocol 5.3)
 |   |   |   +-- DeviceConditionsReader.kt  DeviceInfo read-backs: animations_enabled (global scales), dark_mode, font_scale, density_dpi (driver resources' Configuration), airplane/wifi/mobile data, system_locales
 |   |   |   +-- AccessibilityActionCommands.kt  perform_accessibility_action (standard / custom, only if offered), set_progress (within the RangeInfo); ElementSnapshot actions/range
 |   |   |   +-- LocationCommands.kt   set_location: LocationManager test providers (gps, network, fused API 31+), re-sent every second
@@ -168,6 +169,7 @@ tap/
 |   |   |   +-- DeviceSession.kt     DeviceSessionConfig + DeviceSession.open()/close(): lease -> recover -> install -> start -> forward -> connect -> READY; app(pkg): one AppLifecycle per package for the session
 |   |   |   +-- DriverClient.kt      authenticated client API, PendingCommand outcome/cancellation semantics, heartbeat policy, screenshot()
 |   |   |   +-- DriverTransport.kt   ordered request IDs and writes, pending-call routing, frames, ping, poison/close
+|   |   |   +-- DeviceEvents.kt      one connection's accessibility-event fanout: subscriptions, the EVENT_FILTER union, overflow
 |   |   |   +-- AppLifecycle.kt      install/uninstall/forceStop/clearData/grant/revoke/isPermissionGranted/setLocales/locales/launch/coldLaunch/process/awaitAppVisible/awaitIdle (ADB + driver waits; launch returns after `am start -W`)
 |   |   |   +-- DeviceState.kt       SavedState + StateKey (setting:<ns>/<name>, uimode:night, wm:density, locale:<pkg>, network:*, system-locales, appop:<pkg>/<op>, file:/media:<path>): what a session changed, journaled for restore
 |   |   |   +-- DeviceConditions.kt  setAnimations/setDarkMode/setFontScale/setDensity/setNetwork/setSystemLocales/setLocation/setStayAwake/setAccessibilityDisplay, notification-listener access: capture once, write, read back (DeviceSession.change)
@@ -201,7 +203,7 @@ tap/
 |   |   |   |   +-- ScreenSnapshotState.kt per-device latest snapshot, ref counter (`eN`, never reused), ResolveRef; UnknownRef/RefNotAddressable exceptions
 |   |   |   +-- daemon/grpc/
 |   |   |       +-- ClientConnectionService.kt  Connect/Disconnect/Info/ListConnections/Events + exactly-one Observe (observing/heartbeat/closing)
-|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording, device conditions, streamed PushFile/AddMedia (spooled to <state-dir>/uploads) and PullFile
+|   |   |       +-- DeviceService.kt            inventory, owner-checked Attach/Detach/Execute/Screenshot/DriverLog/ScreenSnapshot/ResolveRef/StartRecording/StopRecording/WatchDeviceEvents, device conditions, streamed PushFile/AddMedia (spooled to <state-dir>/uploads) and PullFile
 |   |   |       +-- AppService.kt               AppLifecycle adapter, streamed Install spooled to <state-dir>/uploads
 |   |   |       +-- WatchService.kt             read-only Watch (activity) and WatchVideo; names no connection
 |   |   |       +-- DeviceLogService.kt         ReadLog (stream, follow, filters) / MarkLog / RedactLog over the attachment's DeviceLog
@@ -252,6 +254,7 @@ tap/
 |       +-- tap_e2e/{client,device,element,app,selectors,errors}.py   TapClient/TapConnection, Device, Element/ElementWait, App, selector DSL, typed errors (mapped by failure reason)
 |       +-- tap_e2e/models.py        client-owned value types and artifacts (mirrors Models.kt + Artifacts.kt); _proto.py maps proto <-> models
 |       +-- tap_e2e/logs.py          Device.logs: read/follow/mark/redact, LogEntry/LogLine/LogAction, LogPriority
+|       +-- tap_e2e/events.py        Device.events: on_toast/on_window_change/… and register(kind, cb), expect/wait_for(kind); one frozen DeviceEvent subclass per kind
 |       +-- tap_e2e/pytest_plugin.py tap_device / tap_devices fixtures, @pytest.mark.tap_devices, tap_device_scope reuse, failure capture
 |       +-- tests/                   the sample suite ported to pytest (conftest = fixture facts)
 |

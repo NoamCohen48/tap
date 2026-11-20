@@ -10,6 +10,7 @@ enum class Capability {
     COUNT,
     SNAPSHOT,
     SNAPSHOTS,
+    DEVICE_EVENTS,
     WAIT_VISIBLE,
     WAIT_GONE,
     WAIT_APP_VISIBLE,

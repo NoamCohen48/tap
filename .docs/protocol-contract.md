@@ -2,7 +2,7 @@
 
 Date: 2026-10-01
 
-Status: application protocol `5.2` (also negotiates `5.1`); Phase 1 contract is additive and not yet complete.
+Status: application protocol `5.3` (also negotiates `5.2` and `5.1`); Phase 1 contract is additive and not yet complete.
 
 The client↔daemon gRPC API additionally reports a separate compatibility epoch in
 `InfoResponse.api_compatibility`, generated from `contracts/proto/API_COMPATIBILITY`.
@@ -10,17 +10,17 @@ Clients require an equal nonzero epoch before connecting; it does not change the
 or server↔driver negotiation below. See `server-api.md` and `release-engineering.md`.
 
 This document describes the implemented wire contract. Planned but unimplemented features
-(events, typed element handles, multi-gesture input) remain design work in
-`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.2 yet.
+(typed element handles, multi-gesture input) remain design work in
+`android-e2e-framework-implementation-plan.md` and are not part of protocol 5.3 yet.
 
-Protocol 5.2 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
+Protocol 5.3 encodes every control payload as protobuf (3.0 introduced that; 4.0 removed
 `scroll_until`, the `moved` result, the attach allowlist and `TypeText.selector`, and added
 `ElementSnapshot.showing_hint`, `WaitVisible.exactly_one`, `Error.match_count` and the
 wait-timeout details; 5.0 removed selector scopes and `ResourceId.aut_package` — package
 ownership is a `PROPERTY_PACKAGE_NAME` predicate and every lookup searches all windows — made
 gestures refuse a covered touch point (`NOT_INTERACTABLE` / `OBSCURED`), and moved the sync
 package and authority from the session into `SyncBootstrap` / `SyncPoll`; 5.1 added `wait_state` with `Error.last_state` and `Error.condition_holds`, `Error.narrowing`, and the
-`STALE_BEFORE_INPUT` error code; 5.2 adds capability-gated clean instrumentation handoff). The schema is the project's one schema,
+`STALE_BEFORE_INPUT` error code; 5.2 added capability-gated clean instrumentation handoff; 5.3 adds accessibility events, [Device Events](#device-events)). The schema is the project's one schema,
 `contracts/proto`: the frame payloads are `tap.wire.v1` (`wire/wire.proto`), whose `Request`
 carries a public `tap.v1.Command` and whose `Response` carries a `tap.v1.CommandResult` — the
 same messages the host server API (`server-api.md`) exposes, so the daemon forwards commands
@@ -53,11 +53,11 @@ use a positive monotonically increasing ID. Both ends write each frame as one bu
 
 Implemented frame types are `HELLO` (1), `CHALLENGE` (2), `AUTH` (3), `AUTH_RESULT` (4),
 `REQUEST` (5), `RESPONSE` (6), `CLOSE` (7), `CANCEL` (8), `PING` (9), `PONG` (10),
-`BLOB_START` (11), `BLOB_CHUNK` (12), `BLOB_END` (13), `PARK_RUNTIME` (14), and
-`RUNTIME_PARKED` (15). Unknown framing versions, frame
+`BLOB_START` (11), `BLOB_CHUNK` (12), `BLOB_END` (13), `PARK_RUNTIME` (14),
+`RUNTIME_PARKED` (15), `DEVICE_EVENTS` (16) and `EVENT_FILTER` (17). Unknown framing versions, frame
 types, flags, and invalid lengths fail the connection before payload decoding. After
-authentication only `REQUEST`, `CANCEL`, `PING`, `CLOSE`, and (when negotiated in 5.2)
-`PARK_RUNTIME` are legal from the host; any other
+authentication only `REQUEST`, `CANCEL`, `PING`, `CLOSE`, (when negotiated in 5.2)
+`PARK_RUNTIME` and (when negotiated in 5.3) `EVENT_FILTER` are legal from the host; any other
 type (including blob frames) fails the connection. `CANCEL` carries the target request ID
 (positive) and an empty payload; `PING`/`PONG` use request ID zero and an empty payload.
 
@@ -87,6 +87,7 @@ case is `RUNTIME_PARKED`: it is sent directly only after the pipeline writer has
 | `BLOB_CHUNK` | raw (see [Artifacts](#artifacts)) |
 | `CLOSE` (driver) | UTF-8 reason |
 | `PARK_RUNTIME` / `RUNTIME_PARKED` | `ParkRuntime` / `RuntimeParked` (ID zero) |
+| `EVENT_FILTER` / `DEVICE_EVENTS` | `DeviceEventFilter` / `tap.v1.DeviceEventBatch` (ID zero) |
 
 Encoding is standard proto3 binary. Unknown fields are ignored by both sides, as protobuf does.
 The handshake does not need a canonical encoding: the MAC covers the payload bytes exactly as
@@ -114,11 +115,12 @@ below. With no common application version it instead answers
 - sorted supported application-protocol versions.
 
 The host selects the highest exact common `major.minor` version and a sorted subset of offered
-capabilities. Protocol 5.2 currently enables:
+capabilities. Protocol 5.3 currently enables:
 
 ```text
 artifact.screenshot.v1
 diagnostic.hierarchy.v1
+events.accessibility.v1
 input.key-events.v1
 product.probe.v1
 runtime.park.v1
@@ -693,7 +695,35 @@ the secret is delivered out of band through instrumentation arguments. The known
 that argument is visible in `ps`/`dumpsys` on a rooted device for the process lifetime — is
 recorded in `framework-gaps.md` for the security review.
 
+## Device Events
+
+Protocol 5.3 lets the host follow accessibility events without polling. Both ends use it only when the
+negotiation enables the `events.accessibility.v1` capability and selects 5.3 or later. The driver's one
+`UiAutomation` listener (shared with the toast record behind `await_toast`) turns each
+`AccessibilityEvent` of a mapped type into a `tap.v1.DeviceEvent`: a per-connection sequence,
+uptime and package, plus one typed `kind` per event type (`ToastShown`, `WindowChanged` with its
+change flags, `ContentChanged` with its change types, `ViewClicked`, `ViewScrolled` with position,
+deltas and list indices, `TextChanged` with before/after text and counts). It copies scalars only,
+never the event or its node; text is cut at 512 characters, class names at 256. A
+`TYPE_WINDOWS_CHANGED` below API 28 carries no change flags and is not forwarded.
+
+- **Filter.** A connection starts forwarding nothing. The host sends `EVENT_FILTER` (ID zero,
+  `DeviceEventFilter{types}`) whenever the union of its subscriptions' types changes; each
+  replaces the last, an empty one stops forwarding. Because the driver reads frames in order, a
+  `REQUEST` written after a filter has its events filtered by it. An `EVENT_FILTER` with a
+  nonzero ID, an unparsable payload or an unknown type is a protocol violation (`CLOSE`); without
+  that negotiation the frame type itself is illegal, so the host never sends it then.
+- **Delivery.** `DEVICE_EVENTS` (driver → host, ID zero) carries a `DeviceEventBatch` of at most
+  128 events in the order they fired. The listener never blocks: events queue in the driver (at
+  most 1 024) behind whatever the single writer is sending, then go out in batches. When the
+  queue is full the oldest is dropped, and the next batch's `dropped` counts them; the host
+  then ends every subscription with an overflow rather than hide the gap. A `DEVICE_EVENTS` with
+  a nonzero ID poisons the host's connection like any malformed frame.
+- **Lifetime.** Events belong to one driver connection: a clean close or park ends the host's
+  subscriptions normally, a poisoned connection ends them with its cause. Events are read-only
+  and never take part in request IDs, replay or mutation state.
+
 ## Not Yet Implemented
 
-Protocol 5.2 does not yet expose events, general multi-touch gestures (only `pinch`), `session.shutdown`, or
+Protocol 5.3 does not yet expose general multi-touch gestures (only `pinch`), `session.shutdown`, or
 `inspector.snapshot`. `AUT_NOT_INSTALLED` is defined but not yet emitted. See `.docs/framework-gaps.md` for the full list.

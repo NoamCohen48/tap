@@ -90,6 +90,13 @@ import io.github.noamcohen48.tap.protocol.conjunction
 import io.github.noamcohen48.tap.protocol.isMutation
 import io.github.noamcohen48.tap.protocol.selectors
 import io.grpc.Context
+import io.github.noamcohen48.tap.api.v1.DeviceEventBatch
+import io.github.noamcohen48.tap.api.v1.DeviceEventType
+import io.github.noamcohen48.tap.api.v1.WatchDeviceEventsRequest
+import io.github.noamcohen48.tap.api.v1.WatchDeviceEventsResponse
+import io.github.noamcohen48.tap.host.DeviceEventOverflowException
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -297,6 +304,47 @@ class DeviceService(
      * runs first as a pre-flight, so a malformed command is `INVALID_ARGUMENT` before any device
      * work. Cancellation propagates to the pending TAP1 command and requests cooperative cancel.
      */
+    /**
+     * Live accessibility events (`device_event.proto`). The first response is `ready`, sent once
+     * the driver was told to forward the types; batches follow, each what had arrived when the
+     * previous one was sent (at most [EVENT_STREAM_BATCH] events).
+     */
+    override fun watchDeviceEvents(request: WatchDeviceEventsRequest): Flow<WatchDeviceEventsResponse> =
+        flow {
+            val types = request.typesList.toSet()
+            argument(types.isNotEmpty()) { "types must name at least one event type" }
+            argument(types.none { it == DeviceEventType.UNRECOGNIZED || it == DeviceEventType.DEVICE_EVENT_TYPE_UNSPECIFIED }) {
+                "types must be known event types"
+            }
+            argument(!request.hasPackageName() || request.packageName.isNotBlank()) { "package_name must not be blank" }
+            val attached = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
+            val subscription =
+                attached.deviceSession.client.events
+                    .subscribe(types, if (request.hasPackageName()) request.packageName else null)
+            try {
+                emit(WatchDeviceEventsResponse.newBuilder().setReady(true).build())
+                while (true) {
+                    val received = subscription.events.receiveCatching()
+                    val first =
+                        received.getOrNull() ?: run {
+                            val cause = received.exceptionOrNull() ?: return@flow
+                            // A transport loss reads as the session's own SESSION_UNUSABLE.
+                            if (cause !is DeviceEventOverflowException) attached.deviceSession.checkUsable()
+                            throw cause
+                        }
+                    val batch = DeviceEventBatch.newBuilder().addEvents(first)
+                    while (batch.eventsCount < EVENT_STREAM_BATCH) {
+                        batch.addEvents(subscription.events.tryReceive().getOrNull() ?: break)
+                    }
+                    emit(WatchDeviceEventsResponse.newBuilder().setBatch(batch).build())
+                }
+            } finally {
+                subscription.close()
+            }
+        }.catch { error ->
+            throw if (error is CancellationException) error else error.toStatus()
+        }
+
     override suspend fun execute(request: ExecuteRequest): ExecuteResponse =
         reply {
             val attachedDevice = daemon.attachedDevice(request.attachedDeviceId, request.clientConnectionId)
@@ -864,3 +912,6 @@ class DeviceService(
                 }
             }.build()
 }
+
+/** Most events one WatchDeviceEvents response carries. */
+const val EVENT_STREAM_BATCH = 128

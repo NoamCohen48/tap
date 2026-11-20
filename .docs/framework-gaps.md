@@ -141,6 +141,18 @@ Missing:
   window/activity` and crash/ANR *evidence* are in the same capture, and a command failing
   after the crash or ANR says so with `AUT_CRASHED` / `AUT_ANR`. Parsing the log into typed
   records (HTTP exchanges an app logs) is not there (`feature-todo.md`). A redacted protocol event log is not there.
+- Live accessibility events (`WatchDeviceEvents`, protocol 5.3 `EVENT_FILTER` / `DEVICE_EVENTS`,
+  Python `device.events`) are covered by host and client tests (`DeviceEventsTest`,
+  `DeviceEventsServiceTest`, `CommandPipelineTest`, `test_events.py`) and by the device test
+  `clients/python/tests/test_device_events.py` (window, click, toast, content/text, scroll), which
+  passed on 85e49002 (SM-J810G, API 29) on 2026-11-20 together with the whole Python device
+  suite. Seen there: `set_text` raises a content change and typing a text change per key; click
+  labels are as displayed (all caps); window-list changes name only a window id; a RecyclerView
+  scroll reports items, not pixels or deltas. Not yet run on emulator-5554 (API 34): the machine
+  had no hardware virtualisation that day. How many content changes an animation raises is not
+  measured. No Kotlin SDK surface yet; `tap-agent`'s (`--events`/`--expect`, `wait-event`,
+  `watch`) is covered by `clients/agent/tests/test_events.py` and was exercised by hand on
+  85e49002. MCP `watch` is bounded (a tool call returns once): no MCP-held background watcher.
 - Per-command JSONL events (v1 records runner lifecycle, device assignments and evidence only),
   cross-worker aggregation and automatic indexing of manually saved artifacts. JUnit XML is
   whatever the build tool writes; no HTML report or Flowdeck adapter.

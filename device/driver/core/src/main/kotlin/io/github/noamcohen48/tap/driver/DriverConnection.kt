@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.driver
 import android.os.SystemClock
 import android.util.Log
 import io.github.noamcohen48.tap.api.v1.Command
+import io.github.noamcohen48.tap.api.v1.DeviceEventType
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.driver.engine.CommandPipeline
 import io.github.noamcohen48.tap.driver.engine.Outbound
@@ -22,6 +23,7 @@ import io.github.noamcohen48.tap.protocol.parsePayload
 import io.github.noamcohen48.tap.protocol.parseRequest
 import io.github.noamcohen48.tap.protocol.stamped
 import io.github.noamcohen48.tap.protocol.validateRuntimePark
+import io.github.noamcohen48.tap.wire.v1.DeviceEventFilter
 import io.github.noamcohen48.tap.wire.v1.ParkRuntime
 import io.github.noamcohen48.tap.wire.v1.Request
 import io.github.noamcohen48.tap.wire.v1.Response
@@ -51,6 +53,7 @@ internal class DriverConnection(
     private val heartbeatTimeoutMs: Long,
     private val onPoisoned: (reason: String) -> Unit,
     private val resetForReuse: ((ParkRuntime) -> Unit)? = null,
+    private val eventsEnabled: Boolean = false,
 ) : PipelineListener {
     private val transportEnded = AtomicBoolean(false)
     private var highestRequestId = 0L
@@ -74,6 +77,7 @@ internal class DriverConnection(
     fun run() {
         faults.onConnectionOpened(::abortConnection)
         pipeline.start()
+        if (eventsEnabled) engine.events.attach(pipeline::event)
         try {
             while (!transportEnded.get()) {
                 val frame =
@@ -89,6 +93,7 @@ internal class DriverConnection(
                 if (!handle(frame)) return
             }
         } finally {
+            engine.events.attach(null)
             endTransport()
             pipeline.discardQueued()
             // A blocked executor is late work; the watchdog decides whether the process dies.
@@ -96,6 +101,24 @@ internal class DriverConnection(
                 // keep waiting; the watchdog listener handles kill/quarantine policy
             }
         }
+    }
+
+    /** The host's EVENT_FILTER: from now on only these types are forwarded (protocol 5.3). */
+    private fun eventFilter(frame: Frame): Boolean {
+        if (!eventsEnabled) return protocolViolation("EVENT_FILTER was not negotiated")
+        if (frame.requestId != 0L) return protocolViolation("EVENT_FILTER is a connection frame, got request ID ${frame.requestId}")
+        val filter =
+            try {
+                DeviceEventFilter.parseFrom(frame.payload)
+            } catch (_: Exception) {
+                return protocolViolation("Invalid EVENT_FILTER payload")
+            }
+        val types = filter.typesList.toSet()
+        if (types.any { it == DeviceEventType.UNRECOGNIZED || it == DeviceEventType.DEVICE_EVENT_TYPE_UNSPECIFIED }) {
+            return protocolViolation("EVENT_FILTER names an unknown event type")
+        }
+        engine.events.forwarded = types
+        return true
     }
 
     private fun handle(frame: Frame): Boolean =
@@ -129,6 +152,10 @@ internal class DriverConnection(
                 }
             }
 
+            FrameType.EVENT_FILTER -> {
+                eventFilter(frame)
+            }
+
             FrameType.PING -> {
                 when {
                     frame.requestId != 0L -> {
@@ -148,7 +175,7 @@ internal class DriverConnection(
 
             FrameType.HELLO, FrameType.CHALLENGE, FrameType.AUTH, FrameType.AUTH_RESULT,
             FrameType.RESPONSE, FrameType.PONG, FrameType.BLOB_START, FrameType.BLOB_CHUNK, FrameType.BLOB_END,
-            FrameType.RUNTIME_PARKED,
+            FrameType.RUNTIME_PARKED, FrameType.DEVICE_EVENTS,
             -> {
                 protocolViolation("Illegal frame ${frame.type} after authentication")
             }
@@ -165,6 +192,7 @@ internal class DriverConnection(
             } catch (_: Exception) {
                 return protocolViolation("Invalid runtime handoff")
             }
+        engine.events.attach(null)
         // No reader/writer/executor from this session may survive the acknowledgement.
         if (!pipeline.awaitTermination(5_000) || pipeline.isPoisoned) {
             onPoisoned("RUNTIME_DRAIN_UNCERTAIN")
@@ -253,6 +281,10 @@ internal class DriverConnection(
         when (message) {
             is Outbound.TerminalResponse -> {
                 writeResponse(message.requestId, message.response)
+            }
+
+            is Outbound.Events -> {
+                FrameCodec.write(output, Frame(FrameType.DEVICE_EVENTS, 0, message.batch.toByteArray()))
             }
 
             is Outbound.Pong -> {

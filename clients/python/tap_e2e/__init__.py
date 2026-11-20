@@ -25,6 +25,20 @@ from .capabilities import (
 from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .elements import Elements
+from .events import (
+    ContentChange,
+    ContentChangedEvent,
+    DeviceEvent,
+    DeviceEvents,
+    EventRegistration,
+    ExpectedEvent,
+    TextChangedEvent,
+    ToastShownEvent,
+    ViewClickedEvent,
+    ViewScrolledEvent,
+    WindowChange,
+    WindowChangedEvent,
+)
 from .steps import current_step, step
 from .logs import DeviceLog, LogAction, LogEntries, LogEntry, LogFollower, LogLine, LogPriority
 from .screen import Screen
@@ -186,6 +200,18 @@ __all__ = [
     "Direction",
     "DisplayRotation",
     "Capture",
+    "ContentChange",
+    "ContentChangedEvent",
+    "DeviceEvent",
+    "DeviceEvents",
+    "EventRegistration",
+    "ExpectedEvent",
+    "TextChangedEvent",
+    "ToastShownEvent",
+    "ViewClickedEvent",
+    "ViewScrolledEvent",
+    "WindowChange",
+    "WindowChangedEvent",
     "DeviceLog",
     "DeviceLogs",
     "LogAction",

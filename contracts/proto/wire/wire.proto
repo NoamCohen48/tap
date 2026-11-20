@@ -14,6 +14,7 @@ syntax = "proto3";
 package tap.wire.v1;
 
 import "command.proto";
+import "device_event.proto";
 
 option java_multiple_files = true;
 option java_outer_classname = "WireProto";
@@ -183,4 +184,13 @@ message BlobEnd {
   string blob_id = 1;
   int64 byte_count = 2;
   string sha256 = 3;
+}
+
+// ---- accessibility events (protocol 5.3) ---------------------------------------------------------
+
+// EVENT_FILTER (host → driver, request ID 0): the event types the driver forwards from now on, in
+// DEVICE_EVENTS frames (driver → host, request ID 0, a tap.v1.DeviceEventBatch). Empty forwards
+// nothing, the state a connection starts in. Each filter replaces the last.
+message DeviceEventFilter {
+  repeated tap.v1.DeviceEventType types = 1;
 }

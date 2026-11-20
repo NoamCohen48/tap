@@ -82,6 +82,7 @@ object DeviceCapabilities {
             "Attach" to emptySet(),
             "Detach" to emptySet(),
             "Execute" to emptySet(),
+            "WatchDeviceEvents" to setOf(CAPABILITY_DEVICE_EVENTS),
             "GetDeviceCapabilities" to emptySet(),
             "Screenshot" to setOf(CAPABILITY_SCREENSHOT),
             "DriverLog" to setOf(CAPABILITY_DRIVER_LOG),
@@ -183,6 +184,7 @@ object DeviceCapabilities {
             val wire =
                 when (id) {
                     CAPABILITY_SCREENSHOT -> "artifact.screenshot.v1"
+                    CAPABILITY_DEVICE_EVENTS -> io.github.noamcohen48.tap.protocol.DEVICE_EVENTS_CAPABILITY
                     CAPABILITY_DUMP_HIERARCHY, CAPABILITY_SCREEN_SNAPSHOT -> "diagnostic.hierarchy.v1"
                     CAPABILITY_PRESS_KEY, CAPABILITY_TYPE_TEXT, CAPABILITY_HIDE_KEYBOARD -> "input.key-events.v1"
                     else -> null

@@ -103,6 +103,7 @@ class CapabilityId(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     CAPABILITY_TAP_OUTSIDE_PANEL: _ClassVar[CapabilityId]
     CAPABILITY_SNAPSHOTS: _ClassVar[CapabilityId]
     CAPABILITY_READ_TOAST_HISTORY: _ClassVar[CapabilityId]
+    CAPABILITY_DEVICE_EVENTS: _ClassVar[CapabilityId]
 
 class CapabilityStatus(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -225,6 +226,7 @@ CAPABILITY_APP_IS_RUNNING: CapabilityId
 CAPABILITY_TAP_OUTSIDE_PANEL: CapabilityId
 CAPABILITY_SNAPSHOTS: CapabilityId
 CAPABILITY_READ_TOAST_HISTORY: CapabilityId
+CAPABILITY_DEVICE_EVENTS: CapabilityId
 CAPABILITY_STATUS_UNSPECIFIED: CapabilityStatus
 CAPABILITY_STATUS_SUPPORTED: CapabilityStatus
 CAPABILITY_STATUS_CONDITIONAL: CapabilityStatus

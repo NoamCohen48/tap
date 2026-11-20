@@ -14,6 +14,7 @@ import io.github.noamcohen48.tap.protocol.Operations
 import io.github.noamcohen48.tap.protocol.ProtocolAuthentication
 import io.github.noamcohen48.tap.protocol.ProtocolNegotiation
 import io.github.noamcohen48.tap.protocol.RUNTIME_PARK_CAPABILITY
+import io.github.noamcohen48.tap.protocol.DEVICE_EVENTS_CAPABILITY
 import io.github.noamcohen48.tap.protocol.SUPPORTED_CAPABILITIES
 import io.github.noamcohen48.tap.protocol.SUPPORTED_PROTOCOL_VERSIONS
 import io.github.noamcohen48.tap.protocol.UIAUTOMATOR_BUILD_ID
@@ -44,6 +45,7 @@ class TapDriverServer(
 ) {
     private var config = SessionConfig.from(arguments::getString)
     private var parkNegotiated = false
+    private var eventsNegotiated = false
 
     private fun newEngine(): DriverCommandEngine {
         val device =
@@ -122,6 +124,7 @@ class TapDriverServer(
                             config.uninterruptibleGraceMs,
                             config.heartbeatTimeoutMs,
                             onPoisoned = { reason -> onPoisoned(server, reason) },
+                            eventsEnabled = eventsNegotiated,
                             resetForReuse =
                                 if (config.reusable && parkNegotiated) {
                                     (
@@ -263,6 +266,8 @@ class TapDriverServer(
             return false
         }
 
+        eventsNegotiated = DEVICE_EVENTS_CAPABILITY in negotiation.enabledCapabilitiesList &&
+            negotiation.selectedVersion.major == 5 && negotiation.selectedVersion.minor >= 3
         parkNegotiated = RUNTIME_PARK_CAPABILITY in negotiation.enabledCapabilitiesList &&
             negotiation.selectedVersion.major == 5 && negotiation.selectedVersion.minor >= 2
         val result =

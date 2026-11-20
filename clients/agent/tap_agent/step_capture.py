@@ -35,9 +35,9 @@ if TYPE_CHECKING:
 # Explicit policies make mixed read/write commands reviewable. A coverage test classifies every
 # public Agent method, so new methods cannot accidentally disappear from recordings.
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
-WAITS = frozenset({"wait", "settle", "toast"})
+WAITS = frozenset({"wait", "settle", "toast", "wait_event"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
-EXCLUDED = frozenset({"close", "reporting_deaths", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "log", "recording", "pull", "activity", "history", "export"})
+EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "log", "recording", "pull", "activity", "history", "export"})
 
 
 def _word(value: Any) -> Any:

@@ -99,6 +99,22 @@ class DriverClient private constructor(
             PendingCommand(requestId, request, timeoutMs)
         }
 
+    /**
+     * Live accessibility events from this connection (protocol 5.3): subscribe to the types
+     * wanted. Subscriptions end cleanly when the client closes, with the poison cause otherwise.
+     */
+    val events: DeviceEvents
+        get() {
+            // Without both, the driver treats EVENT_FILTER as a protocol violation and ends the connection.
+            if (io.github.noamcohen48.tap.protocol.DEVICE_EVENTS_CAPABILITY !in enabledCapabilities ||
+                negotiatedVersion.major != 5 ||
+                negotiatedVersion.minor < 3
+            ) {
+                throw DeviceEventsUnsupportedException(negotiatedVersion.render())
+            }
+            return transport.events
+        }
+
     /** Whether the transport can no longer be trusted; the owning session's usability check. */
     internal val isPoisoned: Boolean get() = transport.isPoisoned
 

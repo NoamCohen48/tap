@@ -207,6 +207,37 @@ new `snapshot`. `settle` alone does the same without acting.
 
 `wait <target>` waits for a node (`--gone`: until it disappears; `--timeout 30s`).
 
+## Device events
+
+Android reports what happens on the screen as events: `toast`, `window` (an activity, dialog,
+popup or pane appeared, went away or changed), `content` (frequent), `click`, `scroll` and
+`text` (an edit). Toasts and short-lived dialogs never show in a snapshot; events catch them.
+
+```sh
+tap-agent tap @e7 --events toast,window      # also print the events the tap caused
+tap-agent tap @e7 --expect toast:saved       # fail unless it shows a toast containing "saved"
+tap-agent wait-event window --package com.example --timeout 30s
+tap-agent watch toast window                 # stream, one line per event; Ctrl-C or --for 2m
+```
+
+`--events`/`--expect` work on every input verb (and `app`): listening starts before the input,
+so nothing it causes is missed, and an `events:` block follows the step's output (`✓` marks
+the event an expectation met; content changes are summed per app). `--expect KIND[:TEXT]`
+waits up to `--event-timeout` (10 s) after the step; TEXT is part of the event, any case: a
+toast's message, a window's title or class, a click's label, an edit's text. Repeat it for
+several. `wait-event KIND [TEXT]` waits for the next one from now on: it cannot see an event
+that already happened, so for what your own step causes use `--expect` on that step. It is a
+step: the session runs one at a time, so nothing else of yours runs while it waits (`watch`
+does not hold the session). Typing raises `text` events per key; `fill` (text set in one step)
+raises a `content` change instead. A click's label is the text as shown (`"TOAST"` under a
+theme that uppercases buttons).
+
+`watch` keeps running until stopped, `--for` passes or the session ends; `--json` prints one
+object per line. Run it in the background to be told when something happens (a push message, a
+background sync) while you keep using the session. MCP `watch` collects for `duration_seconds`
+(at most 120) and returns the lines. Events are hints, not proof: read the screen again
+(`snapshot`, `wait`) before acting on one. An edit's text can be what was typed.
+
 `scroll`/`swipe --percent 40 --timeout 3s` control distance/budget. Use
 `scroll-until CONTAINER DESTINATION --max-scrolls 12 --percent 50 --timeout 15s` for the bounded
 SDK descendant loop; this is not end-of-list detection or a replay policy. All element inputs
