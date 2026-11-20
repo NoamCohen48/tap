@@ -6,15 +6,37 @@ import android.os.Build
 import android.provider.Settings
 
 /**
- * Read-backs for the device conditions the host changes (`.docs/device-actions.md`): the
- * animation scales, network switches and stay-awake from `Settings.Global` (readable by any app), the
- * accessibility display switches from `Settings.Secure`, the rest from the
- * configuration Android last delivered to this process, which is the one apps see.
+ * Read-backs for the device conditions the host changes (`.docs/device-actions.md`), each from
+ * where the change lands first, so a read right after the host's change (or its restore) sees it:
+ * the animation scales, network switches and stay-awake from `Settings.Global` (readable by any
+ * app), the font scale from `Settings.System`, the accessibility display switches and bold text
+ * from `Settings.Secure`, and dark mode, density and the locales from the system's configuration.
+ *
+ * Not from this process's own `Configuration`: Android delivers a change to each process after
+ * the call that made it returns, and copies the font scale and bold-text settings into its
+ * configuration asynchronously too (bold text measured 0.5 to 1 s behind on an API 34 emulator).
+ * Running apps get the change on that schedule.
  */
 internal class DeviceConditionsReader(
     private val instrumentation: Instrumentation,
 ) {
-    private val configuration: Configuration get() = instrumentation.context.resources.configuration
+    private val ownConfiguration: Configuration get() = instrumentation.context.resources.configuration
+
+    /**
+     * The system's current configuration (`IActivityManager.getConfiguration`, the call Settings'
+     * language picker starts from), which `cmd uimode`, `wm density` and the locale receiver update
+     * before they return. This process's own configuration if Android refuses the call.
+     */
+    private val configuration: Configuration
+        get() =
+            try {
+                val activityManager = Class.forName("android.app.ActivityManager").getMethod("getService").invoke(null)
+                Class.forName("android.app.IActivityManager").getMethod("getConfiguration").invoke(activityManager) as Configuration
+            } catch (_: ReflectiveOperationException) {
+                ownConfiguration
+            } catch (_: SecurityException) {
+                ownConfiguration
+            }
 
     /** Any of the three animation scales is not 0 (an unset scale is 1). */
     val animationsEnabled: Boolean
@@ -25,7 +47,8 @@ internal class DeviceConditionsReader(
 
     val darkMode: Boolean get() = configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
 
-    val fontScale: Float get() = configuration.fontScale
+    /** `font_scale`, what the host writes; Android copies it into the configuration later. */
+    val fontScale: Float get() = Settings.System.getFloat(instrumentation.context.contentResolver, Settings.System.FONT_SCALE, 1f)
 
     val densityDpi: Int get() = configuration.densityDpi
 
@@ -46,8 +69,15 @@ internal class DeviceConditionsReader(
 
     val colorInversion: Boolean? get() = secure(DISPLAY_INVERSION)?.let { it == 1 }
 
-    /** Bold text is a configuration field on API 31+; older devices have no such setting. */
-    val boldText: Boolean get() = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && configuration.fontWeightAdjustment > 0
+    /**
+     * Bold text (API 31+; older devices have no such setting): `font_weight_adjustment`, what the
+     * host writes, which Android copies into the configuration later; the system's configuration
+     * when the setting cannot be read.
+     */
+    val boldText: Boolean
+        get() =
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
+                (secure(FONT_WEIGHT_ADJUSTMENT)?.let { it > 0 } ?: (configuration.fontWeightAdjustment > 0))
 
     private fun global(name: String): Int = Settings.Global.getInt(instrumentation.context.contentResolver, name, 0)
 
@@ -65,6 +95,9 @@ internal class DeviceConditionsReader(
         /** `Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED` / `ACCESSIBILITY_DISPLAY_INVERSION_ENABLED`, hidden. */
         const val HIGH_TEXT_CONTRAST = "high_text_contrast_enabled"
         const val DISPLAY_INVERSION = "accessibility_display_inversion_enabled"
+
+        /** `Settings.Secure.FONT_WEIGHT_ADJUSTMENT` (API 31). */
+        const val FONT_WEIGHT_ADJUSTMENT = "font_weight_adjustment"
         val SCALES =
             listOf(
                 Settings.Global.WINDOW_ANIMATION_SCALE,

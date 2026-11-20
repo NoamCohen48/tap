@@ -72,9 +72,11 @@ wait for the UI where needed.
 
 ## Waiting for the change to land
 
-Android applies dark mode, font scale, density and the languages as configuration changes: a
-running app's activities are recreated unless it handles the change itself, so wait for what
-the test needs after changing one. Network switches take time to reach the app's connectivity
+`info()` reports a change as soon as the call returns, and the restored values as soon as you
+attach again. Android applies dark mode, font scale, density, the languages and bold text as
+configuration changes that reach each running app a little later: its activities are recreated
+unless it handles the change itself, so wait for what the test needs in the app after changing
+one. Network switches take time to reach the app's connectivity
 callbacks: wait for the app's own offline or online state. On some devices turning location on
 also shows Google Play services' "improve location accuracy" prompt.
 
