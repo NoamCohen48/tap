@@ -37,6 +37,7 @@ internal fun redactAppDeath(value: io.github.noamcohen48.tap.api.v1.AppDeath, re
         setPid(value.getPid())
         setAtEpochMs(value.getAtEpochMs())
         setExceptionClass(redactedString(value.getExceptionClass(), redact))
+        setMessage(redactedString(value.getMessage(), redact))
         setStackTrace(redactedString(value.getStackTrace(), redact))
         setWatched(value.getWatched())
         setHandled(value.getHandled())

@@ -98,9 +98,10 @@ Owner-approved agent surface (all under `tap-agent`):
 record list [-L]
 record start NAME
 record stop NAME
-record export NAME [--logs] [--json]
+record export NAME [--logs] [--json] [--details]
 record clean NAME
-history [--logs] [--json] [--from STEP|TIME] [--until STEP|TIME] [--limit N]
+history [--logs] [--json] [--details] [--from STEP|TIME] [--until STEP|TIME] [--limit N]
+history --last DURATION [--logs] [--json] [--details]
 ```
 
 Output defaults to readable stdout text; JSON is optional and callers redirect files. No
@@ -115,6 +116,23 @@ JSON artifacts through RPCs, never CLI subprocesses. SDK-only activity does not 
 steps. `agent_steps_expected` marks an agent-owned range; SDK-only/orphan reads explicitly lack
 its local intent. `evidence_complete` describes requested daemon evidence separately from the
 whole artifact's `complete`, which also requires any expected local intent.
+
+## Incident windows and independent deaths
+
+Owner-approved refinement: `--from`/`--until` timestamps and `--last 30s` read the entire
+retained window, not the duration of selected agent steps. Discover original archives even
+with no local intent or live attachment. `--last` fixes an end timestamp once and excludes
+other bounds. `--limit` only paginates high-level intent; partial intent is explicitly marked.
+Receipt time is common to lines, completed calls and independently observed deaths. Original
+RPC start/device times and monotonic clock identities remain visible, never inferred.
+
+Every new parsed crash/ANR is persisted into the connection activity archive outside the
+parser lock, with original attachment identity. It is included in all history/record-export
+presentation modes, independently of `--logs`. Known messages and available Java/native
+stacks are classified diagnostic fields, redacted before storage rather than discarded.
+`--details` expands text; JSON always contains retained details. Full ANR thread dumps are
+not supplied by this public source. Death follower/catch-up failure leaves an explicit gap.
+See [remaining debugging gaps](history-debugging-gaps.md) for what still cannot be recovered.
 
 ## Protected ranges
 
@@ -180,12 +198,17 @@ Regression coverage includes policy validation and live reload, global byte/age 
 protected ranges, incomplete hard-limit capture, late redaction, torn-tail recovery, restart,
 read snapshot eviction, original-id reads after release, typed control errors, late step-id
 association, client capture metadata, protected step partition rotation and offline export.
+Incident-window coverage includes no-step archive discovery, idle-period logs, inclusive/
+exclusive receipt bounds, completed long-running calls, independent crash/ANR text/JSON in
+all presentation modes, redacted diagnostic restart recovery, unavailable device-clock
+conversion, and intent-page limits that do not trim the evidence window.
 
 Verified after rebasing the durable-event and simplified-interface implementation onto the
 current main (including device events, toast history and release 0.2.0):
 
-- 683 JVM tests: host core, daemon, protocol and Kotlin SDK, with zero failures/skips.
-- 674 Python/agent tests passed, with four opt-in device checks skipped. The server commit
+- 685 JVM tests: host core, daemon, protocol and Kotlin SDK, with zero failures/skips;
+  the independent-death path also passed a targeted retained ReadLog RPC check after release.
+- 691 Python/agent tests passed, with four opt-in device checks skipped. The original server commit
   independently passed 659 Python/agent tests with those same four skips.
 - 643 Studio/watcher backend tests, 183 Studio browser tests and 39 watcher browser tests;
   both production browser builds passed.

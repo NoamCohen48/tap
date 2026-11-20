@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 import grpc
 
 from . import _gen as pb
-from ._proto import logged_event
+from ._proto import _json, logged_event
 from .client import mapped_errors
 from .models import LoggedEvent
 
@@ -94,8 +94,8 @@ class LogAction:
 
 @dataclass(frozen=True)
 class LogEntry:
-    """One entry of the device log: exactly one of ``line``, ``marker``, ``action`` and ``gap``
-    is set. ``str(entry)`` is the entry as one line of text, led by ``at`` in the local time zone
+    """One entry: exactly one of ``line``, ``marker``, ``action``, ``gap``, ``event`` or
+    ``death`` is set (the latter two belong to retained connection activity). ``str(entry)`` is the entry as one line of text, led by ``at`` in the local time zone
     (``MM-DD HH:MM:SS.mmm``, the clock of every other Tap record; the device's own clock can be far
     off); a line then has uid, pid, tid, priority, tag and message, like ``logcat -v threadtime``."""
 
@@ -103,8 +103,7 @@ class LogEntry:
     """1, 2, 3, … per attachment, in the order the server got the entries. Pass it as ``since``
     to read what came after."""
     at: float
-    """The server host's clock when it got the entry (Unix seconds), the clock of
-    ``LoggedEvent.at``."""
+    """The server host's receipt clock (Unix seconds); an RPC's original start is separate."""
     line: LogLine | None = None
     marker: str | None = None
     """The name given to ``DeviceLog.mark``."""
@@ -114,6 +113,10 @@ class LogEntry:
     missing: why."""
     event: LoggedEvent | None = None
     """A redacted SDK call, only present in a connection's retained event archive."""
+    death: dict | None = None
+    """An independently observed, redacted crash/ANR with original attachment identity."""
+    host_monotonic_ns: int = 0
+    """Host receipt time; comparable only within the capture's original clock identity."""
 
     def __str__(self) -> str:
         moment = datetime.datetime.fromtimestamp(self.at)
@@ -132,6 +135,10 @@ class LogEntry:
         if self.line is not None:
             letter = self.line.priority.letter if self.line.priority else "?"
             return f"{letter} {self.line.tag}: {self.line.message}"
+        if self.death is not None:
+            detail = self.death.get("death", {})
+            kind = "ANR" if detail.get("kind") == "KIND_ANR" else "CRASH"
+            return f"── {kind} {detail.get('package_name', '?')} (pid {detail.get('pid', '?')})"
         if self.event is not None:
             event = self.event
             call = event.command or event.app or event.device or {}
@@ -231,6 +238,8 @@ def _entry(entry: pb.LogEntry) -> LogEntry:
         action=action,
         gap=entry.gap if kind == "gap" else None,
         event=logged_event(entry.event) if kind == "event" else None,
+        death=_json(entry.death) if kind == "death" else None,
+        host_monotonic_ns=entry.host_monotonic_ns,
     )
 
 

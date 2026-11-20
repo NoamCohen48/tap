@@ -820,15 +820,19 @@ class Agent:
 
         return self._run(step)
 
-    def record(self, action: str, name: str | None = None, *, long: bool = False, logs: bool = False, as_json: bool = False) -> str:
+    def record(self, action: str, name: str | None = None, *, long: bool = False, logs: bool = False, as_json: bool = False, details: bool = False) -> str:
         """List, start, stop, export or clean a named protected recording."""
         from .history import record
-        return record(self, action, name, long=long, logs=logs, as_json=as_json)
+        return record(self, action, name, long=long, logs=logs, as_json=as_json, details=details)
 
-    def history(self, *, start: str | int | None = None, until: str | int | None = None, limit: int = 200, logs: bool = False, as_json: bool = False) -> str:
-        """Print retained activity, latest 200 by default; paginate by stable cursor or ISO time."""
+    def history(self, *, start: str | int | None = None, until: str | int | None = None, last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False, details: bool = False) -> str:
+        """Read retained activity and independent deaths; time bounds cover idle periods too.
+
+        ``last`` accepts a positive duration such as ``30s`` and excludes explicit bounds.
+        ``limit`` only paginates agent intent; ``details`` prints available redacted death stacks.
+        """
         from .history import history
-        return history(self, start=start, until=until, limit=limit, logs=logs, as_json=as_json)
+        return history(self, start=start, until=until, last=last, limit=limit, logs=logs, as_json=as_json, details=details)
 
     def _end_ended_histories(self) -> bool:
         """Stops each live step history whose held connection the server no longer has (an idle

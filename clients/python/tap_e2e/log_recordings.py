@@ -1,11 +1,13 @@
 """Daemon-owned protected log ranges, retained across detach and daemon restart."""
 from __future__ import annotations
 
+import math
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import asdict, dataclass
 from typing import TYPE_CHECKING, cast
 
 from . import proto as pb
+from ._history_deaths import death_document
 from .client import mapped_errors
 from .history import HistoryExport, log_entry_dict
 from .logs import LogEntries, LogPriority, _entry
@@ -173,34 +175,48 @@ class LogRecordings:
             data["step_history_unavailable"] = "agent intent requires the original local agent history"
         return HistoryExport(data)
 
-    def history(self, connection_id: str, *, logs: bool = False, step_ids: Iterable[str] = (),
+    def history(self, connection_id: str, *, logs: bool = False, step_ids: Iterable[str] | None = None,
                 from_time: float | None = None, until_time: float | None = None, timeout: float = 30) -> HistoryExport:
         """Export retained SDK calls for an original connection, optionally with device logs.
 
-        Call from script cleanup or a fresh client after release/restart. Ordinary retention
-        may have expired evidence; missing capture is explicit, not an empty successful result.
+        Call from script cleanup or a fresh client after release/restart. ``from_time`` is
+        inclusive and ``until_time`` exclusive, in finite host-receipt epoch seconds, for all
+        entry kinds. Calls that started earlier but completed in the window remain visible.
+        Independent crashes/ANRs and their redacted diagnostics are included without ``logs``.
+        ``step_ids=None`` includes all calls; an explicit empty collection includes no calls,
+        but never removes independent death evidence. Ordinary retention may have expired
+        evidence; missing capture is explicit, not an empty successful result.
         """
         if not connection_id:
             raise ValueError("history needs the original connection id")
+        for bound in (from_time, until_time):
+            if bound is not None and (isinstance(bound, bool) or not isinstance(bound, (int, float)) or not math.isfinite(bound)):
+                raise ValueError("history time bounds must be finite epoch seconds")
+        if from_time is not None and until_time is not None and until_time < from_time:
+            raise ValueError("until_time must not precede from_time")
         sources = [(archive, None) for archive in self.archives(connection_id, include_events=True, timeout=timeout)
             if archive.events or logs]
-        wanted = frozenset(step_ids)
+        wanted = frozenset(step_ids) if step_ids is not None else None
         def selected(entry: pb.LogEntry) -> bool:
-            if wanted and entry.HasField("event") and entry.event.HasField("step"):
-                return entry.event.step in wanted
-            if wanted and entry.HasField("action") and entry.action.HasField("step"):
+            # Receipt time is common to RPC completions, independent deaths and log lines.
+            at = entry.host_time_ms / 1000
+            if (from_time is not None and at < from_time) or (until_time is not None and at >= until_time):
+                return False
+            if wanted is not None and entry.HasField("event"):
+                return entry.event.HasField("step") and entry.event.step in wanted
+            if wanted is not None and entry.HasField("action") and entry.action.HasField("step"):
                 return entry.action.step in wanted
-            at = (entry.event.at_epoch_ms if entry.HasField("event") else entry.host_time_ms) / 1000
-            return (from_time is None or at >= from_time) and (until_time is None or at < until_time)
+            return True
         data = self._export_sources(connection_id, sources, logs=logs, timeout=timeout, select=selected)
-        if wanted or from_time is not None or until_time is not None:
-            data["range"] = {"step_ids": sorted(wanted), "from_time": from_time, "until_time": until_time}
+        if wanted is not None or from_time is not None or until_time is not None:
+            data["range"] = {"step_ids": sorted(wanted) if wanted is not None else None,
+                "from_time": from_time, "until_time": until_time, "clock": "host_receipt"}
         return HistoryExport(data)
 
     def _export_sources(self, connection_id: str, sources: Sequence[tuple[RetainedLog, str | None]], *, logs: bool, timeout: float,
                         select: Callable[[pb.LogEntry], bool] | None = None) -> dict:
         data = {"format": "tap-history/1", "connection_id": connection_id, "steps": [], "events": [],
-            "event_capture": [], "complete": bool(sources)}
+            "event_capture": [], "deaths": [], "complete": bool(sources)}
         if logs:
             data["log"] = {}
         for archive, recording in sources:
@@ -223,9 +239,13 @@ class LogRecordings:
                     if entry.event is not None:
                         event = entry.event.to_dict()
                         event["cursor"] = f"{archive.attached_device_id}:{entry.cursor}"
+                        event["received_at"] = log_entry_dict(entry)["at"]
+                        event["received_monotonic_ns"] = str(entry.host_monotonic_ns)
                         data["events"].append(event)
                         if entry.event.indeterminate:
                             data["complete"] = False
+                    elif entry.death is not None:
+                        data["deaths"].append(death_document(entry, connection_id, entries.clock_id))
                     elif entry.gap is not None:
                         capture.setdefault("gaps", []).append(log_entry_dict(entry))
             else:

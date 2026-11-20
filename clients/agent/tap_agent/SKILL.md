@@ -333,11 +333,12 @@ Activity is retained automatically; recording protects a named range of the same
 All these commands belong to `tap-agent`, not the daemon-admin `tap` CLI:
 
 ```sh
-tap-agent history [--logs] [--json] [--from STEP_OR_TIME] [--until STEP_OR_TIME] [--limit N]
+tap-agent history [--logs] [--json] [--details] [--from STEP_OR_TIME] [--until STEP_OR_TIME] [--limit N]
+tap-agent history --last 30s [--logs] [--json] [--details]
 tap-agent record list [-L]
 tap-agent record start NAME
 tap-agent record stop NAME
-tap-agent record export NAME [--logs] [--json]
+tap-agent record export NAME [--logs] [--json] [--details]
 tap-agent record clean NAME
 ```
 
@@ -346,6 +347,19 @@ if needed: no implicit file, standalone export command, history catalog/cleanup 
 or release-time export. History defaults to the latest 200 steps, oldest first. Bounds are
 stable positive step cursors or timezone-qualified ISO times, from inclusive/until exclusive.
 Use returned `next` with `--from`, or `older` with `--until`; cursors survive pruning.
+For an unexpected incident, use `history --last 30s --logs --details`. `--last` cannot combine
+with `--from`/`--until`. Time windows discover all retained archives, even without local steps
+or a live attachment; logs include idle periods, not only step durations. Step-page limits do
+not trim that evidence window. Bounds use host receipt time, not guessed device time.
+
+CRASH/ANR summaries and JSON `deaths` appear in every history/record-export presentation mode,
+independently of `--logs`. Redacted messages and available stacks survive release/restart;
+`--details` prints stacks, JSON always retains them. Missing stacks/source interruptions remain
+explicit. Do not mistake a historical death for the app's current state or infer causality.
+Query return values, full generic error context, transient accessibility-event streams and
+historical screenshots/media are not all automatically retained. Screenshots/capture and media
+need explicit collection; full ANR thread dumps may be inaccessible. Never claim an optional
+read flag can recover evidence that was not captured.
 
 `record start` protects steps, durable RPC events and the fixed attached-device log set from
 rolling eviction. Attach every desired device first; stop/start before using a new attachment.

@@ -8,6 +8,8 @@ same activity; an **export** reads it. Neither starts a second capture or replay
 ```sh
 tap-agent history
 tap-agent history --logs
+tap-agent history --last 30s --logs
+tap-agent history --last 5m --details --json > incident.json
 tap-agent history --json > history.json
 tap-agent history --from 120 --until 180 --limit 50
 tap-agent history --from 2026-11-17T09:00:00Z --until 2026-11-17T10:00:00Z --logs
@@ -25,6 +27,40 @@ row numbers or transient snapshot refs. Follow the returned `next` cursor with `
 Only actions and explicit waits are high-level steps; internal polls and diagnostic snapshots
 are not promoted into invented user intent.
 
+## Full time windows and background incidents
+
+`--last 30s` selects a fixed window ending when the command starts. It accepts durations such
+as `500ms`, `30s` or `5m`, and cannot be combined with `--from` or `--until`. Timestamp bounds
+and `--last` read **all retained activity in that window**, discovering original archives even
+when no agent step ran, no local history exists, or the original connection has been released.
+`--logs` reads the entire requested log window, including idle periods between or after steps.
+`--limit` paginates agent intent only; it does not shorten the requested background evidence
+window. A truncated intent page is explicitly marked, not called a complete whole-window export.
+
+Window selection uses the host's **receipt clock**, inclusive from/exclusive until. An RPC may
+have started before the window but completed inside it: JSON preserves its original `at` plus
+`received_at` and receipt monotonic time. Death entries preserve host observation time and
+original device time separately; delayed Android delivery is not guessed to be instantaneous.
+Step-cursor bounds resolve to the retained step's start time; an expired boundary is reported
+as unavailable rather than inventing its time. Without time bounds, default RPC presentation
+follows the step page; retained independent deaths are still included.
+
+## Crashes and ANRs
+
+Crashes and ANRs are independent durable observations, including background deaths with no
+active step and deaths of unwatched apps. They appear as explicit **CRASH** / **ANR** entries
+in text and a `deaths` array in JSON for history and named recording exports—with or without
+`--logs`, time filters or other presentation flags. Named range boundaries and retention still
+apply. The original attachment ID disambiguates reattachments of the same serial.
+
+Known diagnostic messages and available Java/native stacks are redacted before storage.
+Default text shows a compact summary; `--details` adds retained stack traces. JSON always
+contains available redacted details, so no verbose-capture mode had to be enabled before an
+unexpected incident. SDK equivalents are `render_text(details=True)` and
+`renderText(details = true)`. `stack_trace_available: false` means the source supplied no
+stack; full ANR thread dumps are not promised by the public logcat source. Interrupted death
+followers and failed catch-up reads leave explicit evidence gaps.
+
 ## Protect a range
 
 Attach every device you want included before starting:
@@ -36,6 +72,7 @@ tap-agent wait text=Receipt,pkg=com.shop
 tap-agent record stop checkout
 tap-agent release
 tap-agent record export checkout
+tap-agent record export checkout --details
 tap-agent record export checkout --logs --json > checkout.json
 ```
 
@@ -142,5 +179,23 @@ Use `history(original_connection_id, logs=True)` in Python or
 `history(originalConnectionId, logs = true)` in Kotlin for ordinary retained activity without
 a protected name. SDK-only recordings have RPC events but no fabricated agent steps. Both
 SDKs return `tap-history/1`; choosing text or JSON changes presentation, not capture fidelity.
+Python history accepts `from_time` / `until_time` as finite epoch seconds; Kotlin accepts
+`fromTime` / `untilTime` as `Instant` values. Both filter all entry kinds by host receipt time.
 Keep evidence/export failures separate from the script's original result, and never retry a
 mutation to repair a recording.
+
+## What cannot be recovered afterward
+
+History is not an unrestricted transcript. Successful query return values and generic human
+error output/driver last-state snapshots are not fully retained. Historical screenshots and
+hierarchies require explicit `screenshot` / `capture` artifacts; video/audio must start before
+the incident and be finalized separately. Transient accessibility-event observations are not
+a durable history stream yet. Full ANR thread dumps, inaccessible Android files and
+symbolication are outside the public death source's coverage. External app/device changes are
+not continuously observed just because Tap is attached.
+
+No flag can recover uncaptured, expired, inaccessible or intentionally withheld evidence.
+Marked secrets, clipboard data, unclassified binary payloads and unknown wire fields remain
+privacy exclusions. For deeper debugging, collect explicit artifacts/app logs and keep their
+privacy and capture prerequisites in mind; a complete retained snapshot is not proof that all
+possible diagnostic information existed.

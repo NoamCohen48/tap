@@ -30,6 +30,10 @@ class HistoryExport internal constructor(
     val logArchives: Map<String, RetainedLog> = emptyMap(),
     val evidenceComplete: Boolean = complete,
 ) : Artifact {
+    /** Independent redacted crashes/ANRs, including observations between SDK calls. */
+    val deaths: List<io.github.noamcohen48.tap.api.v1.RecordedAppDeath>
+        get() = eventCapture.flatMap { it.entries.mapNotNull { entry -> entry.death } }
+
     /** Standard proto3 JSON for calls, with exact string-encoded 64-bit values. */
     fun toJson(): String =
         buildJsonObject {
@@ -88,7 +92,13 @@ class HistoryExport internal constructor(
                             entry.event?.let { it.seq to "${capture.archive.attachedDeviceId}:${entry.cursor}" }
                         }
                     }.toMap()
-            putJsonArray("events") { events.forEach { add(historyEventJson(it, cursors[it.seq])) } }
+            val receipts = eventCapture.flatMap { it.entries }.mapNotNull { entry -> entry.event?.let { it.seq to entry } }.toMap()
+            putJsonArray("events") { events.forEach { add(historyEventJson(it, cursors[it.seq], receipts[it.seq])) } }
+            putJsonArray("deaths") {
+                eventCapture.forEach { capture ->
+                    capture.entries.filter { it.death != null }.forEach { add(historyDeathJson(capture, it)) }
+                }
+            }
             putJsonArray("event_capture") {
                 eventCapture.forEach { capture ->
                     add(
@@ -123,7 +133,10 @@ class HistoryExport internal constructor(
         }.toString()
 
     /** Human-readable chronological activity; log lines are observations, never inferred assertions. */
-    val text: String get() {
+    val text: String get() = renderText()
+
+    /** Include available redacted stack traces without changing stored capture fidelity. */
+    fun renderText(details: Boolean = false): String {
         val rows =
             events.map { event ->
                 val outcome =
@@ -136,7 +149,13 @@ class HistoryExport internal constructor(
                 val encoded = eventJson(event)
                 val call = encoded["command"] ?: encoded["app"] ?: encoded["device"]
                 event.atEpochMs to "${Instant.ofEpochMilli(event.atEpochMs)}  ${event.seq}  ${event.serial}  $call → $outcome"
-            } + logs.flatMap { (serial, entries) -> entries.map { it.at.toEpochMilli() to "$serial  $it" } }
+            } + logs.flatMap { (serial, entries) -> entries.map { it.at.toEpochMilli() to "$serial  $it" } } +
+                eventCapture.flatMap {
+                    it.entries
+                        .filter { entry ->
+                            entry.death != null
+                        }.flatMap { entry -> historyDeathRows(entry, details) }
+                }
         val lines = rows.sortedBy { it.first }.map { it.second }.toMutableList()
         (eventCapture.map { it.entries } + logs.values).forEach {
             if (it.captureError.isNotEmpty()) lines += "WARNING: ${it.captureError}"
@@ -161,6 +180,7 @@ class HistoryExport internal constructor(
 private fun historyEventJson(
     event: LoggedEvent,
     cursor: String?,
+    receipt: LogEntry?,
 ): JsonObject =
     buildJsonObject {
         put("seq", event.seq)
@@ -176,6 +196,10 @@ private fun historyEventJson(
         put("serial", event.serial)
         put("ok", !event.indeterminate && !event.hasError() && !event.hasFailure())
         cursor?.let { put("cursor", it) }
+        receipt?.let {
+            put("received_at", java.time.format.DateTimeFormatterBuilder().appendInstant(3).toFormatter().format(it.at))
+            put("received_monotonic_ns", it.hostMonotonicNs.toString())
+        }
         if (event.indeterminate) put("indeterminate", true)
         val raw = eventJson(event)
         for (key in listOf(

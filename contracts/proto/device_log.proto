@@ -12,6 +12,7 @@ syntax = "proto3";
 
 package tap.v1;
 
+import "command.proto";
 import "event_log.proto";
 
 option java_package = "io.github.noamcohen48.tap.api.v1";
@@ -117,11 +118,22 @@ message LogEntry {
     string gap = 6;
     // A redacted completed SDK call in a connection's event archive (not a device log).
     LoggedEvent event = 8;
+    // An independently observed crash/ANR; retained even when no SDK call is running.
+    RecordedAppDeath death = 9;
   }
   // The daemon's monotonic clock when it got the entry: the clock of
   // `LoggedEvent.started_monotonic_ns` and `VideoFrame.received_monotonic_ns`, comparable only
   // with values of the same daemon (`WatchLogResponse.clock_id`).
   int64 host_monotonic_ns = 7;
+}
+
+// Original attachment identity and structured crash/ANR evidence. Known string diagnostics
+// are redacted before persistence. LogEntry.host_time_ms is the observation's host receipt time;
+// death.at_epoch_ms is the original device clock, not a cross-device ordering key.
+message RecordedAppDeath {
+  string attached_device_id = 1;
+  string serial = 2;
+  AppDeath death = 3;
 }
 
 // One logcat line. A message of several lines arrives as several entries.

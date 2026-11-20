@@ -738,7 +738,7 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
             sensitive = sensitive or (op in ("set_text", "type_text") and getattr(message, op).sensitive)
         sensitive = sensitive or "Clipboard" in message.DESCRIPTOR.name
         for field, value in message.ListFields():
-            if (message.DESCRIPTOR.name in ("Error", "Failure") and field.name in ("message", "last_state")) or (message.DESCRIPTOR.name == "AppDeath" and field.name == "message"):
+            if message.DESCRIPTOR.name in ("Error", "Failure") and field.name in ("message", "last_state"):
                 result.ClearField(field.name)
             elif field.type == field.TYPE_STRING:
                 def redact(text):

@@ -61,7 +61,12 @@ readable text; as_json returns tap-history/1, logs adds retained device logs. Du
 survive release/restart; no live connection or standalone export tool is needed. record list
 prints names, long=true adds state/times/shared disk bytes; clean needs a stopped name.
 Missing intent, capture gaps and unknown outcomes stay explicit; never infer assertions or
-replay uncertain input. media_record is separate video/audio capture.
+replay uncertain input. For an unexpected incident use history(last="30s", logs=true,
+details=true): the entire retained window is read even with no agent steps or live attachment.
+last excludes start/until; step limits do not shorten window evidence. CRASH/ANR entries appear
+in every history/record-export mode; JSON retains available redacted diagnostics, details=true
+expands text stacks. Missing/inaccessible evidence cannot be recreated by a read flag.
+media_record is separate video/audio capture.
 Tools with events/expect_events parameters observe toast, window, content, click, scroll and
 text events, subscribing before input. Not every mutation supports them (scroll_until does not).
 expect_events=["toast:saved"] fails unless that event is observed within the budget, not proof
@@ -986,25 +991,28 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         long: Annotated[bool, Field(description="List only: timestamps, capture state and shared segment disk usage (-L).")] = False,
         logs: Annotated[bool, Field(description="Export only: include retained device logs.")] = False,
         as_json: Annotated[bool, Field(description="Export only: JSON rather than readable text. Returns data, never writes a file.")] = False,
+        details: Annotated[bool, Field(description="Export only: include redacted crash/ANR stack traces in text; JSON always retains them.")] = False,
         session: Session = "",
     ) -> CallToolResult:
         """List, start, stop, export or clean named protected ranges of automatic activity.
         Export does not stop capture. History/export share text and JSON rendering, durable events
         and optional logs. Capture gaps and unknown outcomes remain explicit. No replay."""
-        return await call(session, report=False, step=lambda a: a.record(action, name or None, long=long, logs=logs, as_json=as_json))
+        return await call(session, report=False, step=lambda a: a.record(action, name or None, long=long, logs=logs, as_json=as_json, details=details))
 
     @mcp.tool(name="history")
     async def history(
         start: Annotated[str, Field(description="Inclusive stable step cursor or ISO timestamp with timezone (--from); pages forward.")] = "",
         until: Annotated[str, Field(description="Exclusive step cursor or ISO timestamp with timezone.")] = "",
+        last: Annotated[str, Field(description="All retained activity in the last duration, e.g. 30s; excludes start/until.")] = "",
+        details: Annotated[bool, Field(description="Include redacted crash/ANR stack traces in text; JSON always retains them.")] = False,
         limit: Annotated[int, Field(ge=1, le=5000, description="Maximum steps, latest 200 by default; next/older positions support pagination.")] = 200,
-        logs: Annotated[bool, Field(description="Include retained device logs for the selected page.")] = False,
+        logs: Annotated[bool, Field(description="Include retained device logs throughout the requested window, including idle periods with no agent steps.")] = False,
         as_json: Annotated[bool, Field(description="JSON instead of readable text. Returns data, never writes a file.")] = False,
         session: Session = "",
     ) -> CallToolResult:
         """Show retained activity, not a catalog of internal history partitions. Stable step cursors
         survive rotation and cleanup. Known missing evidence and uncertain outcomes remain explicit."""
-        return await call(session, report=False, step=lambda a: a.history(start=start or None, until=until or None, limit=limit, logs=logs, as_json=as_json))
+        return await call(session, report=False, step=lambda a: a.history(start=start or None, until=until or None, last=last or None, limit=limit, logs=logs, as_json=as_json, details=details))
 
     return mcp
 

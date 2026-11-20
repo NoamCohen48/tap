@@ -1,4 +1,5 @@
 # ruff: noqa
+from . import command_pb2 as _command_pb2
 from . import event_log_pb2 as _event_log_pb2
 from google.protobuf.internal import containers as _containers
 from google.protobuf.internal import enum_type_wrapper as _enum_type_wrapper
@@ -71,7 +72,7 @@ class ReadLogResponse(_message.Message):
     def __init__(self, entries: _Optional[_Iterable[_Union[LogEntry, _Mapping]]] = ..., dropped: _Optional[int] = ..., capture_error: _Optional[str] = ..., clock_id: _Optional[str] = ...) -> None: ...
 
 class LogEntry(_message.Message):
-    __slots__ = ("cursor", "host_time_ms", "line", "marker", "action", "gap", "event", "host_monotonic_ns")
+    __slots__ = ("cursor", "host_time_ms", "line", "marker", "action", "gap", "event", "death", "host_monotonic_ns")
     CURSOR_FIELD_NUMBER: _ClassVar[int]
     HOST_TIME_MS_FIELD_NUMBER: _ClassVar[int]
     LINE_FIELD_NUMBER: _ClassVar[int]
@@ -79,6 +80,7 @@ class LogEntry(_message.Message):
     ACTION_FIELD_NUMBER: _ClassVar[int]
     GAP_FIELD_NUMBER: _ClassVar[int]
     EVENT_FIELD_NUMBER: _ClassVar[int]
+    DEATH_FIELD_NUMBER: _ClassVar[int]
     HOST_MONOTONIC_NS_FIELD_NUMBER: _ClassVar[int]
     cursor: int
     host_time_ms: int
@@ -87,8 +89,19 @@ class LogEntry(_message.Message):
     action: LogAction
     gap: str
     event: _event_log_pb2.LoggedEvent
+    death: RecordedAppDeath
     host_monotonic_ns: int
-    def __init__(self, cursor: _Optional[int] = ..., host_time_ms: _Optional[int] = ..., line: _Optional[_Union[LogLine, _Mapping]] = ..., marker: _Optional[str] = ..., action: _Optional[_Union[LogAction, _Mapping]] = ..., gap: _Optional[str] = ..., event: _Optional[_Union[_event_log_pb2.LoggedEvent, _Mapping]] = ..., host_monotonic_ns: _Optional[int] = ...) -> None: ...
+    def __init__(self, cursor: _Optional[int] = ..., host_time_ms: _Optional[int] = ..., line: _Optional[_Union[LogLine, _Mapping]] = ..., marker: _Optional[str] = ..., action: _Optional[_Union[LogAction, _Mapping]] = ..., gap: _Optional[str] = ..., event: _Optional[_Union[_event_log_pb2.LoggedEvent, _Mapping]] = ..., death: _Optional[_Union[RecordedAppDeath, _Mapping]] = ..., host_monotonic_ns: _Optional[int] = ...) -> None: ...
+
+class RecordedAppDeath(_message.Message):
+    __slots__ = ("attached_device_id", "serial", "death")
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    SERIAL_FIELD_NUMBER: _ClassVar[int]
+    DEATH_FIELD_NUMBER: _ClassVar[int]
+    attached_device_id: str
+    serial: str
+    death: _command_pb2.AppDeath
+    def __init__(self, attached_device_id: _Optional[str] = ..., serial: _Optional[str] = ..., death: _Optional[_Union[_command_pb2.AppDeath, _Mapping]] = ...) -> None: ...
 
 class LogLine(_message.Message):
     __slots__ = ("device_time_ms", "uid", "pid", "tid", "priority", "tag", "message", "packages")

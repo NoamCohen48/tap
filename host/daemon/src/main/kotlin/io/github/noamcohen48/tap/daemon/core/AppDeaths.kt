@@ -84,6 +84,11 @@ internal class AppDeaths(
             }
     }
 
+    /** Invoked outside the parser lock, once per observed crash/ANR, including unwatched apps. */
+    @Volatile internal var onRecord: (AppDeath) -> Unit = {}
+
+    @Volatile internal var onGap: (String) -> Unit = {}
+
     private val lock = Any()
     private val records = ArrayDeque<Record>()
     private var sequence = 0L
@@ -235,8 +240,11 @@ internal class AppDeaths(
                 val found = if (ended) records.firstOrNull { it.sequence == endedFor } else fresh(0)
                 found?.also { it.handled = true }
             } ?: return result
-        val replaced = result.error.code.name.removePrefix("ERR_")
-        val original = listOfNotNull(replaced, result.error.takeIf { it.hasDetail() }?.detail, result.error.takeIf { it.hasMessage() }?.message)
+        val replaced =
+            result.error.code.name
+                .removePrefix("ERR_")
+        val original =
+            listOfNotNull(replaced, result.error.takeIf { it.hasDetail() }?.detail, result.error.takeIf { it.hasMessage() }?.message)
         val what = if (ended) "the wait was ended ($replaced)" else "the command reported ${original.joinToString(": ")}"
         return result
             .toBuilder()
@@ -297,6 +305,7 @@ internal class AppDeaths(
             child?.destroyForcibly()
             child = null
         }
+        if (scope.isActive) runCatching { onGap("crash/ANR follower interrupted; observations may be missing") }
         return failures
     }
 
@@ -304,10 +313,13 @@ internal class AppDeaths(
     private suspend fun catchUp() {
         val since = sinceEpochSeconds?.times(1000)
         try {
-            withTimeoutOrNull(READ_TIMEOUT_MS) { adb.logcatEpoch(serial, BUFFERS, since, TAGS) }?.lineSequence()?.forEach(::ingest)
+            val captured = withTimeoutOrNull(READ_TIMEOUT_MS) { adb.logcatEpoch(serial, BUFFERS, since, TAGS) }
+            if (captured == null) runCatching { onGap("crash/ANR catch-up timed out; observations may be missing") }
+            captured?.lineSequence()?.forEach(::ingest)
         } catch (cancelled: CancellationException) {
             throw cancelled
         } catch (error: Exception) {
+            runCatching { onGap("crash/ANR catch-up failed; observations may be missing") }
             log("crash log of $serial unreadable: ${error.message}")
         }
     }
@@ -317,6 +329,7 @@ internal class AppDeaths(
         val (seconds, millis, pidText, tag, text) = parsed.destructured
         val atEpochMs = seconds.toLong() * 1000 + millis.padEnd(3, '0').take(3).toLong()
         val pid = pidText.toInt()
+        var observed: AppDeath? = null
         synchronized(lock) {
             if (!seen.add(line)) return
             if (seen.size > SEEN_LINES) seen.remove(seen.first())
@@ -326,18 +339,34 @@ internal class AppDeaths(
                     if (text.startsWith("FATAL EXCEPTION") || text.startsWith("Fatal signal")) stacks.remove(pid)
                     bounded(stacks, pid) { StringBuilder() }.appendBounded(text)
                 }
+
                 "DEBUG" -> {
                     if (text.startsWith("*** ***")) tombstones.remove(pid)
                     val (about, trace) = bounded(tombstones, pid) { null to StringBuilder() }
-                    val target = about ?: TOMBSTONE_PID.find(text)?.groupValues?.get(1)?.toIntOrNull()
+                    val target =
+                        about ?: TOMBSTONE_PID
+                            .find(text)
+                            ?.groupValues
+                            ?.get(1)
+                            ?.toIntOrNull()
                     tombstones[pid] = target to trace.appendBounded(text)
                 }
+
                 CRASH_TAG, ANR_TAG -> {
                     val death = parseEvent(tag, text) ?: return
                     val trace =
                         if (death.kind == AppDeath.Kind.KIND_CRASH) {
                             val java = stacks.remove(death.pid)?.toString()
-                            val native = tombstones.entries.firstOrNull { it.value.first == death.pid }?.also { tombstones.remove(it.key) }?.value?.second?.toString()
+                            val native =
+                                tombstones.entries
+                                    .firstOrNull { it.value.first == death.pid }
+                                    ?.also {
+                                        tombstones.remove(
+                                            it.key,
+                                        )
+                                    }?.value
+                                    ?.second
+                                    ?.toString()
                             listOfNotNull(java, native).joinToString("").trimEnd()
                         } else {
                             ""
@@ -358,9 +387,14 @@ internal class AppDeaths(
                         ),
                     )
                     if (records.size > MAX_RECORDS) records.removeFirst()
+                    observed = records.last().proto()
                     latest.value = sequence
                 }
             }
+        }
+        observed?.let { record ->
+            // A retention failure cannot replace an app/device operation's outcome.
+            runCatching { onRecord(record) }.onFailure { log("durable app-death capture failed; evidence is incomplete") }
         }
     }
 
@@ -389,7 +423,13 @@ internal class AppDeaths(
         if (tag == ANR_TAG) return Event(AppDeath.Kind.KIND_ANR, pid, process, "", fields.drop(4).joinToString(",").trim())
         val tail = if (fields.size >= 9 && fields.takeLast(2).all { it.trim().toIntOrNull() != null }) 3 else 2
         if (fields.size < 5 + tail) return null
-        return Event(AppDeath.Kind.KIND_CRASH, pid, process, fields[4].trim(), fields.subList(5, fields.size - tail).joinToString(",").trim())
+        return Event(
+            AppDeath.Kind.KIND_CRASH,
+            pid,
+            process,
+            fields[4].trim(),
+            fields.subList(5, fields.size - tail).joinToString(",").trim(),
+        )
     }
 
     private fun <K, V> bounded(

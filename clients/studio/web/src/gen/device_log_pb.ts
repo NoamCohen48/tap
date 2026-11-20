@@ -14,6 +14,8 @@
 
 import type { GenEnum, GenFile, GenMessage, GenService } from "@bufbuild/protobuf/codegenv2";
 import { enumDesc, fileDesc, messageDesc, serviceDesc } from "@bufbuild/protobuf/codegenv2";
+import type { AppDeath } from "./command_pb";
+import { file_command } from "./command_pb";
 import type { LoggedEvent } from "./event_log_pb";
 import { file_event_log } from "./event_log_pb";
 import type { Message } from "@bufbuild/protobuf";
@@ -22,7 +24,7 @@ import type { Message } from "@bufbuild/protobuf";
  * Describes the file device_log.proto.
  */
 export const file_device_log: GenFile = /*@__PURE__*/
-  fileDesc("ChBkZXZpY2VfbG9nLnByb3RvEgZ0YXAudjEihwMKDlJlYWRMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIWCgxhZnRlcl9jdXJzb3IYAyABKARIABIQCgZtYXJrZXIYBCABKAlIABIOCgR0YWlsGAUgASgNSAASFQoLbGFzdF9hY3Rpb24YBiABKAhIABIOCgZmb2xsb3cYByABKAgSEAoIcGFja2FnZXMYCCADKAkSKQoMbWluX3ByaW9yaXR5GAkgASgOMhMudGFwLnYxLkxvZ1ByaW9yaXR5EgwKBHRhZ3MYCiADKAkSGgoNbWVzc2FnZV9yZWdleBgLIAEoCUgBiAEBEhcKD2V4Y2x1ZGVfYWN0aW9ucxgMIAEoCBIRCgRzdGVwGA0gASgJSAKIAQESFgoJcmVjb3JkaW5nGA4gASgJSAOIAQFCBgoEZnJvbUIQCg5fbWVzc2FnZV9yZWdleEIHCgVfc3RlcEIMCgpfcmVjb3JkaW5nIm4KD1JlYWRMb2dSZXNwb25zZRIhCgdlbnRyaWVzGAEgAygLMhAudGFwLnYxLkxvZ0VudHJ5Eg8KB2Ryb3BwZWQYAiABKAQSFQoNY2FwdHVyZV9lcnJvchgDIAEoCRIQCghjbG9ja19pZBgEIAEoCSLgAQoITG9nRW50cnkSDgoGY3Vyc29yGAEgASgEEhQKDGhvc3RfdGltZV9tcxgCIAEoAxIfCgRsaW5lGAMgASgLMg8udGFwLnYxLkxvZ0xpbmVIABIQCgZtYXJrZXIYBCABKAlIABIjCgZhY3Rpb24YBSABKAsyES50YXAudjEuTG9nQWN0aW9uSAASDQoDZ2FwGAYgASgJSAASJAoFZXZlbnQYCCABKAsyEy50YXAudjEuTG9nZ2VkRXZlbnRIABIZChFob3N0X21vbm90b25pY19ucxgHIAEoA0IGCgRraW5kIqwBCgdMb2dMaW5lEhYKDmRldmljZV90aW1lX21zGAEgASgDEhAKA3VpZBgCIAEoDUgAiAEBEgsKA3BpZBgDIAEoDRILCgN0aWQYBCABKA0SJQoIcHJpb3JpdHkYBSABKA4yEy50YXAudjEuTG9nUHJpb3JpdHkSCwoDdGFnGAYgASgJEg8KB21lc3NhZ2UYByABKAkSEAoIcGFja2FnZXMYCCADKAlCBgoEX3VpZCKQAgoJTG9nQWN0aW9uEhEKCW9wZXJhdGlvbhgBIAEoCRITCgZ0YXJnZXQYAiABKAlIAIgBARIQCghmaW5pc2hlZBgDIAEoCBIUCgdvdXRjb21lGAQgASgJSAGIAQESGAoLZHVyYXRpb25fbXMYBSABKANIAogBARIXCgpyZXF1ZXN0X2lkGAYgASgDSAOIAQESGwoOZGV2aWNlX3RpbWVfbXMYByABKANIBIgBARIRCgRzdGVwGAggASgJSAWIAQFCCQoHX3RhcmdldEIKCghfb3V0Y29tZUIOCgxfZHVyYXRpb25fbXNCDQoLX3JlcXVlc3RfaWRCEQoPX2RldmljZV90aW1lX21zQgcKBV9zdGVwIlgKDk1hcmtMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIMCgRuYW1lGAMgASgJIiEKD01hcmtMb2dSZXNwb25zZRIOCgZjdXJzb3IYASABKAQiXgoQUmVkYWN0TG9nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIaChJhdHRhY2hlZF9kZXZpY2VfaWQYAiABKAkSEAoIcGF0dGVybnMYAyADKAkiEwoRUmVkYWN0TG9nUmVzcG9uc2UiNwoXTGlzdFJldGFpbmVkTG9nc1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkiPQoYTGlzdFJldGFpbmVkTG9nc1Jlc3BvbnNlEiEKBGxvZ3MYASADKAsyEy50YXAudjEuUmV0YWluZWRMb2cizQEKC1JldGFpbmVkTG9nEhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIOCgZzZXJpYWwYAyABKAkSEwoLbGFzdF9jdXJzb3IYBCABKAQSDgoGY2xvc2VkGAUgASgIEhUKDWNhcHR1cmVfZXJyb3IYBiABKAkSEAoIY2xvY2tfaWQYByABKAkSDgoGZXZlbnRzGAggASgIEhYKDnJldGFpbmVkX2J5dGVzGAkgASgEImQKGFN0YXJ0TG9nUmVjb3JkaW5nUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCRIMCgRuYW1lGAIgASgJEhwKFGFnZW50X3N0ZXBzX2V4cGVjdGVkGAMgASgIIkQKGVN0YXJ0TG9nUmVjb3JkaW5nUmVzcG9uc2USJwoJcmVjb3JkaW5nGAEgASgLMhQudGFwLnYxLkxvZ1JlY29yZGluZyInChdTdG9wTG9nUmVjb3JkaW5nUmVxdWVzdBIMCgRuYW1lGAEgASgJIkMKGFN0b3BMb2dSZWNvcmRpbmdSZXNwb25zZRInCglyZWNvcmRpbmcYASABKAsyFC50YXAudjEuTG9nUmVjb3JkaW5nIikKGURlbGV0ZUxvZ1JlY29yZGluZ1JlcXVlc3QSDAoEbmFtZRgBIAEoCSIcChpEZWxldGVMb2dSZWNvcmRpbmdSZXNwb25zZSIaChhMaXN0TG9nUmVjb3JkaW5nc1JlcXVlc3QiRQoZTGlzdExvZ1JlY29yZGluZ3NSZXNwb25zZRIoCgpyZWNvcmRpbmdzGAEgAygLMhQudGFwLnYxLkxvZ1JlY29yZGluZyKJAgoMTG9nUmVjb3JkaW5nEgwKBG5hbWUYASABKAkSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYAiABKAkSFQoNc3RhcnRlZF9hdF9tcxgDIAEoAxIaCg1zdG9wcGVkX2F0X21zGAQgASgDSACIAQESKQoGcmFuZ2VzGAUgAygLMhkudGFwLnYxLkxvZ1JlY29yZGluZ1JhbmdlEhAKCGNvbXBsZXRlGAYgASgIEhUKDWNhcHR1cmVfZXJyb3IYByABKAkSFgoOcmV0YWluZWRfYnl0ZXMYCCABKAQSHAoUYWdlbnRfc3RlcHNfZXhwZWN0ZWQYCSABKAhCEAoOX3N0b3BwZWRfYXRfbXMilQEKEUxvZ1JlY29yZGluZ1JhbmdlEhoKEmF0dGFjaGVkX2RldmljZV9pZBgBIAEoCRIOCgZzZXJpYWwYAiABKAkSFAoMYWZ0ZXJfY3Vyc29yGAMgASgEEhsKDnRocm91Z2hfY3Vyc29yGAQgASgESACIAQESDgoGZXZlbnRzGAUgASgIQhEKD190aHJvdWdoX2N1cnNvciq7AQoLTG9nUHJpb3JpdHkSHAoYTE9HX1BSSU9SSVRZX1VOU1BFQ0lGSUVEEAASGAoUTE9HX1BSSU9SSVRZX1ZFUkJPU0UQARIWChJMT0dfUFJJT1JJVFlfREVCVUcQAhIVChFMT0dfUFJJT1JJVFlfSU5GTxADEhUKEUxPR19QUklPUklUWV9XQVJOEAQSFgoSTE9HX1BSSU9SSVRZX0VSUk9SEAUSFgoSTE9HX1BSSU9SSVRZX0ZBVEFMEAYyjQUKEERldmljZUxvZ1NlcnZpY2USPAoHUmVhZExvZxIWLnRhcC52MS5SZWFkTG9nUmVxdWVzdBoXLnRhcC52MS5SZWFkTG9nUmVzcG9uc2UwARI6CgdNYXJrTG9nEhYudGFwLnYxLk1hcmtMb2dSZXF1ZXN0GhcudGFwLnYxLk1hcmtMb2dSZXNwb25zZRJACglSZWRhY3RMb2cSGC50YXAudjEuUmVkYWN0TG9nUmVxdWVzdBoZLnRhcC52MS5SZWRhY3RMb2dSZXNwb25zZRJYChFTdGFydExvZ1JlY29yZGluZxIgLnRhcC52MS5TdGFydExvZ1JlY29yZGluZ1JlcXVlc3QaIS50YXAudjEuU3RhcnRMb2dSZWNvcmRpbmdSZXNwb25zZRJVChBTdG9wTG9nUmVjb3JkaW5nEh8udGFwLnYxLlN0b3BMb2dSZWNvcmRpbmdSZXF1ZXN0GiAudGFwLnYxLlN0b3BMb2dSZWNvcmRpbmdSZXNwb25zZRJYChFMaXN0TG9nUmVjb3JkaW5ncxIgLnRhcC52MS5MaXN0TG9nUmVjb3JkaW5nc1JlcXVlc3QaIS50YXAudjEuTGlzdExvZ1JlY29yZGluZ3NSZXNwb25zZRJbChJEZWxldGVMb2dSZWNvcmRpbmcSIS50YXAudjEuRGVsZXRlTG9nUmVjb3JkaW5nUmVxdWVzdBoiLnRhcC52MS5EZWxldGVMb2dSZWNvcmRpbmdSZXNwb25zZRJVChBMaXN0UmV0YWluZWRMb2dzEh8udGFwLnYxLkxpc3RSZXRhaW5lZExvZ3NSZXF1ZXN0GiAudGFwLnYxLkxpc3RSZXRhaW5lZExvZ3NSZXNwb25zZUI0CiBpby5naXRodWIubm9hbWNvaGVuNDgudGFwLmFwaS52MUIORGV2aWNlTG9nUHJvdG9QAWIGcHJvdG8z", [file_event_log]);
+  fileDesc("ChBkZXZpY2VfbG9nLnByb3RvEgZ0YXAudjEihwMKDlJlYWRMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIWCgxhZnRlcl9jdXJzb3IYAyABKARIABIQCgZtYXJrZXIYBCABKAlIABIOCgR0YWlsGAUgASgNSAASFQoLbGFzdF9hY3Rpb24YBiABKAhIABIOCgZmb2xsb3cYByABKAgSEAoIcGFja2FnZXMYCCADKAkSKQoMbWluX3ByaW9yaXR5GAkgASgOMhMudGFwLnYxLkxvZ1ByaW9yaXR5EgwKBHRhZ3MYCiADKAkSGgoNbWVzc2FnZV9yZWdleBgLIAEoCUgBiAEBEhcKD2V4Y2x1ZGVfYWN0aW9ucxgMIAEoCBIRCgRzdGVwGA0gASgJSAKIAQESFgoJcmVjb3JkaW5nGA4gASgJSAOIAQFCBgoEZnJvbUIQCg5fbWVzc2FnZV9yZWdleEIHCgVfc3RlcEIMCgpfcmVjb3JkaW5nIm4KD1JlYWRMb2dSZXNwb25zZRIhCgdlbnRyaWVzGAEgAygLMhAudGFwLnYxLkxvZ0VudHJ5Eg8KB2Ryb3BwZWQYAiABKAQSFQoNY2FwdHVyZV9lcnJvchgDIAEoCRIQCghjbG9ja19pZBgEIAEoCSKLAgoITG9nRW50cnkSDgoGY3Vyc29yGAEgASgEEhQKDGhvc3RfdGltZV9tcxgCIAEoAxIfCgRsaW5lGAMgASgLMg8udGFwLnYxLkxvZ0xpbmVIABIQCgZtYXJrZXIYBCABKAlIABIjCgZhY3Rpb24YBSABKAsyES50YXAudjEuTG9nQWN0aW9uSAASDQoDZ2FwGAYgASgJSAASJAoFZXZlbnQYCCABKAsyEy50YXAudjEuTG9nZ2VkRXZlbnRIABIpCgVkZWF0aBgJIAEoCzIYLnRhcC52MS5SZWNvcmRlZEFwcERlYXRoSAASGQoRaG9zdF9tb25vdG9uaWNfbnMYByABKANCBgoEa2luZCJfChBSZWNvcmRlZEFwcERlYXRoEhoKEmF0dGFjaGVkX2RldmljZV9pZBgBIAEoCRIOCgZzZXJpYWwYAiABKAkSHwoFZGVhdGgYAyABKAsyEC50YXAudjEuQXBwRGVhdGgirAEKB0xvZ0xpbmUSFgoOZGV2aWNlX3RpbWVfbXMYASABKAMSEAoDdWlkGAIgASgNSACIAQESCwoDcGlkGAMgASgNEgsKA3RpZBgEIAEoDRIlCghwcmlvcml0eRgFIAEoDjITLnRhcC52MS5Mb2dQcmlvcml0eRILCgN0YWcYBiABKAkSDwoHbWVzc2FnZRgHIAEoCRIQCghwYWNrYWdlcxgIIAMoCUIGCgRfdWlkIpACCglMb2dBY3Rpb24SEQoJb3BlcmF0aW9uGAEgASgJEhMKBnRhcmdldBgCIAEoCUgAiAEBEhAKCGZpbmlzaGVkGAMgASgIEhQKB291dGNvbWUYBCABKAlIAYgBARIYCgtkdXJhdGlvbl9tcxgFIAEoA0gCiAEBEhcKCnJlcXVlc3RfaWQYBiABKANIA4gBARIbCg5kZXZpY2VfdGltZV9tcxgHIAEoA0gEiAEBEhEKBHN0ZXAYCCABKAlIBYgBAUIJCgdfdGFyZ2V0QgoKCF9vdXRjb21lQg4KDF9kdXJhdGlvbl9tc0INCgtfcmVxdWVzdF9pZEIRCg9fZGV2aWNlX3RpbWVfbXNCBwoFX3N0ZXAiWAoOTWFya0xvZ1JlcXVlc3QSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEgwKBG5hbWUYAyABKAkiIQoPTWFya0xvZ1Jlc3BvbnNlEg4KBmN1cnNvchgBIAEoBCJeChBSZWRhY3RMb2dSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEhoKEmF0dGFjaGVkX2RldmljZV9pZBgCIAEoCRIQCghwYXR0ZXJucxgDIAMoCSITChFSZWRhY3RMb2dSZXNwb25zZSI3ChdMaXN0UmV0YWluZWRMb2dzUmVxdWVzdBIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgBIAEoCSI9ChhMaXN0UmV0YWluZWRMb2dzUmVzcG9uc2USIQoEbG9ncxgBIAMoCzITLnRhcC52MS5SZXRhaW5lZExvZyLNAQoLUmV0YWluZWRMb2cSHAoUY2xpZW50X2Nvbm5lY3Rpb25faWQYASABKAkSGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAIgASgJEg4KBnNlcmlhbBgDIAEoCRITCgtsYXN0X2N1cnNvchgEIAEoBBIOCgZjbG9zZWQYBSABKAgSFQoNY2FwdHVyZV9lcnJvchgGIAEoCRIQCghjbG9ja19pZBgHIAEoCRIOCgZldmVudHMYCCABKAgSFgoOcmV0YWluZWRfYnl0ZXMYCSABKAQiZAoYU3RhcnRMb2dSZWNvcmRpbmdSZXF1ZXN0EhwKFGNsaWVudF9jb25uZWN0aW9uX2lkGAEgASgJEgwKBG5hbWUYAiABKAkSHAoUYWdlbnRfc3RlcHNfZXhwZWN0ZWQYAyABKAgiRAoZU3RhcnRMb2dSZWNvcmRpbmdSZXNwb25zZRInCglyZWNvcmRpbmcYASABKAsyFC50YXAudjEuTG9nUmVjb3JkaW5nIicKF1N0b3BMb2dSZWNvcmRpbmdSZXF1ZXN0EgwKBG5hbWUYASABKAkiQwoYU3RvcExvZ1JlY29yZGluZ1Jlc3BvbnNlEicKCXJlY29yZGluZxgBIAEoCzIULnRhcC52MS5Mb2dSZWNvcmRpbmciKQoZRGVsZXRlTG9nUmVjb3JkaW5nUmVxdWVzdBIMCgRuYW1lGAEgASgJIhwKGkRlbGV0ZUxvZ1JlY29yZGluZ1Jlc3BvbnNlIhoKGExpc3RMb2dSZWNvcmRpbmdzUmVxdWVzdCJFChlMaXN0TG9nUmVjb3JkaW5nc1Jlc3BvbnNlEigKCnJlY29yZGluZ3MYASADKAsyFC50YXAudjEuTG9nUmVjb3JkaW5nIokCCgxMb2dSZWNvcmRpbmcSDAoEbmFtZRgBIAEoCRIcChRjbGllbnRfY29ubmVjdGlvbl9pZBgCIAEoCRIVCg1zdGFydGVkX2F0X21zGAMgASgDEhoKDXN0b3BwZWRfYXRfbXMYBCABKANIAIgBARIpCgZyYW5nZXMYBSADKAsyGS50YXAudjEuTG9nUmVjb3JkaW5nUmFuZ2USEAoIY29tcGxldGUYBiABKAgSFQoNY2FwdHVyZV9lcnJvchgHIAEoCRIWCg5yZXRhaW5lZF9ieXRlcxgIIAEoBBIcChRhZ2VudF9zdGVwc19leHBlY3RlZBgJIAEoCEIQCg5fc3RvcHBlZF9hdF9tcyKVAQoRTG9nUmVjb3JkaW5nUmFuZ2USGgoSYXR0YWNoZWRfZGV2aWNlX2lkGAEgASgJEg4KBnNlcmlhbBgCIAEoCRIUCgxhZnRlcl9jdXJzb3IYAyABKAQSGwoOdGhyb3VnaF9jdXJzb3IYBCABKARIAIgBARIOCgZldmVudHMYBSABKAhCEQoPX3Rocm91Z2hfY3Vyc29yKrsBCgtMb2dQcmlvcml0eRIcChhMT0dfUFJJT1JJVFlfVU5TUEVDSUZJRUQQABIYChRMT0dfUFJJT1JJVFlfVkVSQk9TRRABEhYKEkxPR19QUklPUklUWV9ERUJVRxACEhUKEUxPR19QUklPUklUWV9JTkZPEAMSFQoRTE9HX1BSSU9SSVRZX1dBUk4QBBIWChJMT0dfUFJJT1JJVFlfRVJST1IQBRIWChJMT0dfUFJJT1JJVFlfRkFUQUwQBjKNBQoQRGV2aWNlTG9nU2VydmljZRI8CgdSZWFkTG9nEhYudGFwLnYxLlJlYWRMb2dSZXF1ZXN0GhcudGFwLnYxLlJlYWRMb2dSZXNwb25zZTABEjoKB01hcmtMb2cSFi50YXAudjEuTWFya0xvZ1JlcXVlc3QaFy50YXAudjEuTWFya0xvZ1Jlc3BvbnNlEkAKCVJlZGFjdExvZxIYLnRhcC52MS5SZWRhY3RMb2dSZXF1ZXN0GhkudGFwLnYxLlJlZGFjdExvZ1Jlc3BvbnNlElgKEVN0YXJ0TG9nUmVjb3JkaW5nEiAudGFwLnYxLlN0YXJ0TG9nUmVjb3JkaW5nUmVxdWVzdBohLnRhcC52MS5TdGFydExvZ1JlY29yZGluZ1Jlc3BvbnNlElUKEFN0b3BMb2dSZWNvcmRpbmcSHy50YXAudjEuU3RvcExvZ1JlY29yZGluZ1JlcXVlc3QaIC50YXAudjEuU3RvcExvZ1JlY29yZGluZ1Jlc3BvbnNlElgKEUxpc3RMb2dSZWNvcmRpbmdzEiAudGFwLnYxLkxpc3RMb2dSZWNvcmRpbmdzUmVxdWVzdBohLnRhcC52MS5MaXN0TG9nUmVjb3JkaW5nc1Jlc3BvbnNlElsKEkRlbGV0ZUxvZ1JlY29yZGluZxIhLnRhcC52MS5EZWxldGVMb2dSZWNvcmRpbmdSZXF1ZXN0GiIudGFwLnYxLkRlbGV0ZUxvZ1JlY29yZGluZ1Jlc3BvbnNlElUKEExpc3RSZXRhaW5lZExvZ3MSHy50YXAudjEuTGlzdFJldGFpbmVkTG9nc1JlcXVlc3QaIC50YXAudjEuTGlzdFJldGFpbmVkTG9nc1Jlc3BvbnNlQjQKIGlvLmdpdGh1Yi5ub2FtY29oZW40OC50YXAuYXBpLnYxQg5EZXZpY2VMb2dQcm90b1ABYgZwcm90bzM", [file_command, file_event_log]);
 
 /**
  * @generated from message tap.v1.ReadLogRequest
@@ -247,6 +249,14 @@ export type LogEntry = Message<"tap.v1.LogEntry"> & {
      */
     value: LoggedEvent;
     case: "event";
+  } | {
+    /**
+     * An independently observed crash/ANR; retained even when no SDK call is running.
+     *
+     * @generated from field: tap.v1.RecordedAppDeath death = 9;
+     */
+    value: RecordedAppDeath;
+    case: "death";
   } | { case: undefined; value?: undefined };
 
   /**
@@ -265,6 +275,37 @@ export type LogEntry = Message<"tap.v1.LogEntry"> & {
  */
 export const LogEntrySchema: GenMessage<LogEntry> = /*@__PURE__*/
   messageDesc(file_device_log, 2);
+
+/**
+ * Original attachment identity and structured crash/ANR evidence. Known string diagnostics
+ * are redacted before persistence. LogEntry.host_time_ms is the observation's host receipt time;
+ * death.at_epoch_ms is the original device clock, not a cross-device ordering key.
+ *
+ * @generated from message tap.v1.RecordedAppDeath
+ */
+export type RecordedAppDeath = Message<"tap.v1.RecordedAppDeath"> & {
+  /**
+   * @generated from field: string attached_device_id = 1;
+   */
+  attachedDeviceId: string;
+
+  /**
+   * @generated from field: string serial = 2;
+   */
+  serial: string;
+
+  /**
+   * @generated from field: tap.v1.AppDeath death = 3;
+   */
+  death?: AppDeath | undefined;
+};
+
+/**
+ * Describes the message tap.v1.RecordedAppDeath.
+ * Use `create(RecordedAppDeathSchema)` to create a new message.
+ */
+export const RecordedAppDeathSchema: GenMessage<RecordedAppDeath> = /*@__PURE__*/
+  messageDesc(file_device_log, 3);
 
 /**
  * One logcat line. A message of several lines arrives as several entries.
@@ -326,7 +367,7 @@ export type LogLine = Message<"tap.v1.LogLine"> & {
  * Use `create(LogLineSchema)` to create a new message.
  */
 export const LogLineSchema: GenMessage<LogLine> = /*@__PURE__*/
-  messageDesc(file_device_log, 3);
+  messageDesc(file_device_log, 4);
 
 /**
  * Something Tap did on the device: one entry when it starts, one when it finishes.
@@ -406,7 +447,7 @@ export type LogAction = Message<"tap.v1.LogAction"> & {
  * Use `create(LogActionSchema)` to create a new message.
  */
 export const LogActionSchema: GenMessage<LogAction> = /*@__PURE__*/
-  messageDesc(file_device_log, 4);
+  messageDesc(file_device_log, 5);
 
 /**
  * @generated from message tap.v1.MarkLogRequest
@@ -435,7 +476,7 @@ export type MarkLogRequest = Message<"tap.v1.MarkLogRequest"> & {
  * Use `create(MarkLogRequestSchema)` to create a new message.
  */
 export const MarkLogRequestSchema: GenMessage<MarkLogRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 5);
+  messageDesc(file_device_log, 6);
 
 /**
  * @generated from message tap.v1.MarkLogResponse
@@ -454,7 +495,7 @@ export type MarkLogResponse = Message<"tap.v1.MarkLogResponse"> & {
  * Use `create(MarkLogResponseSchema)` to create a new message.
  */
 export const MarkLogResponseSchema: GenMessage<MarkLogResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 6);
+  messageDesc(file_device_log, 7);
 
 /**
  * @generated from message tap.v1.RedactLogRequest
@@ -487,7 +528,7 @@ export type RedactLogRequest = Message<"tap.v1.RedactLogRequest"> & {
  * Use `create(RedactLogRequestSchema)` to create a new message.
  */
 export const RedactLogRequestSchema: GenMessage<RedactLogRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 7);
+  messageDesc(file_device_log, 8);
 
 /**
  * @generated from message tap.v1.RedactLogResponse
@@ -500,7 +541,7 @@ export type RedactLogResponse = Message<"tap.v1.RedactLogResponse"> & {
  * Use `create(RedactLogResponseSchema)` to create a new message.
  */
 export const RedactLogResponseSchema: GenMessage<RedactLogResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 8);
+  messageDesc(file_device_log, 9);
 
 /**
  * @generated from message tap.v1.ListRetainedLogsRequest
@@ -519,7 +560,7 @@ export type ListRetainedLogsRequest = Message<"tap.v1.ListRetainedLogsRequest"> 
  * Use `create(ListRetainedLogsRequestSchema)` to create a new message.
  */
 export const ListRetainedLogsRequestSchema: GenMessage<ListRetainedLogsRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 9);
+  messageDesc(file_device_log, 10);
 
 /**
  * @generated from message tap.v1.ListRetainedLogsResponse
@@ -536,7 +577,7 @@ export type ListRetainedLogsResponse = Message<"tap.v1.ListRetainedLogsResponse"
  * Use `create(ListRetainedLogsResponseSchema)` to create a new message.
  */
 export const ListRetainedLogsResponseSchema: GenMessage<ListRetainedLogsResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 10);
+  messageDesc(file_device_log, 11);
 
 /**
  * @generated from message tap.v1.RetainedLog
@@ -595,7 +636,7 @@ export type RetainedLog = Message<"tap.v1.RetainedLog"> & {
  * Use `create(RetainedLogSchema)` to create a new message.
  */
 export const RetainedLogSchema: GenMessage<RetainedLog> = /*@__PURE__*/
-  messageDesc(file_device_log, 11);
+  messageDesc(file_device_log, 12);
 
 /**
  * @generated from message tap.v1.StartLogRecordingRequest
@@ -626,7 +667,7 @@ export type StartLogRecordingRequest = Message<"tap.v1.StartLogRecordingRequest"
  * Use `create(StartLogRecordingRequestSchema)` to create a new message.
  */
 export const StartLogRecordingRequestSchema: GenMessage<StartLogRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 12);
+  messageDesc(file_device_log, 13);
 
 /**
  * @generated from message tap.v1.StartLogRecordingResponse
@@ -643,7 +684,7 @@ export type StartLogRecordingResponse = Message<"tap.v1.StartLogRecordingRespons
  * Use `create(StartLogRecordingResponseSchema)` to create a new message.
  */
 export const StartLogRecordingResponseSchema: GenMessage<StartLogRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 13);
+  messageDesc(file_device_log, 14);
 
 /**
  * @generated from message tap.v1.StopLogRecordingRequest
@@ -660,7 +701,7 @@ export type StopLogRecordingRequest = Message<"tap.v1.StopLogRecordingRequest"> 
  * Use `create(StopLogRecordingRequestSchema)` to create a new message.
  */
 export const StopLogRecordingRequestSchema: GenMessage<StopLogRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 14);
+  messageDesc(file_device_log, 15);
 
 /**
  * @generated from message tap.v1.StopLogRecordingResponse
@@ -677,7 +718,7 @@ export type StopLogRecordingResponse = Message<"tap.v1.StopLogRecordingResponse"
  * Use `create(StopLogRecordingResponseSchema)` to create a new message.
  */
 export const StopLogRecordingResponseSchema: GenMessage<StopLogRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 15);
+  messageDesc(file_device_log, 16);
 
 /**
  * @generated from message tap.v1.DeleteLogRecordingRequest
@@ -694,7 +735,7 @@ export type DeleteLogRecordingRequest = Message<"tap.v1.DeleteLogRecordingReques
  * Use `create(DeleteLogRecordingRequestSchema)` to create a new message.
  */
 export const DeleteLogRecordingRequestSchema: GenMessage<DeleteLogRecordingRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 16);
+  messageDesc(file_device_log, 17);
 
 /**
  * @generated from message tap.v1.DeleteLogRecordingResponse
@@ -707,7 +748,7 @@ export type DeleteLogRecordingResponse = Message<"tap.v1.DeleteLogRecordingRespo
  * Use `create(DeleteLogRecordingResponseSchema)` to create a new message.
  */
 export const DeleteLogRecordingResponseSchema: GenMessage<DeleteLogRecordingResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 17);
+  messageDesc(file_device_log, 18);
 
 /**
  * @generated from message tap.v1.ListLogRecordingsRequest
@@ -720,7 +761,7 @@ export type ListLogRecordingsRequest = Message<"tap.v1.ListLogRecordingsRequest"
  * Use `create(ListLogRecordingsRequestSchema)` to create a new message.
  */
 export const ListLogRecordingsRequestSchema: GenMessage<ListLogRecordingsRequest> = /*@__PURE__*/
-  messageDesc(file_device_log, 18);
+  messageDesc(file_device_log, 19);
 
 /**
  * @generated from message tap.v1.ListLogRecordingsResponse
@@ -737,7 +778,7 @@ export type ListLogRecordingsResponse = Message<"tap.v1.ListLogRecordingsRespons
  * Use `create(ListLogRecordingsResponseSchema)` to create a new message.
  */
 export const ListLogRecordingsResponseSchema: GenMessage<ListLogRecordingsResponse> = /*@__PURE__*/
-  messageDesc(file_device_log, 19);
+  messageDesc(file_device_log, 20);
 
 /**
  * @generated from message tap.v1.LogRecording
@@ -799,7 +840,7 @@ export type LogRecording = Message<"tap.v1.LogRecording"> & {
  * Use `create(LogRecordingSchema)` to create a new message.
  */
 export const LogRecordingSchema: GenMessage<LogRecording> = /*@__PURE__*/
-  messageDesc(file_device_log, 20);
+  messageDesc(file_device_log, 21);
 
 /**
  * @generated from message tap.v1.LogRecordingRange
@@ -836,7 +877,7 @@ export type LogRecordingRange = Message<"tap.v1.LogRecordingRange"> & {
  * Use `create(LogRecordingRangeSchema)` to create a new message.
  */
 export const LogRecordingRangeSchema: GenMessage<LogRecordingRange> = /*@__PURE__*/
-  messageDesc(file_device_log, 21);
+  messageDesc(file_device_log, 22);
 
 /**
  * @generated from enum tap.v1.LogPriority

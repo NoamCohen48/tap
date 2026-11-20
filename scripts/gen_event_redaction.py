@@ -59,9 +59,7 @@ def generate() -> dict[pathlib.Path, str]:
             f"    {type_name}.newBuilder().apply {{"]
         for field in messages[name].field:
             # Free-form diagnostic output is not necessary to preserve the outcome code.
-            if (short in {"Error", "Failure"} and field.name in {"message", "last_state"}) or (
-                short == "AppDeath" and field.name == "message"
-            ) or field.type == dp.FieldDescriptorProto.TYPE_BYTES:
+            if (short in {"Error", "Failure"} and field.name in {"message", "last_state"}) or field.type == dp.FieldDescriptorProto.TYPE_BYTES:
                 continue
             suffix = "".join(word[:1].upper() + word[1:] for word in field.name.split("_"))
             repeated = field.label == dp.FieldDescriptorProto.LABEL_REPEATED
