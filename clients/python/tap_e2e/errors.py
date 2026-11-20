@@ -11,10 +11,14 @@ from .models import AppDeath, ConditionPart, ElementSnapshot, ErrorCode, Failure
 
 if TYPE_CHECKING:
     from . import _gen as pb
+    from .scanning import ScanResult
 
 
 class TapError(Exception):
     """Base class for everything this package raises deliberately."""
+
+    scan_partial: ScanResult | None = None
+    """Detached partial observations when raised during a scan; otherwise None."""
 
 
 class SettingsRestorationError(TapError):

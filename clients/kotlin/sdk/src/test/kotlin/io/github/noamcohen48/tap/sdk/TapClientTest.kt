@@ -1315,6 +1315,97 @@ class TapClientTest {
     }
 
     @Test
+    fun `bounded scan collects overlapping viewports including final edge`() = runBlocking {
+        var scrolls = 0
+        fun row(value: String) = ElementSnapshot.newBuilder().setContentDescription(value).setText(value).build()
+        fakeDevices.executeResponder = { request ->
+            when {
+                request.command.hasSnapshot() -> CommandResult.newBuilder().setSnapshot(row("container")).build()
+                request.command.hasSnapshots() -> CommandResult.newBuilder().setSnapshots(
+                    io.github.noamcohen48.tap.api.v1.ElementSnapshotList.newBuilder()
+                        .addAllElements(if (scrolls == 0) listOf(row("a"), row("b")) else listOf(row("b"), row("c"))),
+                ).build()
+                request.command.hasScroll() -> {
+                    scrolls++
+                    CommandResult.newBuilder().setDone(Done.getDefaultInstance()).setScrollObservation(
+                        io.github.noamcohen48.tap.api.v1.ScrollObservation.newBuilder().setMovementValue(1).setEdgeValue(1),
+                    ).build()
+                }
+                else -> null
+            }
+        }
+        client().connect("scan").use { connection ->
+            tapScope {
+                val device = connection.attachDevice("emulator-5554")
+                try {
+                    val result = device.screen.element(res("list")).scan(
+                        res("row"), { requireNotNull(it.contentDescription) }, maxScrolls = 5, maxItems = 100, timeout = 5.seconds,
+                    )
+                    assertEquals(listOf("a", "b", "c"), result.observations.map { it.key })
+                    assertEquals(2, result.observations[1].seenInReads)
+                    assertEquals(ScanStopReason.EDGE_DETECTED, result.stopReason)
+                    assertEquals(1, result.scrolls)
+                    assertEquals(2, result.reads)
+                    assertEquals("NOT_GUARANTEED", result.coverage)
+                    val reads = fakeDevices.executeRequests.map { it.command }.filter { it.hasSnapshots() }
+                    assertTrue(reads.all { it.snapshots.selector == res("list").descendant(res("row")).proto })
+                    assertEquals(listOf("b", "c"), device.screen.elements(res("row")).texts())
+                    assertEquals(listOf("b", "c"), device.app("com.test").elements(res("row")).texts())
+                    assertEquals(res("row").inPackage("com.test").proto, fakeDevices.executeRequests.last().command.snapshots.selector)
+                } finally { device.detach() }
+            }
+        }
+    }
+
+    @Test
+    fun `bounded scan limits no progress collisions and command failures stay explicit`() = runBlocking {
+        var collide = false
+        var fail = false
+        fakeDevices.executeResponder = { request ->
+            when {
+                request.command.hasSnapshot() -> CommandResult.newBuilder().setSnapshot(ElementSnapshot.getDefaultInstance()).build()
+                request.command.hasSnapshots() -> CommandResult.newBuilder().setSnapshots(
+                    io.github.noamcohen48.tap.api.v1.ElementSnapshotList.newBuilder().addAllElements(
+                        List(if (collide) 2 else 1) { ElementSnapshot.newBuilder().setText("same").build() },
+                    ),
+                ).build()
+                request.command.hasScroll() && fail -> CommandResult.newBuilder().setError(
+                    io.github.noamcohen48.tap.api.v1.Error.newBuilder().setCode(ErrorCode.ERR_INDETERMINATE),
+                ).build()
+                else -> null
+            }
+        }
+        client().connect("scan").use { connection ->
+            tapScope {
+                val device = connection.attachDevice("emulator-5554")
+                try {
+                    val container = device.screen.element(res("list"))
+                    suspend fun scan(scrolls: Int = 5, items: Int = 100) = container.scan(
+                        res("row"), { requireNotNull(it.text) }, maxScrolls = scrolls, maxItems = items, timeout = 5.seconds,
+                    )
+                    assertEquals(ScanStopReason.NO_PROGRESS, scan().stopReason)
+                    assertEquals(ScanStopReason.SCROLL_LIMIT, scan(scrolls = 0).stopReason)
+                    assertEquals(ScanStopReason.ITEM_LIMIT, scan(items = 1).stopReason)
+                    collide = true
+                    val collision = assertFailsWith<IllegalArgumentException> { scan() }
+                    assertNotNull(collision.scanPartial)
+                    collide = false
+                    fail = true
+                    val error = assertFailsWith<CommandException> { scan() }
+                    assertEquals(ErrorCode.ERR_INDETERMINATE.toModel(), error.code)
+                    assertEquals(1, error.scanPartial!!.scrolls)
+                    assertEquals(1, error.scanPartial!!.observations.size)
+                    assertNull(error.scanPartial!!.stopReason)
+                    assertFailsWith<IllegalArgumentException> { scan(scrolls = -1) }
+                    assertFailsWith<IllegalArgumentException> {
+                        container.first().scan(res("row"), { it.text ?: "" }, 1, 10, 1.seconds)
+                    }
+                } finally { device.detach() }
+            }
+        }
+    }
+
+    @Test
     fun `scrollUntil scrolls until the target exists inside the container`() {
         runBlocking {
             var scrolls = 0

@@ -32,6 +32,89 @@ results.scroll_until(text("Wool socks"), timeout=30).tap()
 app.element(res("carousel")).swipe(UP)
 ```
 
+## Read a scrollable collection
+
+`scan` reads the currently exposed descendants, scrolls, and combines the observations. It
+starts **where the container is now**; it does not rewind to the top or guarantee every item.
+
+```python
+result = app.element(res("products")).scan(
+    res("product_title"),
+    key=lambda row: row.content_description,  # an app-provided, stable, unique product ID
+    max_scrolls=30,
+    max_items=500,
+    timeout=20,
+)
+for observation in result.observations:
+    print(observation.key, observation.last_snapshot.text)
+print(result.stop_reason, result.coverage)
+```
+
+Kotlin:
+
+```kotlin
+val result = app.element(res("products")).scan(
+    items = res("product_title"),
+    key = { requireNotNull(it.contentDescription) },
+    maxScrolls = 30,
+    maxItems = 500,
+    timeout = 20.seconds,
+)
+```
+
+The three budgets are mandatory and finite. `max_scrolls=0` reads without scrolling;
+`max_items` must be positive. Optional controls: `direction=DOWN`, `distance_percent=60`, and
+`no_progress_limit=2` (Kotlin: `distancePercent`, `noProgressLimit`). Picked `first()` / `at()`
+selectors are rejected. The container is checked for exactly one match before each collection
+read; these are sequential reads, not an atomic UI transaction or a scan-wide device lock.
+Avoid other callers changing the device during a scan.
+
+Keys must be non-null, hashable in Python, and stable across scrolls. Repeated keys across reads
+merge in first-observed order, keeping `first_snapshot`, `last_snapshot`, and `seen_in_reads`
+(Kotlin camelCase). Duplicate keys within a single read fail explicitly. Reused resource IDs,
+repeated labels, bounds and recycled node identities are generally **not** suitable keys. A bad
+key can still silently merge different rows seen in separate reads.
+
+`stop_reason` / `stopReason` explains the outcome:
+
+| Reason | Meaning |
+|---|---|
+| `EDGE_DETECTED` | Target-attributed accessibility evidence reported an edge; the resulting viewport was read |
+| `SCROLL_LIMIT` | The maximum number of scroll commands was used |
+| `ITEM_LIMIT` | The retained distinct-key budget was reached; this takes precedence over an edge |
+| `TIME_LIMIT` | The deadline expired between steps; a final viewport might not have been read |
+| `NO_PROGRESS` | Consecutive reads had the same ordered keys and visible bounds, without reported movement; **not** proof of an edge |
+
+The result includes successful collection-read counts (excluding container checks), attempted
+scroll-command counts, elapsed time, the last successful scroll evidence and warnings:
+`CONTENT_CHANGED` when a retained key's non-bounds state changed, `ITEMS_OMITTED` when the item
+cap excluded observations. No-progress detection ignores changing labels/state. Moving an old
+row without discovering a new key still counts as progress.
+
+`coverage` is always `NOT_GUARANTEED`, even at an edge. Virtualization, large jumps, starting
+midway, duplicate identities, inaccessible content and dataset changes can miss items. There
+are no hidden loading waits: wait for app-specific readiness before scanning. A list can appear
+stationary while loading more data. User key callbacks must return promptly; they are not
+preempted by the deadline.
+
+Every read uses the existing collection API (Python `app.elements(...).snapshots()` / Kotlin
+`app.elements(...).snapshots()`): at most 1000 nodes and 1 MiB per read, with an explicit error
+rather than truncation. Command failures propagate with their original type/code, including
+`INDETERMINATE`; never retry the mutation. Partial observations are attached as
+`exception.scan_partial` in Python or the `Throwable.scanPartial` extension in Kotlin, with a
+null stop reason. Cancellation remains cancellation. The container stays where scanning stopped.
+
+### Evidence from one scroll
+
+`scroll()` now returns `ScrollResult`: independent `movement` (`MOVED`, `UNCHANGED`, `UNKNOWN`)
+and `edge` (`REACHED`, `NOT_REACHED`, `UNKNOWN`). The final scroll can move **and** reach an edge.
+Only target-attributed events support evidence. Missing events and older drivers return unknown,
+not an end. The current driver reports movement for nonzero directional event deltas on API 28+;
+zero/missing deltas (including Android's unset -1) remain unknown, not unchanged. Edge evidence
+uses usable reported offset/max pairs and describes only that moment. Zero max ranges and item
+indices alone stay unknown: the last row can be partly visible, or the layout reversed. It does
+not establish dataset completeness.
+
 ## Counted taps and timed presses
 
 ```python
@@ -115,7 +198,8 @@ MCP's `tap` takes `outside_panel` and `allow_reach_below`.
 ## Wait for the effect
 
 A gesture returns when Android accepted the injected input, not when the app zoomed, dropped
-or scrolled: nothing says whether content moved. Wait for what the gesture was meant to do:
+or scrolled. Scroll evidence is best-effort, not application-effect verification. Wait for what
+the gesture was meant to do:
 
 ```python
 app.element(res("card")).drag_to(res("done_column"))

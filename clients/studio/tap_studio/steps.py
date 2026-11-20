@@ -291,7 +291,8 @@ def _action(device: Device, action: studio.ActionStep, secret_value: str | None)
     timeout = _seconds(command)
     wait = device.screen.wait(Selector.from_proto(action.wait.wait_visible.selector), _seconds(action.wait))
     element = wait.one() if action.wait.wait_visible.exactly_one else wait.visible()
-    perform: dict[str, Callable[[], None]] = {
+    # Gesture methods may return detached observations; replay intentionally ignores them.
+    perform: dict[str, Callable[[], object]] = {
         "tap": lambda: element.tap(timeout),
         "long_tap": lambda: element.long_tap(timeout),
         "multi_tap": lambda: element.tap(timeout, count=message.count, interval=message.interval_ms / 1000 if message.HasField("interval_ms") else 0.1),

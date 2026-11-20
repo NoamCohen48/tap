@@ -24,6 +24,9 @@ class Screen internal constructor(
     /** A lazy element: [selector] as is, matched in every visible window. Performs no I/O. */
     fun element(selector: Selector): Element = Element(device, selector)
 
+    /** Lazy read-only collection in all visible windows, with no implicit scrolling. */
+    fun elements(selector: Selector): Elements = Elements(device, selector)
+
     /** A wait on [selector] in every visible window. */
     fun await(
         selector: Selector,

@@ -72,6 +72,9 @@ class App internal constructor(
     /** A lazy element: [selector] restricted to this package's nodes. Performs no I/O. */
     fun element(selector: Selector): Element = Element(device, selector.inPackage(packageName))
 
+    /** Lazy read-only collection restricted to this package, with no implicit scrolling. */
+    fun elements(selector: Selector): Elements = Elements(device, selector.inPackage(packageName))
+
     /** A wait on [selector] restricted to this package's nodes. */
     fun await(
         selector: Selector,
@@ -129,8 +132,7 @@ class App internal constructor(
     ): AppDeath = expectedDeath(device, packageName, kind, timeout, "App.expectDeath", block)
 
     /** Whether the package is installed. */
-    suspend fun isInstalled(): Boolean =
-        call(null) { it.isInstalled(IsInstalledRequest.newBuilder().setApp(target).build()) }.installed
+    suspend fun isInstalled(): Boolean = call(null) { it.isInstalled(IsInstalledRequest.newBuilder().setApp(target).build()) }.installed
 
     /**
      * `adb install -r -t` of [apk], verified. [apk] is a file on *this* machine: its bytes are

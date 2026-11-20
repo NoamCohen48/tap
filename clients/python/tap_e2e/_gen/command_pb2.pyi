@@ -948,8 +948,33 @@ class NarrowingPart(_message.Message):
     near_misses: _containers.RepeatedScalarFieldContainer[str]
     def __init__(self, alone: _Optional[int] = ..., without: _Optional[int] = ..., near_misses: _Optional[_Iterable[str]] = ...) -> None: ...
 
+class ScrollObservation(_message.Message):
+    __slots__ = ("movement", "edge")
+    class Movement(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+        __slots__ = ()
+        MOVEMENT_UNSPECIFIED: _ClassVar[ScrollObservation.Movement]
+        MOVEMENT_MOVED: _ClassVar[ScrollObservation.Movement]
+        MOVEMENT_UNCHANGED: _ClassVar[ScrollObservation.Movement]
+    MOVEMENT_UNSPECIFIED: ScrollObservation.Movement
+    MOVEMENT_MOVED: ScrollObservation.Movement
+    MOVEMENT_UNCHANGED: ScrollObservation.Movement
+    class Edge(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
+        __slots__ = ()
+        EDGE_UNSPECIFIED: _ClassVar[ScrollObservation.Edge]
+        EDGE_REACHED: _ClassVar[ScrollObservation.Edge]
+        EDGE_NOT_REACHED: _ClassVar[ScrollObservation.Edge]
+    EDGE_UNSPECIFIED: ScrollObservation.Edge
+    EDGE_REACHED: ScrollObservation.Edge
+    EDGE_NOT_REACHED: ScrollObservation.Edge
+    MOVEMENT_FIELD_NUMBER: _ClassVar[int]
+    EDGE_FIELD_NUMBER: _ClassVar[int]
+    movement: ScrollObservation.Movement
+    edge: ScrollObservation.Edge
+    def __init__(self, movement: _Optional[_Union[ScrollObservation.Movement, str]] = ..., edge: _Optional[_Union[ScrollObservation.Edge, str]] = ...) -> None: ...
+
 class CommandResult(_message.Message):
-    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications", "outside_touch", "snapshots", "toast_history")
+    __slots__ = ("scroll_observation", "duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications", "outside_touch", "snapshots", "toast_history")
+    SCROLL_OBSERVATION_FIELD_NUMBER: _ClassVar[int]
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_GENERATION_FIELD_NUMBER: _ClassVar[int]
@@ -967,6 +992,7 @@ class CommandResult(_message.Message):
     OUTSIDE_TOUCH_FIELD_NUMBER: _ClassVar[int]
     SNAPSHOTS_FIELD_NUMBER: _ClassVar[int]
     TOAST_HISTORY_FIELD_NUMBER: _ClassVar[int]
+    scroll_observation: ScrollObservation
     duration_ms: int
     request_id: int
     session_generation: int
@@ -984,4 +1010,4 @@ class CommandResult(_message.Message):
     outside_touch: OutsideTouch
     snapshots: ElementSnapshotList
     toast_history: ToastHistory
-    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ..., outside_touch: _Optional[_Union[OutsideTouch, _Mapping]] = ..., snapshots: _Optional[_Union[ElementSnapshotList, _Mapping]] = ..., toast_history: _Optional[_Union[ToastHistory, _Mapping]] = ...) -> None: ...
+    def __init__(self, scroll_observation: _Optional[_Union[ScrollObservation, _Mapping]] = ..., duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ..., outside_touch: _Optional[_Union[OutsideTouch, _Mapping]] = ..., snapshots: _Optional[_Union[ElementSnapshotList, _Mapping]] = ..., toast_history: _Optional[_Union[ToastHistory, _Mapping]] = ...) -> None: ...

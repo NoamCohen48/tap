@@ -3,27 +3,32 @@ package io.github.noamcohen48.tap.driver
 import android.accessibilityservice.AccessibilityService
 import android.app.Instrumentation
 import android.graphics.Point
+import android.os.Build
+import android.os.SystemClock
 import android.view.Display
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
+import io.github.noamcohen48.tap.api.v1.Direction
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.MultiTap
-import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.OpenSystemPanel
 import io.github.noamcohen48.tap.api.v1.OutsideTouch
-import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
 import io.github.noamcohen48.tap.api.v1.Pinch
 import io.github.noamcohen48.tap.api.v1.PinchDirection
 import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.Scroll
+import io.github.noamcohen48.tap.api.v1.ScrollObservation
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.SystemPanel
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.driver.engine.CommandContext
 import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.DEFAULT_GESTURE_PERCENT
 import io.github.noamcohen48.tap.protocol.DEFAULT_TAP_INTERVAL_MS
+import io.github.noamcohen48.tap.protocol.ScrollEvidence
 import io.github.noamcohen48.tap.protocol.multiTapDurationMs
 
 /**
@@ -40,8 +45,10 @@ internal class GestureCommands(
     private val visibleBounds: VisibleBounds,
     private val outsidePanel: OutsidePanel,
     private val faults: FaultHooks,
+    private val events: ToastWatcher,
 ) {
     private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
+
     /**
      * Taps the one matching node's visible centre, whatever its state: what the app does with it
      * is for the test. On the default display the touch goes to the point the occlusion check
@@ -66,17 +73,24 @@ internal class GestureCommands(
         if (element.displayId == Display.DEFAULT_DISPLAY) pointer.longTap(point) else element.longClick()
     }
 
-    fun multiTap(context: CommandContext, command: MultiTap, target: CompiledSelector) {
+    fun multiTap(
+        context: CommandContext,
+        command: MultiTap,
+        target: CompiledSelector,
+    ) {
         val interval = if (command.hasIntervalMs()) command.intervalMs else DEFAULT_TAP_INTERVAL_MS
         gesture(context, target, ::center, multiTapDurationMs(command.count, interval), true) { _, point ->
             pointer.multiTap(point, command.count, interval)
         }
     }
 
-    fun hold(context: CommandContext, command: TimedPress, target: CompiledSelector) =
-        gesture(context, target, ::center, command.durationMs, true) { _, point ->
-            pointer.hold(point, command.durationMs)
-        }
+    fun hold(
+        context: CommandContext,
+        command: TimedPress,
+        target: CompiledSelector,
+    ) = gesture(context, target, ::center, command.durationMs, true) { _, point ->
+        pointer.hold(point, command.durationMs)
+    }
 
     /**
      * One tap outside the panel that holds the one matching node ([OutsidePanel]). The node only
@@ -96,7 +110,12 @@ internal class GestureCommands(
             val placement = outsidePanel.place(element.accessibilityNodeInfo, command.allowReachBelow)
             context.markMutationStarted()
             pointer.tap(placement.point)
-            return OutsideTouch.newBuilder().setX(placement.point.x).setY(placement.point.y).setPanel(placement.description).build()
+            return OutsideTouch
+                .newBuilder()
+                .setX(placement.point.x)
+                .setY(placement.point.y)
+                .setPanel(placement.description)
+                .build()
         } finally {
             element.recycle()
         }
@@ -181,18 +200,50 @@ internal class GestureCommands(
         element.swipe(uiDirection(command.direction), fraction(distance))
     }
 
-    /**
-     * One scroll gesture across the element, whatever its state. UiAutomator's own "can scroll
-     * further" guess is not reported: whether content moved is for the test to observe.
-     */
+    /** Same input as before; only source-attributed events can contribute scroll evidence. */
     fun scroll(
         context: CommandContext,
         command: Scroll,
         target: CompiledSelector,
-    ) = gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element, _ ->
-        val distance = if (command.hasDistancePercent()) command.distancePercent else DEFAULT_GESTURE_PERCENT
-        element.scroll(uiDirection(command.direction), fraction(distance))
-        Unit
+    ): ScrollObservation {
+        val evidence = ScrollEvidence(command.direction)
+        gesture(context, target, { TouchPoints.scrollStart(it, uiDirection(command.direction)) }) { element, _ ->
+            val node = element.accessibilityNodeInfo
+            val since = SystemClock.uptimeMillis()
+            val vertical = command.direction == Direction.DIR_UP || command.direction == Direction.DIR_DOWN
+            events.observeScroll({ event ->
+                if (event.eventTime >= since) {
+                    // Evidence failure must not crash the shared accessibility callback thread.
+                    val source =
+                        try {
+                            event.source
+                        } catch (_: RuntimeException) {
+                            null
+                        }
+                    try {
+                        if (source != null && source == node) {
+                            val delta =
+                                if (Build.VERSION.SDK_INT >= 28) {
+                                    if (vertical) event.scrollDeltaY else event.scrollDeltaX
+                                } else {
+                                    0
+                                }
+                            evidence.observe(
+                                if (vertical) event.scrollY else event.scrollX,
+                                if (vertical) event.maxScrollY else event.maxScrollX,
+                                delta,
+                            )
+                        }
+                    } finally {
+                        source?.recycle()
+                    }
+                }
+            }) {
+                val distance = if (command.hasDistancePercent()) command.distancePercent else DEFAULT_GESTURE_PERCENT
+                element.scroll(uiDirection(command.direction), fraction(distance))
+            }
+        }
+        return evidence.snapshot()
     }
 
     /**
@@ -244,6 +295,7 @@ internal class GestureCommands(
      * scroll, fling, pinch) refresh the node once more, so a node that goes stale in between is
      * `STALE_DURING_COMMAND`.
      */
+
     /**
      * Where [PointerGestures] puts the finger down: the node's visible centre, as `UiObject2`
      * computes it but clipped to its window's real frame ([VisibleBounds]). The gestures that
@@ -269,7 +321,10 @@ internal class GestureCommands(
                 throw CommandFailure(ErrorCode.ERR_UNSUPPORTED, message = "Timed presses and counted taps require the default display")
             }
             if (minimumDurationMs > context.remainingMs()) {
-                throw CommandFailure(ErrorCode.ERR_DEADLINE_EXCEEDED, message = "The touch sequence does not fit in the remaining command deadline; no input was sent")
+                throw CommandFailure(
+                    ErrorCode.ERR_DEADLINE_EXCEEDED,
+                    message = "The touch sequence does not fit in the remaining command deadline; no input was sent",
+                )
             }
             // Atomically refuses on cancel, deadline, or a poisoned session; otherwise
             // cancellation is ignored from here on and the gesture result is definitive.

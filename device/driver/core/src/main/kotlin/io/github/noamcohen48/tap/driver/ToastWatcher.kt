@@ -33,6 +33,23 @@ internal class ToastWatcher(
     val history = ToastEventBuffer()
     private val lock = Object()
     private val recent = ArrayDeque<Seen>()
+    private var scrollObserver: ((AccessibilityEvent) -> Unit)? = null
+
+    /** Shares the sole UiAutomation listener; callbacks and removal are serialized. */
+    fun <T> observeScroll(
+        observer: (AccessibilityEvent) -> Unit,
+        action: () -> T,
+    ): T {
+        synchronized(lock) {
+            check(scrollObserver == null)
+            scrollObserver = observer
+        }
+        try {
+            return action()
+        } finally {
+            synchronized(lock) { scrollObserver = null }
+        }
+    }
 
     init {
         instrumentation.uiAutomation.setOnAccessibilityEventListener(::onEvent)
@@ -47,6 +64,10 @@ internal class ToastWatcher(
 
     private fun onEvent(event: AccessibilityEvent) {
         observe(event)
+        if (event.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            synchronized(lock) { scrollObserver?.invoke(event) }
+            return
+        }
         if (event.eventType != AccessibilityEvent.TYPE_NOTIFICATION_STATE_CHANGED) return
         if (event.parcelableData is Notification) return
         val seen = Seen(event.text.joinToString(""), event.packageName?.toString().orEmpty(), SystemClock.uptimeMillis())

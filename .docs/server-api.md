@@ -94,6 +94,27 @@ persistent handle or atomic-UI guarantee. Staleness fails the entire read with
 over 1048576 serialized bytes returns `PAYLOAD_TOO_LARGE`, never a truncated list. The timeout
 bounds the read rather than waiting for content to appear.
 
+## Scroll observations
+
+`CommandResult.scroll_observation` (field 21, outside the outcome oneof) optionally accompanies
+scroll's existing `done` outcome. `movement` is UNKNOWN / MOVED / UNCHANGED; `edge` is UNKNOWN /
+REACHED / NOT_REACHED (zero is unknown for both). Older drivers omit it; SDKs map missing or
+unrecognized evidence to unknown. No new command or mandatory capability is needed.
+
+The driver shares the accessibility listener with toast capture and observes only scroll events
+whose source equals the command-local resolved target and whose event timestamp is not older
+than observation start. The latest usable directional offset/max establishes edge evidence;
+nonzero API 28+ directional deltas (except Android's unset -1) establish movement. Zero/missing
+deltas never establish unchanged. Zero max offsets remain unknown; item indices alone are not
+used because reverse layouts and partial rows do not establish a physical edge. Nothing is inferred
+from UiAutomator's Boolean, absent events or missing scroll actions. Evidence is best-effort:
+event delivery can lag; nested/unattributable sources are ignored. Input mechanics are unchanged.
+
+Python/Kotlin `Element.scan` compose existing snapshots and scroll commands on the client,
+with mandatory item/scroll/time budgets, explicit deduplication keys and stop reasons. They
+start at the current position, collect the final observed viewport, and never promise dataset
+completeness. See `bounded-scanning.md` and the public gesture guide.
+
 ## Counted touch commands
 
 `Command.multi_tap` (field 47, `MultiTap`) and `Command.hold` (field 48, `TimedPress`) are

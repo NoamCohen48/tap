@@ -9,8 +9,6 @@ import io.github.noamcohen48.tap.api.v1.Exists
 import io.github.noamcohen48.tap.api.v1.Fling
 import io.github.noamcohen48.tap.api.v1.LongTap
 import io.github.noamcohen48.tap.api.v1.MultiTap
-import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
-import io.github.noamcohen48.tap.api.v1.TimedPress
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PerformImeAction
 import io.github.noamcohen48.tap.api.v1.Pinch
@@ -21,6 +19,8 @@ import io.github.noamcohen48.tap.api.v1.SetText
 import io.github.noamcohen48.tap.api.v1.Snapshot
 import io.github.noamcohen48.tap.api.v1.Swipe
 import io.github.noamcohen48.tap.api.v1.Tap
+import io.github.noamcohen48.tap.api.v1.TapOutsidePanel
+import io.github.noamcohen48.tap.api.v1.TimedPress
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.TimeSource
@@ -81,7 +81,11 @@ class Element internal constructor(
      * 50 ms press, must fit in 30 seconds and the remaining [timeout]. Resolves once, never
      * retries; does not promise app-specific multi-click recognition. Single tap is unchanged.
      */
-    suspend fun tap(count: Int, interval: Duration = 100.milliseconds, timeout: Duration? = null) {
+    suspend fun tap(
+        count: Int,
+        interval: Duration = 100.milliseconds,
+        timeout: Duration? = null,
+    ) {
         val gap = interval.inWholeMilliseconds
         require(count in 1..100) { "count must be in 1..100" }
         require(interval in 40.milliseconds..1000.milliseconds) { "interval must be in 40..1000 ms" }
@@ -89,12 +93,23 @@ class Element internal constructor(
         if (count == 1) {
             run(timeout) { tap = Tap.newBuilder().setSelector(target).build() }
         } else {
-            run(timeout) { multiTap = MultiTap.newBuilder().setSelector(target).setCount(count).setIntervalMs(gap).build() }
+            run(timeout) {
+                multiTap =
+                    MultiTap
+                        .newBuilder()
+                        .setSelector(target)
+                        .setCount(count)
+                        .setIntervalMs(gap)
+                        .build()
+            }
         }
     }
 
     /** Three taps with [interval] between releases and presses; see [tap]. */
-    suspend fun tripleTap(timeout: Duration? = null, interval: Duration = 100.milliseconds) {
+    suspend fun tripleTap(
+        timeout: Duration? = null,
+        interval: Duration = 100.milliseconds,
+    ) {
         tap(count = 3, interval = interval, timeout = timeout)
     }
 
@@ -109,9 +124,19 @@ class Element internal constructor(
      * default display. Use the overload without [duration] for Android's default long press.
      * The existing positional [timeout] argument keeps its meaning.
      */
-    suspend fun longTap(timeout: Duration? = null, duration: Duration) {
+    suspend fun longTap(
+        timeout: Duration? = null,
+        duration: Duration,
+    ) {
         require(duration in 1.milliseconds..30000.milliseconds) { "duration must be in 1..30000 ms" }
-        run(timeout) { hold = TimedPress.newBuilder().setSelector(target).setDurationMs(duration.inWholeMilliseconds).build() }
+        run(timeout) {
+            hold =
+                TimedPress
+                    .newBuilder()
+                    .setSelector(target)
+                    .setDurationMs(duration.inWholeMilliseconds)
+                    .build()
+        }
     }
 
     /** Two taps at the centre of the one matching node's visible bounds, inside Android's double-tap window. */
@@ -142,7 +167,14 @@ class Element internal constructor(
         timeout: Duration? = null,
         allowReachBelow: Boolean = false,
     ) {
-        run(timeout) { tapOutsidePanel = TapOutsidePanel.newBuilder().setSelector(target).setAllowReachBelow(allowReachBelow).build() }
+        run(timeout) {
+            tapOutsidePanel =
+                TapOutsidePanel
+                    .newBuilder()
+                    .setSelector(target)
+                    .setAllowReachBelow(allowReachBelow)
+                    .build()
+        }
     }
 
     /**
@@ -168,7 +200,14 @@ class Element internal constructor(
         action: StandardAction,
         timeout: Duration? = null,
     ) {
-        run(timeout) { performAccessibilityAction = PerformAccessibilityAction.newBuilder().setSelector(target).setStandard(action.toProto()).build() }
+        run(timeout) {
+            performAccessibilityAction =
+                PerformAccessibilityAction
+                    .newBuilder()
+                    .setSelector(target)
+                    .setStandard(action.toProto())
+                    .build()
+        }
     }
 
     /**
@@ -181,7 +220,14 @@ class Element internal constructor(
         label: String,
         timeout: Duration? = null,
     ) {
-        run(timeout) { performAccessibilityAction = PerformAccessibilityAction.newBuilder().setSelector(target).setCustom(label).build() }
+        run(timeout) {
+            performAccessibilityAction =
+                PerformAccessibilityAction
+                    .newBuilder()
+                    .setSelector(target)
+                    .setCustom(label)
+                    .build()
+        }
     }
 
     /**
@@ -196,7 +242,14 @@ class Element internal constructor(
         timeout: Duration? = null,
     ) {
         require(value.isFinite()) { "value must be finite, not $value" }
-        run(timeout) { setProgress = SetProgress.newBuilder().setSelector(target).setValue(value).build() }
+        run(timeout) {
+            setProgress =
+                SetProgress
+                    .newBuilder()
+                    .setSelector(target)
+                    .setValue(value)
+                    .build()
+        }
     }
 
     /**
@@ -332,14 +385,14 @@ class Element internal constructor(
 
     /**
      * One scroll gesture on the one matching node towards [direction]'s content edge
-     * (UiAutomator semantics: `DOWN` reveals content below). Nothing is reported about whether
-     * content moved; observe that with a query or wait.
+     * (UiAutomator semantics: `DOWN` reveals content below). Returns source-attributed
+     * movement/edge evidence where available. Unknown is neither unchanged nor at end.
      */
     suspend fun scroll(
         direction: Direction,
         distancePercent: Int = DEFAULT_GESTURE_PERCENT,
         timeout: Duration? = null,
-    ) {
+    ): ScrollResult =
         run(timeout) {
             scroll =
                 Scroll
@@ -348,8 +401,24 @@ class Element internal constructor(
                     .setDirection(direction.toProto())
                     .setDistancePercent(distancePercent)
                     .build()
-        }
-    }
+        }.scrollResult()
+
+    /**
+     * Collect descendant observations from the current position, never claiming completeness.
+     * Explicit stable keys merge overlap; same-read collisions fail. Bad keys across reads can
+     * merge distinct rows. Does not rewind or wait for loading. Budgets are mandatory. Failures
+     * retain their type/code and expose [scanPartial]; cancellation stays cancellation.
+     */
+    suspend fun <K : Any> scan(
+        items: Selector,
+        key: (ElementSnapshot) -> K,
+        maxScrolls: Int,
+        maxItems: Int,
+        timeout: Duration,
+        direction: Direction = Direction.DOWN,
+        distancePercent: Int = 60,
+        noProgressLimit: Int = 2,
+    ): ScanResult<K> = boundedScan(this, items, key, direction, maxScrolls, maxItems, timeout, distancePercent, noProgressLimit)
 
     /**
      * Client-side loop: checks whether [target] exists inside this container ([descendant]) and,
