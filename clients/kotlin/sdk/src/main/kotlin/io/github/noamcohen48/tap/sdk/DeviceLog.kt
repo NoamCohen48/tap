@@ -88,6 +88,10 @@ data class LogEntry(
     val gap: String? = null,
     /** Redacted SDK call, only present in a retained connection event archive. */
     val event: io.github.noamcohen48.tap.api.v1.LoggedEvent? = null,
+    /** Independent redacted crash/ANR, including deaths between SDK calls. */
+    val death: io.github.noamcohen48.tap.api.v1.RecordedAppDeath? = null,
+    /** Original host receipt clock; compare only within the capture clock identity. */
+    val hostMonotonicNs: Long = 0,
 ) {
     override fun toString(): String {
         val stamp = STAMP.format(at)
@@ -96,6 +100,10 @@ data class LogEntry(
                 with(line) {
                     "%s %5s %5d %5d %s %s: %s".format(stamp, uid?.toString() ?: "?", pid, tid, priority?.letter ?: '?', tag, message)
                 }
+            }
+
+            death != null -> {
+                "$stamp ── ${death.death.kind.name.removePrefix("KIND_")} ${death.death.packageName} (pid ${death.death.pid})"
             }
 
             event != null -> {
@@ -406,4 +414,6 @@ internal fun LogEntryProto.toModel(): LogEntry =
             },
         gap = if (hasGap()) gap else null,
         event = if (hasEvent()) event else null,
+        death = if (hasDeath()) death else null,
+        hostMonotonicNs = hostMonotonicNs,
     )

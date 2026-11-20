@@ -1083,6 +1083,29 @@ class TapDaemon internal constructor(
                                     },
                                 )
                             val redactor = attachedDevice.eventRedactor
+                            val deathArchive = retainedLogs.archive(ownerConnectionId, ownerConnectionId)
+                            attachedDevice.appDeaths.onGap = { reason ->
+                                runCatching { retainedLogs.interruption(deathArchive, "$serial: $reason") }
+                            }
+                            attachedDevice.appDeaths.onRecord = { death ->
+                                try {
+                                    val receipt =
+                                        io.github.noamcohen48.tap.api.v1.RecordedAppDeath
+                                            .newBuilder()
+                                            .setAttachedDeviceId(attachedId)
+                                            .setSerial(serial)
+                                            .setDeath(death)
+                                            .build()
+                                    retainedLogs.appendDeath(deathArchive, durableDeath(receipt, redactor))
+                                } catch (_: Exception) {
+                                    runCatching {
+                                        retainedLogs.close(
+                                            deathArchive,
+                                            "durable app-death capture failed; evidence is incomplete",
+                                        )
+                                    }
+                                }
+                            }
                             val previousRedaction = redactor.changed
                             redactor.changed = {
                                 previousRedaction()
@@ -1091,6 +1114,8 @@ class TapDaemon internal constructor(
                                         entry.event.attachedDeviceId == attachedId
                                     ) {
                                         entry.toBuilder().setEvent(durableEvent(entry.event, redactor)).build()
+                                    } else if (entry.hasDeath() && entry.death.attachedDeviceId == attachedId) {
+                                        entry.toBuilder().setDeath(durableDeath(entry.death, redactor)).build()
                                     } else {
                                         entry
                                     }

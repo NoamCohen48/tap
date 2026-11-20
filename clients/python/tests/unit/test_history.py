@@ -38,6 +38,36 @@ def test_history_uses_original_ids_without_creating_a_connection(fake):
         assert all(r.client_connection_id == "original" for r in fake.device_log.requests)
 
 
+def test_receipt_time_bounds_also_apply_to_matching_step_ids_and_deaths(fake):
+    archive(fake)
+    fake.device_log.entries = [event(i) for i in (1, 2, 3)]
+    for entry in fake.device_log.entries:
+        entry.host_time_ms = entry.cursor * 1000
+        entry.event.step = "same-step"
+    fake.device_log.entries.append(pb.LogEntry(cursor=4, host_time_ms=2500,
+        death=pb.RecordedAppDeath(attached_device_id="attachment", serial="device", death=pb.AppDeath(
+            sequence=1, kind=pb.AppDeath.KIND_ANR, package_name="com.shop", message="diagnostic", stack_trace="Frame"))))
+    with TapClient.create(fake.address, TOKEN) as client:
+        result = client.log_recordings.history("original", step_ids=["same-step"], from_time=2, until_time=3)
+        assert [e["seq"] for e in result.data["events"]] == [2]
+        assert [d["kind"] for d in result.data["deaths"]] == ["anr"]
+        assert "ANR com.shop" in result.text
+        assert "Frame" in result.to_json() and "Frame" in result.render_text(details=True)
+        assert not client.log_recordings.history("original", step_ids=[]).data["events"]
+        assert client.log_recordings.history("original", step_ids=[]).data["deaths"]
+
+
+def test_unrepresentable_device_clock_does_not_discard_host_timed_death(fake):
+    archive(fake)
+    fake.device_log.entries = [pb.LogEntry(cursor=1, host_time_ms=2000,
+        death=pb.RecordedAppDeath(attached_device_id="attachment", serial="device", death=pb.AppDeath(
+            sequence=1, kind=pb.AppDeath.KIND_CRASH, at_epoch_ms=2**63 - 1)))]
+    with TapClient.create(fake.address, TOKEN) as client:
+        death = client.log_recordings.history("original").to_dict()["deaths"][0]
+        assert death["device_time_ms"] == str(2**63 - 1)
+        assert death["device_time_unavailable"] and death["at"] == "1970-01-01T00:00:02.000Z"
+
+
 def test_named_export_does_not_stop_and_works_after_release(fake):
     with TapClient.create(fake.address, TOKEN) as client:
         connection = client.connect("script")
@@ -85,6 +115,16 @@ def test_indeterminate_and_missing_evidence_cannot_become_success(fake):
         missing = client.log_recordings.history("missing")
         assert not missing.data["complete"] and "events_unavailable" in missing.data
         assert "WARNING" in missing.text
+
+
+def test_recording_reported_death_is_not_duplicated_without_per_step_connection_id():
+    saved = HistoryExport({"connection_id": "owner", "deaths": [{"connection_id": "owner", "attached_device_id": "attachment",
+        "serial": "phone", "sequence": 1, "kind": "crash", "package_name": "com.shop", "at": "2026-11-20T00:00:00Z"}],
+        "steps": [{"id": "step", "app_deaths": [{"serial": "phone", "sequence": 1, "kind": "crash", "expected": True}]}]})
+    assert len(saved.to_dict()["deaths"]) == 1
+    assert saved.to_dict()["deaths"][0]["reported_by_step"] == "step"
+    assert saved.to_dict()["deaths"][0]["expected"]
+    assert saved.text.count("CRASH com.shop") == 1
 
 
 def test_text_uses_resolved_targets_avoids_duplicate_calls_and_escapes_terminal_controls():

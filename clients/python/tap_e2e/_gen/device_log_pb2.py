@@ -22,10 +22,11 @@ _runtime_version.ValidateProtobufRuntimeVersion(
 _sym_db = _symbol_database.Default()
 
 
+from . import command_pb2 as command__pb2
 from . import event_log_pb2 as event__log__pb2
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x64\x65vice_log.proto\x12\x06tap.v1\x1a\x0f\x65vent_log.proto\"\x87\x03\n\x0eReadLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x16\n\x0c\x61\x66ter_cursor\x18\x03 \x01(\x04H\x00\x12\x10\n\x06marker\x18\x04 \x01(\tH\x00\x12\x0e\n\x04tail\x18\x05 \x01(\rH\x00\x12\x15\n\x0blast_action\x18\x06 \x01(\x08H\x00\x12\x0e\n\x06\x66ollow\x18\x07 \x01(\x08\x12\x10\n\x08packages\x18\x08 \x03(\t\x12)\n\x0cmin_priority\x18\t \x01(\x0e\x32\x13.tap.v1.LogPriority\x12\x0c\n\x04tags\x18\n \x03(\t\x12\x1a\n\rmessage_regex\x18\x0b \x01(\tH\x01\x88\x01\x01\x12\x17\n\x0f\x65xclude_actions\x18\x0c \x01(\x08\x12\x11\n\x04step\x18\r \x01(\tH\x02\x88\x01\x01\x12\x16\n\trecording\x18\x0e \x01(\tH\x03\x88\x01\x01\x42\x06\n\x04\x66romB\x10\n\x0e_message_regexB\x07\n\x05_stepB\x0c\n\n_recording\"n\n\x0fReadLogResponse\x12!\n\x07\x65ntries\x18\x01 \x03(\x0b\x32\x10.tap.v1.LogEntry\x12\x0f\n\x07\x64ropped\x18\x02 \x01(\x04\x12\x15\n\rcapture_error\x18\x03 \x01(\t\x12\x10\n\x08\x63lock_id\x18\x04 \x01(\t\"\xe0\x01\n\x08LogEntry\x12\x0e\n\x06\x63ursor\x18\x01 \x01(\x04\x12\x14\n\x0chost_time_ms\x18\x02 \x01(\x03\x12\x1f\n\x04line\x18\x03 \x01(\x0b\x32\x0f.tap.v1.LogLineH\x00\x12\x10\n\x06marker\x18\x04 \x01(\tH\x00\x12#\n\x06\x61\x63tion\x18\x05 \x01(\x0b\x32\x11.tap.v1.LogActionH\x00\x12\r\n\x03gap\x18\x06 \x01(\tH\x00\x12$\n\x05\x65vent\x18\x08 \x01(\x0b\x32\x13.tap.v1.LoggedEventH\x00\x12\x19\n\x11host_monotonic_ns\x18\x07 \x01(\x03\x42\x06\n\x04kind\"\xac\x01\n\x07LogLine\x12\x16\n\x0e\x64\x65vice_time_ms\x18\x01 \x01(\x03\x12\x10\n\x03uid\x18\x02 \x01(\rH\x00\x88\x01\x01\x12\x0b\n\x03pid\x18\x03 \x01(\r\x12\x0b\n\x03tid\x18\x04 \x01(\r\x12%\n\x08priority\x18\x05 \x01(\x0e\x32\x13.tap.v1.LogPriority\x12\x0b\n\x03tag\x18\x06 \x01(\t\x12\x0f\n\x07message\x18\x07 \x01(\t\x12\x10\n\x08packages\x18\x08 \x03(\tB\x06\n\x04_uid\"\x90\x02\n\tLogAction\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x13\n\x06target\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x10\n\x08\x66inished\x18\x03 \x01(\x08\x12\x14\n\x07outcome\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x18\n\x0b\x64uration_ms\x18\x05 \x01(\x03H\x02\x88\x01\x01\x12\x17\n\nrequest_id\x18\x06 \x01(\x03H\x03\x88\x01\x01\x12\x1b\n\x0e\x64\x65vice_time_ms\x18\x07 \x01(\x03H\x04\x88\x01\x01\x12\x11\n\x04step\x18\x08 \x01(\tH\x05\x88\x01\x01\x42\t\n\x07_targetB\n\n\x08_outcomeB\x0e\n\x0c_duration_msB\r\n\x0b_request_idB\x11\n\x0f_device_time_msB\x07\n\x05_step\"X\n\x0eMarkLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\"!\n\x0fMarkLogResponse\x12\x0e\n\x06\x63ursor\x18\x01 \x01(\x04\"^\n\x10RedactLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x10\n\x08patterns\x18\x03 \x03(\t\"\x13\n\x11RedactLogResponse\"7\n\x17ListRetainedLogsRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\"=\n\x18ListRetainedLogsResponse\x12!\n\x04logs\x18\x01 \x03(\x0b\x32\x13.tap.v1.RetainedLog\"\xcd\x01\n\x0bRetainedLog\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x13\n\x0blast_cursor\x18\x04 \x01(\x04\x12\x0e\n\x06\x63losed\x18\x05 \x01(\x08\x12\x15\n\rcapture_error\x18\x06 \x01(\t\x12\x10\n\x08\x63lock_id\x18\x07 \x01(\t\x12\x0e\n\x06\x65vents\x18\x08 \x01(\x08\x12\x16\n\x0eretained_bytes\x18\t \x01(\x04\"d\n\x18StartLogRecordingRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x1c\n\x14\x61gent_steps_expected\x18\x03 \x01(\x08\"D\n\x19StartLogRecordingResponse\x12\'\n\trecording\x18\x01 \x01(\x0b\x32\x14.tap.v1.LogRecording\"\'\n\x17StopLogRecordingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"C\n\x18StopLogRecordingResponse\x12\'\n\trecording\x18\x01 \x01(\x0b\x32\x14.tap.v1.LogRecording\")\n\x19\x44\x65leteLogRecordingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"\x1c\n\x1a\x44\x65leteLogRecordingResponse\"\x1a\n\x18ListLogRecordingsRequest\"E\n\x19ListLogRecordingsResponse\x12(\n\nrecordings\x18\x01 \x03(\x0b\x32\x14.tap.v1.LogRecording\"\x89\x02\n\x0cLogRecording\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x1c\n\x14\x63lient_connection_id\x18\x02 \x01(\t\x12\x15\n\rstarted_at_ms\x18\x03 \x01(\x03\x12\x1a\n\rstopped_at_ms\x18\x04 \x01(\x03H\x00\x88\x01\x01\x12)\n\x06ranges\x18\x05 \x03(\x0b\x32\x19.tap.v1.LogRecordingRange\x12\x10\n\x08\x63omplete\x18\x06 \x01(\x08\x12\x15\n\rcapture_error\x18\x07 \x01(\t\x12\x16\n\x0eretained_bytes\x18\x08 \x01(\x04\x12\x1c\n\x14\x61gent_steps_expected\x18\t \x01(\x08\x42\x10\n\x0e_stopped_at_ms\"\x95\x01\n\x11LogRecordingRange\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x14\n\x0c\x61\x66ter_cursor\x18\x03 \x01(\x04\x12\x1b\n\x0ethrough_cursor\x18\x04 \x01(\x04H\x00\x88\x01\x01\x12\x0e\n\x06\x65vents\x18\x05 \x01(\x08\x42\x11\n\x0f_through_cursor*\xbb\x01\n\x0bLogPriority\x12\x1c\n\x18LOG_PRIORITY_UNSPECIFIED\x10\x00\x12\x18\n\x14LOG_PRIORITY_VERBOSE\x10\x01\x12\x16\n\x12LOG_PRIORITY_DEBUG\x10\x02\x12\x15\n\x11LOG_PRIORITY_INFO\x10\x03\x12\x15\n\x11LOG_PRIORITY_WARN\x10\x04\x12\x16\n\x12LOG_PRIORITY_ERROR\x10\x05\x12\x16\n\x12LOG_PRIORITY_FATAL\x10\x06\x32\x8d\x05\n\x10\x44\x65viceLogService\x12<\n\x07ReadLog\x12\x16.tap.v1.ReadLogRequest\x1a\x17.tap.v1.ReadLogResponse0\x01\x12:\n\x07MarkLog\x12\x16.tap.v1.MarkLogRequest\x1a\x17.tap.v1.MarkLogResponse\x12@\n\tRedactLog\x12\x18.tap.v1.RedactLogRequest\x1a\x19.tap.v1.RedactLogResponse\x12X\n\x11StartLogRecording\x12 .tap.v1.StartLogRecordingRequest\x1a!.tap.v1.StartLogRecordingResponse\x12U\n\x10StopLogRecording\x12\x1f.tap.v1.StopLogRecordingRequest\x1a .tap.v1.StopLogRecordingResponse\x12X\n\x11ListLogRecordings\x12 .tap.v1.ListLogRecordingsRequest\x1a!.tap.v1.ListLogRecordingsResponse\x12[\n\x12\x44\x65leteLogRecording\x12!.tap.v1.DeleteLogRecordingRequest\x1a\".tap.v1.DeleteLogRecordingResponse\x12U\n\x10ListRetainedLogs\x12\x1f.tap.v1.ListRetainedLogsRequest\x1a .tap.v1.ListRetainedLogsResponseB4\n io.github.noamcohen48.tap.api.v1B\x0e\x44\x65viceLogProtoP\x01\x62\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x10\x64\x65vice_log.proto\x12\x06tap.v1\x1a\rcommand.proto\x1a\x0f\x65vent_log.proto\"\x87\x03\n\x0eReadLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x16\n\x0c\x61\x66ter_cursor\x18\x03 \x01(\x04H\x00\x12\x10\n\x06marker\x18\x04 \x01(\tH\x00\x12\x0e\n\x04tail\x18\x05 \x01(\rH\x00\x12\x15\n\x0blast_action\x18\x06 \x01(\x08H\x00\x12\x0e\n\x06\x66ollow\x18\x07 \x01(\x08\x12\x10\n\x08packages\x18\x08 \x03(\t\x12)\n\x0cmin_priority\x18\t \x01(\x0e\x32\x13.tap.v1.LogPriority\x12\x0c\n\x04tags\x18\n \x03(\t\x12\x1a\n\rmessage_regex\x18\x0b \x01(\tH\x01\x88\x01\x01\x12\x17\n\x0f\x65xclude_actions\x18\x0c \x01(\x08\x12\x11\n\x04step\x18\r \x01(\tH\x02\x88\x01\x01\x12\x16\n\trecording\x18\x0e \x01(\tH\x03\x88\x01\x01\x42\x06\n\x04\x66romB\x10\n\x0e_message_regexB\x07\n\x05_stepB\x0c\n\n_recording\"n\n\x0fReadLogResponse\x12!\n\x07\x65ntries\x18\x01 \x03(\x0b\x32\x10.tap.v1.LogEntry\x12\x0f\n\x07\x64ropped\x18\x02 \x01(\x04\x12\x15\n\rcapture_error\x18\x03 \x01(\t\x12\x10\n\x08\x63lock_id\x18\x04 \x01(\t\"\x8b\x02\n\x08LogEntry\x12\x0e\n\x06\x63ursor\x18\x01 \x01(\x04\x12\x14\n\x0chost_time_ms\x18\x02 \x01(\x03\x12\x1f\n\x04line\x18\x03 \x01(\x0b\x32\x0f.tap.v1.LogLineH\x00\x12\x10\n\x06marker\x18\x04 \x01(\tH\x00\x12#\n\x06\x61\x63tion\x18\x05 \x01(\x0b\x32\x11.tap.v1.LogActionH\x00\x12\r\n\x03gap\x18\x06 \x01(\tH\x00\x12$\n\x05\x65vent\x18\x08 \x01(\x0b\x32\x13.tap.v1.LoggedEventH\x00\x12)\n\x05\x64\x65\x61th\x18\t \x01(\x0b\x32\x18.tap.v1.RecordedAppDeathH\x00\x12\x19\n\x11host_monotonic_ns\x18\x07 \x01(\x03\x42\x06\n\x04kind\"_\n\x10RecordedAppDeath\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x1f\n\x05\x64\x65\x61th\x18\x03 \x01(\x0b\x32\x10.tap.v1.AppDeath\"\xac\x01\n\x07LogLine\x12\x16\n\x0e\x64\x65vice_time_ms\x18\x01 \x01(\x03\x12\x10\n\x03uid\x18\x02 \x01(\rH\x00\x88\x01\x01\x12\x0b\n\x03pid\x18\x03 \x01(\r\x12\x0b\n\x03tid\x18\x04 \x01(\r\x12%\n\x08priority\x18\x05 \x01(\x0e\x32\x13.tap.v1.LogPriority\x12\x0b\n\x03tag\x18\x06 \x01(\t\x12\x0f\n\x07message\x18\x07 \x01(\t\x12\x10\n\x08packages\x18\x08 \x03(\tB\x06\n\x04_uid\"\x90\x02\n\tLogAction\x12\x11\n\toperation\x18\x01 \x01(\t\x12\x13\n\x06target\x18\x02 \x01(\tH\x00\x88\x01\x01\x12\x10\n\x08\x66inished\x18\x03 \x01(\x08\x12\x14\n\x07outcome\x18\x04 \x01(\tH\x01\x88\x01\x01\x12\x18\n\x0b\x64uration_ms\x18\x05 \x01(\x03H\x02\x88\x01\x01\x12\x17\n\nrequest_id\x18\x06 \x01(\x03H\x03\x88\x01\x01\x12\x1b\n\x0e\x64\x65vice_time_ms\x18\x07 \x01(\x03H\x04\x88\x01\x01\x12\x11\n\x04step\x18\x08 \x01(\tH\x05\x88\x01\x01\x42\t\n\x07_targetB\n\n\x08_outcomeB\x0e\n\x0c_duration_msB\r\n\x0b_request_idB\x11\n\x0f_device_time_msB\x07\n\x05_step\"X\n\x0eMarkLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x0c\n\x04name\x18\x03 \x01(\t\"!\n\x0fMarkLogResponse\x12\x0e\n\x06\x63ursor\x18\x01 \x01(\x04\"^\n\x10RedactLogRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x10\n\x08patterns\x18\x03 \x03(\t\"\x13\n\x11RedactLogResponse\"7\n\x17ListRetainedLogsRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\"=\n\x18ListRetainedLogsResponse\x12!\n\x04logs\x18\x01 \x03(\x0b\x32\x13.tap.v1.RetainedLog\"\xcd\x01\n\x0bRetainedLog\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x1a\n\x12\x61ttached_device_id\x18\x02 \x01(\t\x12\x0e\n\x06serial\x18\x03 \x01(\t\x12\x13\n\x0blast_cursor\x18\x04 \x01(\x04\x12\x0e\n\x06\x63losed\x18\x05 \x01(\x08\x12\x15\n\rcapture_error\x18\x06 \x01(\t\x12\x10\n\x08\x63lock_id\x18\x07 \x01(\t\x12\x0e\n\x06\x65vents\x18\x08 \x01(\x08\x12\x16\n\x0eretained_bytes\x18\t \x01(\x04\"d\n\x18StartLogRecordingRequest\x12\x1c\n\x14\x63lient_connection_id\x18\x01 \x01(\t\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x1c\n\x14\x61gent_steps_expected\x18\x03 \x01(\x08\"D\n\x19StartLogRecordingResponse\x12\'\n\trecording\x18\x01 \x01(\x0b\x32\x14.tap.v1.LogRecording\"\'\n\x17StopLogRecordingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"C\n\x18StopLogRecordingResponse\x12\'\n\trecording\x18\x01 \x01(\x0b\x32\x14.tap.v1.LogRecording\")\n\x19\x44\x65leteLogRecordingRequest\x12\x0c\n\x04name\x18\x01 \x01(\t\"\x1c\n\x1a\x44\x65leteLogRecordingResponse\"\x1a\n\x18ListLogRecordingsRequest\"E\n\x19ListLogRecordingsResponse\x12(\n\nrecordings\x18\x01 \x03(\x0b\x32\x14.tap.v1.LogRecording\"\x89\x02\n\x0cLogRecording\x12\x0c\n\x04name\x18\x01 \x01(\t\x12\x1c\n\x14\x63lient_connection_id\x18\x02 \x01(\t\x12\x15\n\rstarted_at_ms\x18\x03 \x01(\x03\x12\x1a\n\rstopped_at_ms\x18\x04 \x01(\x03H\x00\x88\x01\x01\x12)\n\x06ranges\x18\x05 \x03(\x0b\x32\x19.tap.v1.LogRecordingRange\x12\x10\n\x08\x63omplete\x18\x06 \x01(\x08\x12\x15\n\rcapture_error\x18\x07 \x01(\t\x12\x16\n\x0eretained_bytes\x18\x08 \x01(\x04\x12\x1c\n\x14\x61gent_steps_expected\x18\t \x01(\x08\x42\x10\n\x0e_stopped_at_ms\"\x95\x01\n\x11LogRecordingRange\x12\x1a\n\x12\x61ttached_device_id\x18\x01 \x01(\t\x12\x0e\n\x06serial\x18\x02 \x01(\t\x12\x14\n\x0c\x61\x66ter_cursor\x18\x03 \x01(\x04\x12\x1b\n\x0ethrough_cursor\x18\x04 \x01(\x04H\x00\x88\x01\x01\x12\x0e\n\x06\x65vents\x18\x05 \x01(\x08\x42\x11\n\x0f_through_cursor*\xbb\x01\n\x0bLogPriority\x12\x1c\n\x18LOG_PRIORITY_UNSPECIFIED\x10\x00\x12\x18\n\x14LOG_PRIORITY_VERBOSE\x10\x01\x12\x16\n\x12LOG_PRIORITY_DEBUG\x10\x02\x12\x15\n\x11LOG_PRIORITY_INFO\x10\x03\x12\x15\n\x11LOG_PRIORITY_WARN\x10\x04\x12\x16\n\x12LOG_PRIORITY_ERROR\x10\x05\x12\x16\n\x12LOG_PRIORITY_FATAL\x10\x06\x32\x8d\x05\n\x10\x44\x65viceLogService\x12<\n\x07ReadLog\x12\x16.tap.v1.ReadLogRequest\x1a\x17.tap.v1.ReadLogResponse0\x01\x12:\n\x07MarkLog\x12\x16.tap.v1.MarkLogRequest\x1a\x17.tap.v1.MarkLogResponse\x12@\n\tRedactLog\x12\x18.tap.v1.RedactLogRequest\x1a\x19.tap.v1.RedactLogResponse\x12X\n\x11StartLogRecording\x12 .tap.v1.StartLogRecordingRequest\x1a!.tap.v1.StartLogRecordingResponse\x12U\n\x10StopLogRecording\x12\x1f.tap.v1.StopLogRecordingRequest\x1a .tap.v1.StopLogRecordingResponse\x12X\n\x11ListLogRecordings\x12 .tap.v1.ListLogRecordingsRequest\x1a!.tap.v1.ListLogRecordingsResponse\x12[\n\x12\x44\x65leteLogRecording\x12!.tap.v1.DeleteLogRecordingRequest\x1a\".tap.v1.DeleteLogRecordingResponse\x12U\n\x10ListRetainedLogs\x12\x1f.tap.v1.ListRetainedLogsRequest\x1a .tap.v1.ListRetainedLogsResponseB4\n io.github.noamcohen48.tap.api.v1B\x0e\x44\x65viceLogProtoP\x01\x62\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -33,52 +34,54 @@ _builder.BuildTopDescriptorsAndMessages(DESCRIPTOR, 'device_log_pb2', _globals)
 if not _descriptor._USE_C_DESCRIPTORS:
   _globals['DESCRIPTOR']._loaded_options = None
   _globals['DESCRIPTOR']._serialized_options = b'\n io.github.noamcohen48.tap.api.v1B\016DeviceLogProtoP\001'
-  _globals['_LOGPRIORITY']._serialized_start=2673
-  _globals['_LOGPRIORITY']._serialized_end=2860
-  _globals['_READLOGREQUEST']._serialized_start=46
-  _globals['_READLOGREQUEST']._serialized_end=437
-  _globals['_READLOGRESPONSE']._serialized_start=439
-  _globals['_READLOGRESPONSE']._serialized_end=549
-  _globals['_LOGENTRY']._serialized_start=552
-  _globals['_LOGENTRY']._serialized_end=776
-  _globals['_LOGLINE']._serialized_start=779
-  _globals['_LOGLINE']._serialized_end=951
-  _globals['_LOGACTION']._serialized_start=954
-  _globals['_LOGACTION']._serialized_end=1226
-  _globals['_MARKLOGREQUEST']._serialized_start=1228
-  _globals['_MARKLOGREQUEST']._serialized_end=1316
-  _globals['_MARKLOGRESPONSE']._serialized_start=1318
-  _globals['_MARKLOGRESPONSE']._serialized_end=1351
-  _globals['_REDACTLOGREQUEST']._serialized_start=1353
-  _globals['_REDACTLOGREQUEST']._serialized_end=1447
-  _globals['_REDACTLOGRESPONSE']._serialized_start=1449
-  _globals['_REDACTLOGRESPONSE']._serialized_end=1468
-  _globals['_LISTRETAINEDLOGSREQUEST']._serialized_start=1470
-  _globals['_LISTRETAINEDLOGSREQUEST']._serialized_end=1525
-  _globals['_LISTRETAINEDLOGSRESPONSE']._serialized_start=1527
-  _globals['_LISTRETAINEDLOGSRESPONSE']._serialized_end=1588
-  _globals['_RETAINEDLOG']._serialized_start=1591
-  _globals['_RETAINEDLOG']._serialized_end=1796
-  _globals['_STARTLOGRECORDINGREQUEST']._serialized_start=1798
-  _globals['_STARTLOGRECORDINGREQUEST']._serialized_end=1898
-  _globals['_STARTLOGRECORDINGRESPONSE']._serialized_start=1900
-  _globals['_STARTLOGRECORDINGRESPONSE']._serialized_end=1968
-  _globals['_STOPLOGRECORDINGREQUEST']._serialized_start=1970
-  _globals['_STOPLOGRECORDINGREQUEST']._serialized_end=2009
-  _globals['_STOPLOGRECORDINGRESPONSE']._serialized_start=2011
-  _globals['_STOPLOGRECORDINGRESPONSE']._serialized_end=2078
-  _globals['_DELETELOGRECORDINGREQUEST']._serialized_start=2080
-  _globals['_DELETELOGRECORDINGREQUEST']._serialized_end=2121
-  _globals['_DELETELOGRECORDINGRESPONSE']._serialized_start=2123
-  _globals['_DELETELOGRECORDINGRESPONSE']._serialized_end=2151
-  _globals['_LISTLOGRECORDINGSREQUEST']._serialized_start=2153
-  _globals['_LISTLOGRECORDINGSREQUEST']._serialized_end=2179
-  _globals['_LISTLOGRECORDINGSRESPONSE']._serialized_start=2181
-  _globals['_LISTLOGRECORDINGSRESPONSE']._serialized_end=2250
-  _globals['_LOGRECORDING']._serialized_start=2253
-  _globals['_LOGRECORDING']._serialized_end=2518
-  _globals['_LOGRECORDINGRANGE']._serialized_start=2521
-  _globals['_LOGRECORDINGRANGE']._serialized_end=2670
-  _globals['_DEVICELOGSERVICE']._serialized_start=2863
-  _globals['_DEVICELOGSERVICE']._serialized_end=3516
+  _globals['_LOGPRIORITY']._serialized_start=2828
+  _globals['_LOGPRIORITY']._serialized_end=3015
+  _globals['_READLOGREQUEST']._serialized_start=61
+  _globals['_READLOGREQUEST']._serialized_end=452
+  _globals['_READLOGRESPONSE']._serialized_start=454
+  _globals['_READLOGRESPONSE']._serialized_end=564
+  _globals['_LOGENTRY']._serialized_start=567
+  _globals['_LOGENTRY']._serialized_end=834
+  _globals['_RECORDEDAPPDEATH']._serialized_start=836
+  _globals['_RECORDEDAPPDEATH']._serialized_end=931
+  _globals['_LOGLINE']._serialized_start=934
+  _globals['_LOGLINE']._serialized_end=1106
+  _globals['_LOGACTION']._serialized_start=1109
+  _globals['_LOGACTION']._serialized_end=1381
+  _globals['_MARKLOGREQUEST']._serialized_start=1383
+  _globals['_MARKLOGREQUEST']._serialized_end=1471
+  _globals['_MARKLOGRESPONSE']._serialized_start=1473
+  _globals['_MARKLOGRESPONSE']._serialized_end=1506
+  _globals['_REDACTLOGREQUEST']._serialized_start=1508
+  _globals['_REDACTLOGREQUEST']._serialized_end=1602
+  _globals['_REDACTLOGRESPONSE']._serialized_start=1604
+  _globals['_REDACTLOGRESPONSE']._serialized_end=1623
+  _globals['_LISTRETAINEDLOGSREQUEST']._serialized_start=1625
+  _globals['_LISTRETAINEDLOGSREQUEST']._serialized_end=1680
+  _globals['_LISTRETAINEDLOGSRESPONSE']._serialized_start=1682
+  _globals['_LISTRETAINEDLOGSRESPONSE']._serialized_end=1743
+  _globals['_RETAINEDLOG']._serialized_start=1746
+  _globals['_RETAINEDLOG']._serialized_end=1951
+  _globals['_STARTLOGRECORDINGREQUEST']._serialized_start=1953
+  _globals['_STARTLOGRECORDINGREQUEST']._serialized_end=2053
+  _globals['_STARTLOGRECORDINGRESPONSE']._serialized_start=2055
+  _globals['_STARTLOGRECORDINGRESPONSE']._serialized_end=2123
+  _globals['_STOPLOGRECORDINGREQUEST']._serialized_start=2125
+  _globals['_STOPLOGRECORDINGREQUEST']._serialized_end=2164
+  _globals['_STOPLOGRECORDINGRESPONSE']._serialized_start=2166
+  _globals['_STOPLOGRECORDINGRESPONSE']._serialized_end=2233
+  _globals['_DELETELOGRECORDINGREQUEST']._serialized_start=2235
+  _globals['_DELETELOGRECORDINGREQUEST']._serialized_end=2276
+  _globals['_DELETELOGRECORDINGRESPONSE']._serialized_start=2278
+  _globals['_DELETELOGRECORDINGRESPONSE']._serialized_end=2306
+  _globals['_LISTLOGRECORDINGSREQUEST']._serialized_start=2308
+  _globals['_LISTLOGRECORDINGSREQUEST']._serialized_end=2334
+  _globals['_LISTLOGRECORDINGSRESPONSE']._serialized_start=2336
+  _globals['_LISTLOGRECORDINGSRESPONSE']._serialized_end=2405
+  _globals['_LOGRECORDING']._serialized_start=2408
+  _globals['_LOGRECORDING']._serialized_end=2673
+  _globals['_LOGRECORDINGRANGE']._serialized_start=2676
+  _globals['_LOGRECORDINGRANGE']._serialized_end=2825
+  _globals['_DEVICELOGSERVICE']._serialized_start=3018
+  _globals['_DEVICELOGSERVICE']._serialized_end=3671
 # @@protoc_insertion_point(module_scope)

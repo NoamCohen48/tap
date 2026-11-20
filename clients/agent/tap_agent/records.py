@@ -547,6 +547,14 @@ class RecordStore:
             "state": "live" if recording["state"] == "recording" else "stopped",
             "complete": recording["state"] == "stopped" and (log_status is None or log_status.get("complete") is True) and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}
 
+    def cursor_time(self, cursor: int) -> str | None:
+        """Resolve an exact retained step boundary, never invent time for an expired cursor."""
+        if not self._exists():
+            return None
+        with self._db() as connection:
+            row = connection.execute("SELECT started_at FROM steps WHERE cursor=?", (cursor,)).fetchone()
+            return row[0] if row is not None else None
+
     def timeline(self, *, start: str | int | None = None, until: str | int | None = None, limit: int = 200) -> dict[str, Any]:
         """A bounded page of all retained client steps, using stable store-wide cursors.
 

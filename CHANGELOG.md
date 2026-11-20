@@ -8,6 +8,12 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Incident history now supports `tap-agent history --last 30s` and full timestamp windows,
+  including background logs/calls with no agent steps or live connection. Independent crashes
+  and ANRs survive release/restart and appear in every history/recording text and JSON mode.
+  Known messages and available stacks are retained after redaction; `--details` expands text,
+  while JSON includes available details by default. Source gaps/missing traces stay explicit.
+  Python/Kotlin SDK history accepts inclusive/exclusive host-receipt time bounds.
 - Redacted device logs and RPC events survive release/daemon restart under one retention
   policy: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve
   (`tap config logging-policy`). Python `client.log_recordings` and Kotlin

@@ -522,6 +522,12 @@ outcomes and `attached_device_id` identifies the original attachment generation.
 share retention/protection with logs; interruption gaps have their own receipt cursors. Named
 range metadata includes event ranges, shared physical bytes and expected local agent intent.
 Exports use these durable archives rather than the bounded live `Events` ring.
+`LogEntry.death` additionally carries `RecordedAppDeath` (original attachment/serial plus the
+structured `AppDeath`), independently of commands. Known crash message/stack strings are
+redacted before persistence; death-source interruption is a gap. SDK/agent time-window reads
+use host receipt time across logs, RPC completions and deaths, including idle periods. The
+original device and RPC-start clocks remain separate. This adds no device wire command or
+change to action-line bytes.
 
 ### Artifacts
 

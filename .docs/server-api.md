@@ -84,6 +84,30 @@ marks such a range; missing local intent makes whole-artifact `complete` false e
 a bounded diagnostic view, not the durable export API. These additions do not change the
 compatibility epoch or the device wire protocol.
 
+## Independent death receipts and history windows
+
+`LogEntry.death` (`RecordedAppDeath{attached_device_id, serial, death: AppDeath}`) persists each
+new crash/ANR observation outside the `AppDeaths` parser lock, independently of SDK calls and
+whether an app is watched. It shares the connection event archive, atomic receipt cursor,
+clock, quotas and protected ranges. Known message/stack fields are redacted before storage;
+late rules scrub that original attachment's death receipts as well as RPCs. No raw/unknown
+wire-field copying is introduced. Follower/catch-up interruption inserts a durable gap rather
+than implying complete crash coverage. This is separate from bounded live `ListAppDeaths`
+retention and from whether a client later acknowledges a death.
+
+SDK exports include `deaths` regardless of optional device-log inclusion. Text has independent
+CRASH/ANR rows; JSON retains redacted available details, original attachment and sequence,
+`clock_id`, host monotonic receipt time and original device time. Missing stacks are explicit.
+Python `from_time`/`until_time` and Kotlin `fromTime`/`untilTime` filter every entry kind by host
+receipt time. RPC exports preserve both original start and `received_at`/receipt monotonic
+boundaries. Matched step IDs cannot bypass explicit time bounds.
+
+Agent timestamp/`--last` views discover original archives across retained connections even
+without local steps. They never shrink logs to step durations. `--last DURATION` captures one
+fixed positive lookback window and excludes explicit from/until arguments. `--details` is
+presentation only, not a prerequisite for capturing known crash details. Remaining evidence
+boundaries: [debugging gaps](history-debugging-gaps.md).
+
 ## Device capability discovery
 
 `DeviceService.GetDeviceCapabilities` takes the owning `client_connection_id` and

@@ -2,6 +2,7 @@
 # pyright: reportMissingImports=false, reportAttributeAccessIssue=false
 from __future__ import annotations
 
+import datetime
 import hashlib
 import json
 import pathlib
@@ -45,6 +46,13 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     agent.tap("id=save")
     agent.log("mark", "second")
     agent.tap("id=cancel")
+    document = json.loads(agent.history(as_json=True))
+    # The SDK fake uses a fixed epoch; align this test's receipts with actual local step bounds.
+    starts = {step["id"]: int(datetime.datetime.fromisoformat(step["started_at"].replace("Z", "+00:00")).timestamp() * 1000)
+        for step in document["steps"]}
+    for event in next(iter(fake.connections.logs.values())):
+        if event.step in starts:
+            event.at_epoch_ms = starts[event.step]
     document = json.loads(agent.history(as_json=True))
     events = document["events"]
     assert len(events) == 2  # The page selects the two intent step IDs, not an unrelated snapshot read.

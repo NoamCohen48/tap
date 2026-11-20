@@ -13,6 +13,7 @@ from tap_e2e import HistoryExport, TapConnection, TapError
 
 from .output import json_value
 from .records import RecordError, UnknownHistoryError, _history_options
+from .targets import UsageError, parse_duration
 
 if TYPE_CHECKING:
     from .core import Agent
@@ -30,9 +31,9 @@ def _flags(**values: bool) -> None:
 
 
 def record(agent: Agent, action: str, name: str | None, *, long: bool = False,
-           logs: bool = False, as_json: bool = False) -> str:
+           logs: bool = False, as_json: bool = False, details: bool = False) -> str:
     """Control or export named ranges; ordinary activity needs no start command."""
-    _flags(long=long, logs=logs, json=as_json)
+    _flags(long=long, logs=logs, json=as_json, details=details)
     if action not in ("start", "stop", "list", "export", "clean"):
         _usage("record action must be start, stop, list, export or clean")
     if action == "list":
@@ -42,8 +43,8 @@ def record(agent: Agent, action: str, name: str | None, *, long: bool = False,
         _usage(f"record {action} needs NAME")
     if long and action != "list":
         _usage("-L is only for record list")
-    if (logs or as_json) and action != "export":
-        _usage("--logs and --json are only for record export")
+    if (logs or as_json or details) and action != "export":
+        _usage("--logs, --json and --details are only for record export")
 
     def run() -> str:
         if action == "list":
@@ -71,7 +72,7 @@ def record(agent: Agent, action: str, name: str | None, *, long: bool = False,
                 raise RecordError(f"daemon recording {name!r} started but local intent history could not commit; use record stop/export/clean NAME to inspect it") from error
             return f"recording {name!r}"
         if action == "export":
-            return _export_recording(agent, name, logs=logs, as_json=as_json)
+            return _export_recording(agent, name, logs=logs, as_json=as_json, details=details)
         try:
             selected = agent.records.select(name, agent.session)
         except UnknownHistoryError:
@@ -104,7 +105,7 @@ def record(agent: Agent, action: str, name: str | None, *, long: bool = False,
     return agent._run(run)
 
 
-def _export_recording(agent: Agent, name: str, *, logs: bool, as_json: bool) -> str:
+def _export_recording(agent: Agent, name: str, *, logs: bool, as_json: bool, details: bool = False) -> str:
     from .core import AgentError
     agent._end_ended_histories()
     try:
@@ -130,31 +131,72 @@ def _export_recording(agent: Agent, name: str, *, logs: bool, as_json: bool) -> 
         data["step_history_unavailable"] = "daemon protection survived but no local agent intent history was committed"
         data["complete"] = False
     data["format"] = "tap-history/1"
-    return _render(data, as_json)
+    return _render(data, as_json, details=details)
 
 
 def history(agent: Agent, *, start: str | int | None = None, until: str | int | None = None,
-            limit: int = 200, logs: bool = False, as_json: bool = False) -> str:
-    """A paginated view of all retained client steps, not a list of storage partitions."""
+            last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False,
+            details: bool = False) -> str:
+    """Read full time-window evidence independently of paginated agent intent."""
     from .core import AgentError
-    _flags(logs=logs, json=as_json)
+    _flags(logs=logs, json=as_json, details=details)
+    if last is not None:
+        if start is not None or until is not None:
+            _usage("--last cannot be combined with --from or --until")
+        try:
+            seconds = parse_duration(last)
+            if seconds <= 0:
+                _usage("--last must be positive")
+            end = datetime.datetime.now(datetime.timezone.utc)
+            start = (end - datetime.timedelta(seconds=seconds)).isoformat()
+            until = end.isoformat()
+        except (UsageError, OverflowError, ValueError) as error:
+            _usage(str(error))
     try:
-        _history_options(start, until, limit)
+        lower, upper = _history_options(start, until, limit)
     except RecordError as error:
         _usage(str(error))
+    time_view = any(bound is not None and bound[0] == "started_at" for bound in (lower, upper))
+
     def run() -> str:
         agent._end_ended_histories()
         data = agent.records.timeline(start=start, until=until, limit=limit)
-        data.update(events=[], event_capture=[])
+        data.update(events=[], event_capture=[], deaths=[])
+        data["complete"] = data["complete"] if data["steps"] else True
         if logs:
             data["log"] = {}
-        for owner in data.pop("connections"):
+        bounds = []
+        for bound in (lower, upper):
+            if bound is None:
+                bounds.append(None)
+            elif bound[0] == "started_at":
+                bounds.append(_seconds(bound[1]))
+            else:
+                at = agent.records.cursor_time(bound[1])
+                if at is None:
+                    data["complete"] = False
+                    data["events_unavailable"] = "a step boundary is no longer retained; its evidence time cannot be reconstructed"
+                    if logs:
+                        data["log_unavailable"] = data["events_unavailable"]
+                    return _render(data, as_json, details=details)
+                bounds.append(_seconds(at))
+        low, high = bounds
+        data["range"] = {"from_time": low, "until_time": high, "clock": "host_receipt",
+            "activity": "all" if time_view else "selected_steps_and_independent_evidence"}
+        owners = set(data.pop("connections"))
+        try:
+            owners.update(archive.connection_id for archive in agent.client.log_recordings.archives(include_events=True))
+        except (TapError, AgentError, OSError) as error:
+            data["complete"] = False
+            data["events_unavailable"] = f"retained archive discovery failed ({type(error).__name__})"
+            if logs:
+                data["log_unavailable"] = "daemon evidence could not be discovered"
+        for owner in sorted(owners):
             steps = [step for step in data["steps"] if step["connection_id"] == owner]
-            low = min(_seconds(step["started_at"]) for step in steps)
-            high = max(_seconds(step["finished_at"]) if step["finished_at"] else datetime.datetime.now().timestamp() for step in steps) + 0.001
             try:
                 evidence = agent.client.log_recordings.history(owner, logs=logs,
-                    step_ids=[step["id"] for step in steps if step["id"]], from_time=low, until_time=high).to_dict()
+                    step_ids=None if time_view else [step["id"] for step in steps if step["id"]],
+                    from_time=low, until_time=high).to_dict()
             except (TapError, AgentError, OSError) as error:
                 data["complete"] = False
                 data["events_unavailable"] = f"retained events were not inspected ({type(error).__name__})"
@@ -162,6 +204,7 @@ def history(agent: Agent, *, start: str | int | None = None, until: str | int | 
                     data["log_unavailable"] = "daemon evidence could not be read"
                 continue
             data["events"].extend(evidence["events"])
+            data["deaths"].extend(evidence.get("deaths", []))
             data["event_capture"].extend(evidence["event_capture"])
             data["complete"] = bool(data["complete"] and evidence["complete"])
             if evidence.get("events_unavailable"):
@@ -169,7 +212,12 @@ def history(agent: Agent, *, start: str | int | None = None, until: str | int | 
             for serial, entries in evidence.get("log", {}).items():
                 key = serial if serial not in data["log"] else f"{serial}:{owner}"
                 data["log"][key] = entries
-        return _render(data, as_json)
+        if time_view and (data.get("next") is not None or data.get("older") is not None):
+            data["steps_truncated"] = True
+            data["complete"] = False
+        if not owners:
+            data["complete"] = False
+        return _render(data, as_json, details=details)
     return agent._run(run)
 
 
@@ -193,9 +241,9 @@ def release(agent: Agent) -> str:
     return agent._run(run)
 
 
-def _render(data: dict, as_json: bool) -> str:
+def _render(data: dict, as_json: bool, *, details: bool = False) -> str:
     result = HistoryExport(data)
-    return result.to_json() if as_json else result.text
+    return result.to_json() if as_json else result.render_text(details=details)
 
 
 def _at(value: int | None) -> str:

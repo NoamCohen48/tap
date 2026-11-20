@@ -395,12 +395,15 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("-L", dest="long", action="store_true", help="list only: include capture state, timestamps and shared segment disk usage")
     p.add_argument("--logs", action="store_true", help="export only: include retained device logs")
     p.add_argument("--json", dest="as_json", action="store_true", help="export only: JSON instead of readable text; stdout, never a file")
+    p.add_argument("--details", action="store_true", help="export only: show retained redacted crash/ANR stack traces in text (JSON always includes them)")
 
     p = verb("history", "show retained activity, not a catalog; latest 200 steps by default", common)
     p.add_argument("--from", dest="start", metavar="STEP|TIME", help="inclusive stable step cursor or ISO timestamp with timezone; page forward")
     p.add_argument("--until", metavar="STEP|TIME", help="exclusive stable step cursor or ISO timestamp with timezone")
+    p.add_argument("--last", metavar="DURATION", help="all retained activity in the last duration, e.g. 30s or 5m; excludes --from/--until")
+    p.add_argument("--details", action="store_true", help="show retained redacted crash/ANR stack traces in text (JSON always includes them)")
     p.add_argument("--limit", type=int, default=200, metavar="N", help="maximum steps per page, 1..5000 (default: 200)")
-    p.add_argument("--logs", action="store_true", help="include retained device logs for this page's time range")
+    p.add_argument("--logs", action="store_true", help="include retained device logs for the full requested time range, even without steps")
     p.add_argument("--json", dest="as_json", action="store_true", help="JSON instead of readable text; stdout, never a file")
 
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
@@ -537,9 +540,9 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "capture":
         return agent.capture(device, args.out)
     if v == "record":
-        return agent.record(args.action, args.name, long=args.long, logs=args.logs, as_json=args.as_json)
+        return agent.record(args.action, args.name, long=args.long, logs=args.logs, as_json=args.as_json, details=args.details)
     if v == "history":
-        return agent.history(start=args.start, until=args.until, limit=args.limit, logs=args.logs, as_json=args.as_json)
+        return agent.history(start=args.start, until=args.until, last=args.last, limit=args.limit, logs=args.logs, as_json=args.as_json, details=args.details)
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
