@@ -158,6 +158,9 @@ API compatibility epoch is unchanged; the internal device protocol is 5.3 (also 
   [the Python SDK](docs/sdk/python.md#device-matrix-execution).
 - Daemon: discoverable command help, device/session administration and diagnostics, including
   JSON output and typed exit codes. See [server commands](docs/guide/server.md).
+- CI: native compilation and no-device CLI/RPC smokes now run on PRs as well as main,
+  with a regression check guarding shared validation-job coverage. Publication remains gated
+  separately; matching CI jobs do not guarantee identical thread scheduling.
 - Build: pin Studio and watcher to Vite 8.3.3, fixing the six reported development-server
   advisories affecting 8.3.0–8.3.2. A regression check guards both manifests and committed
   resolutions against the vulnerable versions. Production pages remain static assets.

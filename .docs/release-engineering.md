@@ -156,11 +156,19 @@ No local device matrix is required for this release-tooling change unless reques
 - Studio/watcher 3.10/3.13: generated code, browser tests/builds, backend tests and wheels.
 - API 34 emulator: Kotlin/Python suites, agent/Studio smokes (not the local fault-injection
   validation matrix). This lane must stay enabled.
-- Main-only native image: build and no-device RPC smoke to catch reflection metadata gaps.
+- Native image on both PRs and main: build and no-device CLI/RPC smokes to catch compiler and
+  reflection metadata failures before merge.
 
 Gradle caches are enabled; `setup-gradle` saves on main and PRs restore read-only. Device
 jobs build their own distributions. Local API 29 hardware and fault-injection/reboot tests
 remain outside CI; never run reboot tests on shared devices without approval.
+
+PRs and main use the same validation-job definitions, including native compilation. A
+regression test rejects job-level event/branch filters in `ci.yml` and requires the native
+build and both smoke scripts. Release/publication and Pages deployment remain separately gated
+on main and public assets. Runner scheduling and cache availability can still differ; parity
+of commands cannot make a racy test deterministic, so fake-time tests must synchronize on the
+operation they observe, not on a preceding callback.
 
 `docs.yml` builds the guide and generated references through `scripts/build-docs.sh`, uploads
 site/Markdown artifacts, and deploys main to <https://noamcohen48.github.io/tap/> when
