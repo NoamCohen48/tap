@@ -259,34 +259,45 @@ internal class AppDeaths(
     private suspend fun follow() {
         var failures = 0
         while (scope.isActive) {
-            val since = synchronized(lock) { lastLineEpochMs } ?: sinceEpochSeconds?.times(1000)
-            var read = false
-            try {
-                val process = adb.startLogcatEpoch(serial, BUFFERS, since, TAGS)
-                child = process
-                following = true
-                // Lines read before this one started (catch-up reads) are deduplicated.
-                process.inputStream.bufferedReader().use { reader ->
-                    while (true) {
-                        val line = runInterruptible { reader.readLine() } ?: break
-                        read = true
-                        failures = 0
-                        ingest(line)
-                    }
-                }
-                // A child that ends without a line (device gone, logcat refused) is a failure too.
-                if (!read && failures++ == 0) log("crash log of $serial not followed: logcat ended at once")
-            } catch (cancelled: CancellationException) {
-                throw cancelled
-            } catch (error: Exception) {
-                if (failures++ == 0) log("crash log of $serial not followed: ${error.message}")
-            } finally {
-                following = false
-                child?.destroyForcibly()
-                child = null
-            }
+            failures = runInterruptible { followLog(failures) }
             delay((restartDelayMs shl failures.coerceAtMost(5)).coerceAtMost(MAX_RESTART_DELAY_MS))
         }
+    }
+
+    /** Keep error handling and cleanup out of the coroutine state machine: GraalVM 21.0.2
+     * cannot parse its combined suspension and exception paths. The caller interrupts this
+     * blocking read on cancellation; close also destroys the child to unblock its pipe. */
+    private fun followLog(previousFailures: Int): Int {
+        var failures = previousFailures
+        var read = false
+        val since = synchronized(lock) { lastLineEpochMs } ?: sinceEpochSeconds?.times(1000)
+        try {
+            val process = adb.startLogcatEpoch(serial, BUFFERS, since, TAGS)
+            child = process
+            following = true
+            // Catch-up reads and restarted followers can see the same lines; ingest deduplicates.
+            process.inputStream.bufferedReader().use { reader ->
+                while (scope.isActive) {
+                    val line = reader.readLine() ?: break
+                    read = true
+                    failures = 0
+                    ingest(line)
+                }
+            }
+            // A child that ends without a line (device gone, logcat refused) is a failure too.
+            if (!read && failures++ == 0) log("crash log of $serial not followed: logcat ended at once")
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (error: Exception) {
+            // Let runInterruptible translate an interrupted read into cancellation, not a retry.
+            if (!scope.isActive) throw error
+            if (failures++ == 0) log("crash log of $serial not followed: ${error.message}")
+        } finally {
+            following = false
+            child?.destroyForcibly()
+            child = null
+        }
+        return failures
     }
 
     /** Reads what the log holds now, within [READ_TIMEOUT_MS]; a failed read leaves the record as it is. */

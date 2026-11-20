@@ -32,7 +32,7 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
 </div>
 
-## Three ways to drive a device
+## Write, explore, record or watch
 
 === "Write a test"
 
@@ -120,6 +120,17 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
     watches, so the tests run exactly as they would without it.
 
     [Tap watcher](watcher/index.md){ .md-button }
+
+## New in 0.2.0
+
+- **See what happened between screens.** [Device events](guide/events.md) observe toasts,
+  window changes and edits; [device logs](guide/logs.md) join app output with Tap's steps.
+- **Catch crashes, not just missing buttons.** [Crashes and ANRs](guide/app-deaths.md) carry
+  the app's failure into test results, with explicit opt-ins for tests that expect a death.
+- **Read lists with limits.** [Bulk reads and bounded scans](guide/gestures.md#read-a-scrollable-collection)
+  collect exposed rows without pretending a virtualized list is a complete dataset.
+- **Run the same test across phones.** The [pytest matrix](sdk/python.md#device-matrix-execution)
+  selects devices explicitly and reports each run separately.
 
 ## How it works
 

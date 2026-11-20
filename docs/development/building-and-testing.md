@@ -41,11 +41,17 @@ No device needed. Run them before every pull request:
 
 ```bash
 ./gradlew :contracts:protocol:test :host:core:test :host:daemon:test \
-  :device:driver:command-engine:test :device:driver:core:test
-.venv/bin/pytest clients/agent/tests clients/studio/tests clients/watcher/tests
+  :device:driver:command-engine:test :device:driver:core:test :device:driver:core:lint \
+  :clients:kotlin:sdk:test :clients:kotlin:junit5:test
+.venv/bin/pytest clients/python/tests/unit clients/agent/tests
+.venv/bin/pytest clients/studio/tests
+.venv/bin/pytest clients/watcher/tests
 (cd clients/studio/web && bun run test)
 (cd clients/watcher/web && bun run test)
 ```
+
+Run Studio and watcher in separate pytest invocations: their test packages share the name
+`tests` and conflict when collected together in the default import mode.
 
 ## Client suites
 

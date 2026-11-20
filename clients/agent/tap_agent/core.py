@@ -1688,13 +1688,13 @@ class Agent:
         timeout: float | None = None,
     ) -> str:
         """Runs one step while listening for device events, then appends an ``events:`` block
-        with what it caused: the kinds in ``events`` (names or comma lists: ``toast,window``)
+        with what was observed: the kinds in ``events`` (names or comma lists: ``toast,window``)
         and those the ``expect`` specs name (``KIND`` or ``KIND:TEXT``, TEXT a case-insensitive
-        part of the event). Listening starts before the step, so nothing it causes is missed,
-        and goes on ``GRACE_SECONDS`` after it, or with ``expect`` until every expectation was
+        part of the event). Listening starts before the step, without guaranteeing complete
+        capture or causality, and goes on ``GRACE_SECONDS`` after it, or with ``expect`` until every expectation was
         met or ``timeout`` seconds (default the wait timeout) passed: then the step fails, its
         output saying what did happen. A step that fails is reported as it is. The CLI and the
-        MCP server wrap every input step in this when either option is given."""
+        MCP server wrap supported input steps in this when either option is given."""
         if not events and not expect:
             return step()
         wait = command_timeout(DEFAULT_WAIT if timeout is None else timeout)

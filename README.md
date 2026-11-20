@@ -11,7 +11,7 @@
 
 <p align="center">
   <a href="https://github.com/NoamCohen48/tap/actions/workflows/ci.yml"><img src="https://github.com/NoamCohen48/tap/actions/workflows/ci.yml/badge.svg?branch=main" alt="CI"></a>
-  <a href="https://github.com/NoamCohen48/tap/releases"><img src="https://img.shields.io/github/v/release/NoamCohen48/tap?include_prereleases&filter=daemon/*&label=release" alt="Release"></a>
+  <a href="https://github.com/NoamCohen48/tap/releases"><img src="https://img.shields.io/github/v/release/NoamCohen48/tap?include_prereleases&filter=v*&label=release" alt="Release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="License: Apache-2.0"></a>
   <img src="https://img.shields.io/badge/status-alpha-orange" alt="Status: alpha">
 </p>
@@ -65,13 +65,13 @@ With it, Gradle reads Tap from a local Maven repository and needs no GitHub toke
 the parts one by one instead:
 
 1. Download the Tap server for your system from the
-   [latest release](https://github.com/NoamCohen48/tap/releases/tag/v0.1.0):
-   `tap-0.1.0-linux-x86_64` (Linux), `tap-0.1.0-macos-aarch64` (macOS on Apple silicon) or
-   `tap-0.1.0-server-jvm.zip` (any system with Java 17).
+   [release](https://github.com/NoamCohen48/tap/releases/tag/v0.2.0):
+   `tap-0.2.0-linux-x86_64` (Linux), `tap-0.2.0-macos-aarch64` (macOS on Apple silicon) or
+   `tap-0.2.0-server-jvm.zip` (any system with Java 17).
 2. Start it:
 
    ```bash
-   mv tap-0.1.0-linux-x86_64 tap && chmod +x tap
+   mv tap-0.2.0-linux-x86_64 tap && chmod +x tap
    ./tap start
    ```
 
@@ -93,7 +93,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.1.0")
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")
 }
 
 tasks.test {
@@ -106,7 +106,7 @@ Write a test like the one above, then run `./gradlew test`.
 ### Python
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl
 ```
 
 ```python
@@ -127,8 +127,8 @@ Run it with `pytest`.
 device. It needs Python 3.10+ and a running Tap server:
 
 ```bash
-pip install https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_e2e-0.1.0-py3-none-any.whl \
-            https://github.com/NoamCohen48/tap/releases/download/v0.1.0/tap_agent-0.1.0-py3-none-any.whl
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl \
+            https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_agent-0.2.0-py3-none-any.whl
 claude mcp add tap -- tap-agent mcp      # register it with Claude Code
 ```
 
@@ -138,31 +138,34 @@ Other agents can use the CLI directly: `tap-agent skill` prints the instructions
 
 `tap-studio` (experimental) shows a device's screen in your browser with its elements overlaid.
 You act on them to record steps: taps, text, scrolls and checks, each on an element's selector,
-never a coordinate. Edit and replay the steps, then export them as a `tap-recording/1` file to
-turn into a test. It needs Python 3.10+ and a running Tap server. Until its first release,
-install it from a checkout, which needs [Bun](https://bun.sh) to build the page. From the
-repository root:
+never a coordinate. Edit and replay the steps, then export them as a `tap-recording/2` file or
+Kotlin/Python test code. It needs Python 3.10+ and a running Tap server. Install it from the
+platform bundle or the released wheels; the page is already built:
 
 ```bash
-(cd clients/studio/web && bun install && bun run build)
-pip install -e clients/python -e clients/studio
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl \
+            https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_studio-0.2.0-py3-none-any.whl
 tap-studio                                # opens the page; Ctrl-C frees the device
 ```
 
-### tap-watcher
+See [Tap Studio](https://noamcohen48.github.io/tap/studio/) for recording, replay and export.
+
+### Tap watcher
 
 `tap-watcher` (experimental) shows, in your browser, every device the server sees while your
 tests run: which connection holds it, each action it runs, and the device's screen as video.
 Look back at the seconds before a failure, compare the screen before and after an action, and
 save clips and recordings. It only watches: it never attaches or sends a command. The video
-needs a scrcpy 4.1 server JAR (`tap start --scrcpy-server JAR`). Until its first release,
-install it from a checkout:
+needs a scrcpy 4.1 server JAR (`tap start --scrcpy-server JAR`). Install from the platform
+bundle or the released wheels:
 
 ```bash
-(cd clients/watcher/web && bun install && bun run build)
-pip install -e clients/python -e clients/watcher
+pip install https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_e2e-0.2.0-py3-none-any.whl \
+            https://github.com/NoamCohen48/tap/releases/download/v0.2.0/tap_watcher-0.2.0-py3-none-any.whl
 tap-watcher                               # prints the link to open
 ```
+
+See [Tap watcher](https://noamcohen48.github.io/tap/watcher/) for video setup and saved runs.
 
 ## Documentation
 
@@ -176,9 +179,9 @@ tap-watcher                               # prints the link to open
 | [The tap server](https://noamcohen48.github.io/tap/guide/server/) | the `tap` command and how clients find it |
 | [SDKs](https://noamcohen48.github.io/tap/sdk/) | the Python + pytest and Kotlin + JUnit 5 clients and their settings |
 | [Errors](https://noamcohen48.github.io/tap/guide/errors/), [Artifacts](https://noamcohen48.github.io/tap/guide/artifacts/) | what failures mean and what to look at |
-| [tap-agent](https://noamcohen48.github.io/tap/agent/) | using `tap-agent` |
+| [Tap agent](https://noamcohen48.github.io/tap/agent/) | using `tap-agent` |
 | [Tap Studio](https://noamcohen48.github.io/tap/studio/) | inspecting a screen and recording steps in the browser |
-| [tap-watcher](https://noamcohen48.github.io/tap/watcher/) | watching tests' actions and the device's screen in the browser |
+| [Tap watcher](https://noamcohen48.github.io/tap/watcher/) | watching tests' actions and the device's screen in the browser |
 | [Coming from Maestro or Appium](https://noamcohen48.github.io/tap/guide/coming-from/) | how the concepts map |
 | [API reference](https://noamcohen48.github.io/tap/reference/) | every Kotlin, Python and server API |
 | [Development](https://noamcohen48.github.io/tap/development/) | how Tap is built, and how to work on it |

@@ -101,6 +101,20 @@ summary-plus-file shape for agents. Nothing is copied.
     only notifies (the next step still reports and takes the death), and its wait
     (`ListAppDeaths.wait_ms`) does not count as use, so it never keeps an idle session alive.
 
+## Native-image compatibility (2026-11-20)
+
+The 0.2.0 sanity run reproduced main CI's GraalVM 21.0.2 compiler failure in
+`AppDeaths.follow`: incompatible frame states (`rethrowException`) while parsing the coroutine's
+combined suspension and exception paths. Moving only the reader's `use` block was insufficient.
+The follower now suspends only for one interruptible blocking iteration and its restart delay;
+that iteration owns synchronous startup, reading, error handling and cleanup. The failure
+counter still resets after each line, restarted reads still deduplicate, cancellation propagates,
+and detach destroys the child and closes the blocked reader.
+
+Verified with `:host:daemon:test` (including a reader-close assertion), `:host:daemon:nativeCompile`
+on GraalVM 21.0.2, and the native CLI/RPC smoke scripts. No protocol, API, crash ownership or
+retry policy changed; no compiler-check bypass or toolchain upgrade was needed.
+
 ## Not in scope
 
 - Deaths with no crash event: low-memory kills, `System.exit`, `am force-stop` from outside

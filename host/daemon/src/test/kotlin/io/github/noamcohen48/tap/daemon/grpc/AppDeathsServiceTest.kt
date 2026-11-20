@@ -383,6 +383,7 @@ class AppDeathsServiceTest {
                 assertTrue(deaths().deathsList.single().handled)
             }
             assertTrue(adb.child.destroyed, "detach stops the follower")
+            assertTrue(withContext(Dispatchers.IO) { adb.child.readerClosed.await(5, TimeUnit.SECONDS) }, "detach closes the blocked reader")
         }
 
     @Test
@@ -443,8 +444,18 @@ class AppDeathsServiceTest {
 
 /** A child whose stdout is written line by line ([emit]) and ends when it is destroyed. */
 internal class LineProcess : Process() {
+    val readerClosed = CountDownLatch(1)
     private val sink = PipedOutputStream()
-    private val source = PipedInputStream(sink, 64 * 1024)
+    private val source =
+        object : PipedInputStream(sink, 64 * 1024) {
+            override fun close() {
+                try {
+                    super.close()
+                } finally {
+                    readerClosed.countDown()
+                }
+            }
+        }
     private val exited = CountDownLatch(1)
 
     @Volatile var destroyed = false
