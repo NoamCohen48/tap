@@ -238,6 +238,22 @@ was hidden or skipped to make the candidate pass. Reboot and two-device checks w
 Hosted cross-platform builds, emulator CI, registries and public download checks remain release
 gates.
 
+## Fake-clock test release gate (2026-11-20)
+
+The first main CI after the 0.2.0 preparation (run 44729512327) passed the emulator lane but
+failed `CommandPipelineTest.sleepFollowsTheInjectedClockAndEndsOnCancel`; Release was correctly
+skipped and no 0.2.0 tag was created. The same test had passed on the PR. Its readiness latch
+was signalled before `sleep` calculated its deadline: a fast fake-clock advance could instead
+become the sleep's start time, leaving it waiting for an advance that never came.
+
+The test clock now observes captured reads. Readiness is signalled at the first sleep poll,
+after the start and remaining-budget reads have established the deadline. Capturing the value
+before signalling also prevents the main thread's advance from changing that in-flight read.
+The cancellation half uses the existing bounded running-command wait. No production clock,
+sleep, cancellation or command behavior changes. The complete 39-test command-engine suite
+and 25 forced executions of the affected test passed locally; nothing was skipped or retried
+as a release workaround.
+
 ## Release record: 0.1.0 (2026-11-08)
 
 - Release run 42424130991 succeeded on `main` CI's success for 397afd49; it created tag

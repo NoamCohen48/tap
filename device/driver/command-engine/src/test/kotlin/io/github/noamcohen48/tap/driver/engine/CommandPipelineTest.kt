@@ -24,6 +24,7 @@ import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -34,7 +35,13 @@ import kotlin.test.fail
 
 class CommandPipelineTest {
     private val now = AtomicLong(1_000)
-    private val clock = Clock { now.get() }
+    private val onClockRead = AtomicReference<(() -> Unit)?>(null)
+    private val clock = Clock {
+        // Publish the observation only after capturing the value returned to the caller.
+        val value = now.get()
+        onClockRead.get()?.invoke()
+        value
+    }
     private val written = LinkedBlockingQueue<Outbound>()
     private val poisonReasons = LinkedBlockingQueue<String>()
     private val writeFailures = LinkedBlockingQueue<Throwable>()
@@ -551,11 +558,20 @@ class CommandPipelineTest {
     fun sleepFollowsTheInjectedClockAndEndsOnCancel() {
         val sleeping = CountDownLatch(1)
         pipeline.submit(1, 60_000) { ctx ->
-            sleeping.countDown()
-            ctx.sleep(30_000)
+            var reads = 0
+            onClockRead.set {
+                // sleep reads its start, remaining command budget, then its first poll.
+                // The third captured value proves the deadline is already established.
+                if (++reads == 3) sleeping.countDown()
+            }
+            try {
+                ctx.sleep(30_000)
+            } finally {
+                onClockRead.set(null)
+            }
             Responses.done()
         }
-        assertTrue(sleeping.await(1, TimeUnit.SECONDS))
+        assertTrue(sleeping.await(1, TimeUnit.SECONDS), "sleep reached its first clock poll")
         now.addAndGet(30_000)
         assertTrue(nextResponse().response.ok, "a manual clock advance ends the sleep")
 
@@ -565,7 +581,7 @@ class CommandPipelineTest {
             ctx.checkCancelled()
             fail("slept through a cancel")
         }
-        while (pipeline.snapshot().running != 2L) Thread.sleep(1)
+        awaitRunning(2)
         pipeline.cancel(2)
         assertEquals(ErrorCode.ERR_CANCELLED, nextResponse().response.errorCode)
         assertTrue(System.nanoTime() - started < TimeUnit.SECONDS.toNanos(5))
