@@ -46,9 +46,10 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     agent.log("mark", "second")
     agent.tap("id=cancel")
     events = json.loads(agent.export(calls=True))["calls"]["events"]
-    assert len(events) == 2
+    assert len(events) == 3  # snapshot's passive toast-history read, then the two taps
+    assert "read_toast_history" in events[0]["command"]
     later = json.loads(agent.export(calls=True, since="second"))["calls"]["events"]
-    assert later == events[1:]
+    assert later == events[2:]
 
 
 def test_app_queries_and_visibility_reuse_sdk(fake, agent, client, monkeypatch):
@@ -74,7 +75,8 @@ def test_app_queries_and_visibility_reuse_sdk(fake, agent, client, monkeypatch):
 def test_configurable_stability_uses_explicit_package(fake, agent):
     agent.attach("first")
     agent.settle(package="com.example", timeout=2, stable_for=0.2, signal="pixels")
-    (command,) = fake.devices.commands
+    command, observation = fake.devices.commands
+    assert observation.WhichOneof("op") == "read_toast_history"
     assert command.WhichOneof("op") == "wait_screen_stable"
     assert command.timeout_ms == 2000
     assert command.wait_screen_stable.package_name == "com.example"
@@ -270,10 +272,11 @@ def test_cli_forwards_new_parameters(fake, agent):
     assert fake.devices.commands[-1].type_text.text == "hello"
     assert fake.devices.commands[-1].type_text.sensitive
     run(["settle", "--package", "com.example", "--signal", "all", "--stable-for", "100ms"])
-    assert fake.devices.commands[-1].wait_screen_stable.stable_for_ms == 100
-    assert fake.devices.commands[-1].wait_screen_stable.signal == pb.STABILITY_ALL
+    assert fake.devices.commands[-2].wait_screen_stable.stable_for_ms == 100
+    assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_ALL
+    assert fake.devices.commands[-1].WhichOneof("op") == "read_toast_history"
     assert json.loads(run(["app", "installed", "com.example"])) is True
-    assert "wait_screen_stable" in json.loads(run(["export", "--calls"]))["calls"]["events"][-1]["command"]
+    assert "wait_screen_stable" in json.loads(run(["export", "--calls"]))["calls"]["events"][-2]["command"]
     assert "detached" in run(["detach"])
 
 
@@ -290,7 +293,8 @@ async def test_mcp_workflow_schema_and_forwarding(fake, agent):
         assert fake.devices.commands[-1].timeout_ms == 4000
         result = await client.call_tool("settle", {"package": "com.example", "signal": "pixels", "stable_for": .1})
         assert not result.is_error
-        assert fake.devices.commands[-1].wait_screen_stable.signal == pb.STABILITY_PIXELS
+        assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_PIXELS
+        assert fake.devices.commands[-1].WhichOneof("op") == "read_toast_history"
         result = await client.call_tool("type_text", {"text": "hello", "target": "id=input", "await_focus": False})
         assert not result.is_error
         assert fake.devices.commands[-1].WhichOneof("op") == "type_text"

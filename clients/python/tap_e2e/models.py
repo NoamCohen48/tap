@@ -933,6 +933,37 @@ class Toast:
 
 
 @dataclass(frozen=True)
+class ToastEvent:
+    """One retained accessibility toast observation, ordered by ``sequence`` within its stream.
+
+    ``at_epoch_ms`` is device wall time, not host time. ``text_truncated`` marks text capped at
+    1024 UTF-16 code units. This is history, not evidence that the toast is still on screen.
+    """
+
+    sequence: int
+    at_epoch_ms: int
+    toast: Toast
+    text_truncated: bool
+
+
+@dataclass(frozen=True)
+class ToastHistory:
+    """Non-consuming driver history (last 128 toasts, oldest first). Not disk-persistent.
+
+    Use ``stream_id`` and ``next_sequence`` together for the next read. ``gap`` reports lost
+    observations; ``reset`` reports a different stream or an ahead-of-stream cursor. An empty
+    result still carries the high-water mark. Retention has no age-based expiry.
+    """
+
+    stream_id: str
+    events: tuple[ToastEvent, ...]
+    next_sequence: int
+    oldest_sequence: int
+    gap: bool
+    reset: bool
+
+
+@dataclass(frozen=True)
 class Notification:
     """An active notification (``Device.notifications``, ``Device.await_notification``): the
     package that posted it, its title and text (the ``android.title`` / ``android.text`` extras,

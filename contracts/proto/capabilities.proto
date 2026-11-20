@@ -104,6 +104,7 @@ enum CapabilityId {
   CAPABILITY_APP_IS_RUNNING = 89;
   CAPABILITY_TAP_OUTSIDE_PANEL = 90;
   CAPABILITY_SNAPSHOTS = 91;
+  CAPABILITY_READ_TOAST_HISTORY = 92;
 }
 
 // Eligibility, not a promise of success: matching, occlusion, Android acceptance and transport

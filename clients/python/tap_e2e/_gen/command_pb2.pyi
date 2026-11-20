@@ -492,6 +492,14 @@ class AwaitToast(_message.Message):
     package_name: str
     def __init__(self, text: _Optional[str] = ..., mode: _Optional[_Union[_selector_pb2.MatchMode, str]] = ..., package_name: _Optional[str] = ...) -> None: ...
 
+class ReadToastHistory(_message.Message):
+    __slots__ = ("after_sequence", "stream_id")
+    AFTER_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    STREAM_ID_FIELD_NUMBER: _ClassVar[int]
+    after_sequence: int
+    stream_id: str
+    def __init__(self, after_sequence: _Optional[int] = ..., stream_id: _Optional[str] = ...) -> None: ...
+
 class PerformAccessibilityAction(_message.Message):
     __slots__ = ("selector", "standard", "custom")
     SELECTOR_FIELD_NUMBER: _ClassVar[int]
@@ -559,7 +567,7 @@ class DismissNotification(_message.Message):
     def __init__(self, match: _Optional[_Union[NotificationMatch, _Mapping]] = ...) -> None: ...
 
 class Command(_message.Message):
-    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation", "dismiss_keyguard", "double_tap", "drag", "pinch", "fling", "wait_permission_prompt", "choose_permission", "hide_keyboard", "perform_ime_action", "set_clipboard", "get_clipboard", "await_toast", "perform_accessibility_action", "set_progress", "set_location", "await_notification", "list_notifications", "open_notification", "dismiss_notification", "multi_tap", "hold", "wait_state", "tap_outside_panel", "snapshots")
+    __slots__ = ("timeout_ms", "device_info", "press_key", "dump_hierarchy", "exists", "count", "snapshot", "wait_visible", "wait_gone", "wait_app_visible", "wait_screen_stable", "tap", "long_tap", "set_text", "type_text", "clear_text", "swipe", "scroll", "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation", "dismiss_keyguard", "double_tap", "drag", "pinch", "fling", "wait_permission_prompt", "choose_permission", "hide_keyboard", "perform_ime_action", "set_clipboard", "get_clipboard", "await_toast", "perform_accessibility_action", "set_progress", "set_location", "await_notification", "list_notifications", "open_notification", "dismiss_notification", "multi_tap", "hold", "wait_state", "tap_outside_panel", "snapshots", "read_toast_history")
     TIMEOUT_MS_FIELD_NUMBER: _ClassVar[int]
     DEVICE_INFO_FIELD_NUMBER: _ClassVar[int]
     PRESS_KEY_FIELD_NUMBER: _ClassVar[int]
@@ -606,6 +614,7 @@ class Command(_message.Message):
     WAIT_STATE_FIELD_NUMBER: _ClassVar[int]
     TAP_OUTSIDE_PANEL_FIELD_NUMBER: _ClassVar[int]
     SNAPSHOTS_FIELD_NUMBER: _ClassVar[int]
+    READ_TOAST_HISTORY_FIELD_NUMBER: _ClassVar[int]
     timeout_ms: int
     device_info: DeviceInfoQuery
     press_key: PressKey
@@ -652,7 +661,8 @@ class Command(_message.Message):
     wait_state: WaitState
     tap_outside_panel: TapOutsidePanel
     snapshots: Snapshots
-    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ..., set_orientation: _Optional[_Union[SetOrientation, _Mapping]] = ..., set_display_rotation: _Optional[_Union[SetDisplayRotation, _Mapping]] = ..., unfreeze_rotation: _Optional[_Union[UnfreezeRotation, _Mapping]] = ..., dismiss_keyguard: _Optional[_Union[DismissKeyguard, _Mapping]] = ..., double_tap: _Optional[_Union[DoubleTap, _Mapping]] = ..., drag: _Optional[_Union[Drag, _Mapping]] = ..., pinch: _Optional[_Union[Pinch, _Mapping]] = ..., fling: _Optional[_Union[Fling, _Mapping]] = ..., wait_permission_prompt: _Optional[_Union[WaitPermissionPrompt, _Mapping]] = ..., choose_permission: _Optional[_Union[ChoosePermission, _Mapping]] = ..., hide_keyboard: _Optional[_Union[HideKeyboard, _Mapping]] = ..., perform_ime_action: _Optional[_Union[PerformImeAction, _Mapping]] = ..., set_clipboard: _Optional[_Union[SetClipboard, _Mapping]] = ..., get_clipboard: _Optional[_Union[GetClipboard, _Mapping]] = ..., await_toast: _Optional[_Union[AwaitToast, _Mapping]] = ..., perform_accessibility_action: _Optional[_Union[PerformAccessibilityAction, _Mapping]] = ..., set_progress: _Optional[_Union[SetProgress, _Mapping]] = ..., set_location: _Optional[_Union[SetLocation, _Mapping]] = ..., await_notification: _Optional[_Union[AwaitNotification, _Mapping]] = ..., list_notifications: _Optional[_Union[ListNotifications, _Mapping]] = ..., open_notification: _Optional[_Union[OpenNotification, _Mapping]] = ..., dismiss_notification: _Optional[_Union[DismissNotification, _Mapping]] = ..., multi_tap: _Optional[_Union[MultiTap, _Mapping]] = ..., hold: _Optional[_Union[TimedPress, _Mapping]] = ..., wait_state: _Optional[_Union[WaitState, _Mapping]] = ..., tap_outside_panel: _Optional[_Union[TapOutsidePanel, _Mapping]] = ..., snapshots: _Optional[_Union[Snapshots, _Mapping]] = ...) -> None: ...
+    read_toast_history: ReadToastHistory
+    def __init__(self, timeout_ms: _Optional[int] = ..., device_info: _Optional[_Union[DeviceInfoQuery, _Mapping]] = ..., press_key: _Optional[_Union[PressKey, _Mapping]] = ..., dump_hierarchy: _Optional[_Union[DumpHierarchy, _Mapping]] = ..., exists: _Optional[_Union[Exists, _Mapping]] = ..., count: _Optional[_Union[Count, _Mapping]] = ..., snapshot: _Optional[_Union[Snapshot, _Mapping]] = ..., wait_visible: _Optional[_Union[WaitVisible, _Mapping]] = ..., wait_gone: _Optional[_Union[WaitGone, _Mapping]] = ..., wait_app_visible: _Optional[_Union[WaitAppVisible, _Mapping]] = ..., wait_screen_stable: _Optional[_Union[WaitScreenStable, _Mapping]] = ..., tap: _Optional[_Union[Tap, _Mapping]] = ..., long_tap: _Optional[_Union[LongTap, _Mapping]] = ..., set_text: _Optional[_Union[SetText, _Mapping]] = ..., type_text: _Optional[_Union[TypeText, _Mapping]] = ..., clear_text: _Optional[_Union[ClearText, _Mapping]] = ..., swipe: _Optional[_Union[Swipe, _Mapping]] = ..., scroll: _Optional[_Union[Scroll, _Mapping]] = ..., open_system_panel: _Optional[_Union[OpenSystemPanel, _Mapping]] = ..., set_orientation: _Optional[_Union[SetOrientation, _Mapping]] = ..., set_display_rotation: _Optional[_Union[SetDisplayRotation, _Mapping]] = ..., unfreeze_rotation: _Optional[_Union[UnfreezeRotation, _Mapping]] = ..., dismiss_keyguard: _Optional[_Union[DismissKeyguard, _Mapping]] = ..., double_tap: _Optional[_Union[DoubleTap, _Mapping]] = ..., drag: _Optional[_Union[Drag, _Mapping]] = ..., pinch: _Optional[_Union[Pinch, _Mapping]] = ..., fling: _Optional[_Union[Fling, _Mapping]] = ..., wait_permission_prompt: _Optional[_Union[WaitPermissionPrompt, _Mapping]] = ..., choose_permission: _Optional[_Union[ChoosePermission, _Mapping]] = ..., hide_keyboard: _Optional[_Union[HideKeyboard, _Mapping]] = ..., perform_ime_action: _Optional[_Union[PerformImeAction, _Mapping]] = ..., set_clipboard: _Optional[_Union[SetClipboard, _Mapping]] = ..., get_clipboard: _Optional[_Union[GetClipboard, _Mapping]] = ..., await_toast: _Optional[_Union[AwaitToast, _Mapping]] = ..., perform_accessibility_action: _Optional[_Union[PerformAccessibilityAction, _Mapping]] = ..., set_progress: _Optional[_Union[SetProgress, _Mapping]] = ..., set_location: _Optional[_Union[SetLocation, _Mapping]] = ..., await_notification: _Optional[_Union[AwaitNotification, _Mapping]] = ..., list_notifications: _Optional[_Union[ListNotifications, _Mapping]] = ..., open_notification: _Optional[_Union[OpenNotification, _Mapping]] = ..., dismiss_notification: _Optional[_Union[DismissNotification, _Mapping]] = ..., multi_tap: _Optional[_Union[MultiTap, _Mapping]] = ..., hold: _Optional[_Union[TimedPress, _Mapping]] = ..., wait_state: _Optional[_Union[WaitState, _Mapping]] = ..., tap_outside_panel: _Optional[_Union[TapOutsidePanel, _Mapping]] = ..., snapshots: _Optional[_Union[Snapshots, _Mapping]] = ..., read_toast_history: _Optional[_Union[ReadToastHistory, _Mapping]] = ...) -> None: ...
 
 class Snapshots(_message.Message):
     __slots__ = ("selector",)
@@ -822,6 +832,34 @@ class Toast(_message.Message):
     package_name: str
     def __init__(self, text: _Optional[str] = ..., package_name: _Optional[str] = ...) -> None: ...
 
+class ToastEvent(_message.Message):
+    __slots__ = ("sequence", "at_epoch_ms", "toast", "text_truncated")
+    SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    AT_EPOCH_MS_FIELD_NUMBER: _ClassVar[int]
+    TOAST_FIELD_NUMBER: _ClassVar[int]
+    TEXT_TRUNCATED_FIELD_NUMBER: _ClassVar[int]
+    sequence: int
+    at_epoch_ms: int
+    toast: Toast
+    text_truncated: bool
+    def __init__(self, sequence: _Optional[int] = ..., at_epoch_ms: _Optional[int] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., text_truncated: _Optional[bool] = ...) -> None: ...
+
+class ToastHistory(_message.Message):
+    __slots__ = ("stream_id", "events", "next_sequence", "oldest_sequence", "gap", "reset")
+    STREAM_ID_FIELD_NUMBER: _ClassVar[int]
+    EVENTS_FIELD_NUMBER: _ClassVar[int]
+    NEXT_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    OLDEST_SEQUENCE_FIELD_NUMBER: _ClassVar[int]
+    GAP_FIELD_NUMBER: _ClassVar[int]
+    RESET_FIELD_NUMBER: _ClassVar[int]
+    stream_id: str
+    events: _containers.RepeatedCompositeFieldContainer[ToastEvent]
+    next_sequence: int
+    oldest_sequence: int
+    gap: bool
+    reset: bool
+    def __init__(self, stream_id: _Optional[str] = ..., events: _Optional[_Iterable[_Union[ToastEvent, _Mapping]]] = ..., next_sequence: _Optional[int] = ..., oldest_sequence: _Optional[int] = ..., gap: _Optional[bool] = ..., reset: _Optional[bool] = ...) -> None: ...
+
 class PermissionPrompt(_message.Message):
     __slots__ = ("package_name", "choices", "accuracies")
     PACKAGE_NAME_FIELD_NUMBER: _ClassVar[int]
@@ -911,7 +949,7 @@ class NarrowingPart(_message.Message):
     def __init__(self, alone: _Optional[int] = ..., without: _Optional[int] = ..., near_misses: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class CommandResult(_message.Message):
-    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications", "outside_touch", "snapshots")
+    __slots__ = ("duration_ms", "request_id", "session_generation", "done", "bool", "count", "text", "snapshot", "device_info", "error", "permission_prompt", "toast", "notification", "notifications", "outside_touch", "snapshots", "toast_history")
     DURATION_MS_FIELD_NUMBER: _ClassVar[int]
     REQUEST_ID_FIELD_NUMBER: _ClassVar[int]
     SESSION_GENERATION_FIELD_NUMBER: _ClassVar[int]
@@ -928,6 +966,7 @@ class CommandResult(_message.Message):
     NOTIFICATIONS_FIELD_NUMBER: _ClassVar[int]
     OUTSIDE_TOUCH_FIELD_NUMBER: _ClassVar[int]
     SNAPSHOTS_FIELD_NUMBER: _ClassVar[int]
+    TOAST_HISTORY_FIELD_NUMBER: _ClassVar[int]
     duration_ms: int
     request_id: int
     session_generation: int
@@ -944,4 +983,5 @@ class CommandResult(_message.Message):
     notifications: NotificationList
     outside_touch: OutsideTouch
     snapshots: ElementSnapshotList
-    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ..., outside_touch: _Optional[_Union[OutsideTouch, _Mapping]] = ..., snapshots: _Optional[_Union[ElementSnapshotList, _Mapping]] = ...) -> None: ...
+    toast_history: ToastHistory
+    def __init__(self, duration_ms: _Optional[int] = ..., request_id: _Optional[int] = ..., session_generation: _Optional[int] = ..., done: _Optional[_Union[Done, _Mapping]] = ..., bool: _Optional[bool] = ..., count: _Optional[int] = ..., text: _Optional[str] = ..., snapshot: _Optional[_Union[ElementSnapshot, _Mapping]] = ..., device_info: _Optional[_Union[DeviceInfo, _Mapping]] = ..., error: _Optional[_Union[Error, _Mapping]] = ..., permission_prompt: _Optional[_Union[PermissionPrompt, _Mapping]] = ..., toast: _Optional[_Union[Toast, _Mapping]] = ..., notification: _Optional[_Union[DeviceNotification, _Mapping]] = ..., notifications: _Optional[_Union[NotificationList, _Mapping]] = ..., outside_touch: _Optional[_Union[OutsideTouch, _Mapping]] = ..., snapshots: _Optional[_Union[ElementSnapshotList, _Mapping]] = ..., toast_history: _Optional[_Union[ToastHistory, _Mapping]] = ...) -> None: ...

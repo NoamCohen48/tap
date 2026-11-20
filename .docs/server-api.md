@@ -310,6 +310,14 @@ connection is `PERMISSION_DENIED`, and an unknown id is `NOT_FOUND`.
   (`.docs/protocol-contract.md`): `Execute` validates the command (`CommandValidation`, the same
   code the driver runs; a failure is `INVALID_ARGUMENT`), wraps it in a wire `Request` and
   returns the driver's `CommandResult` unchanged. No conversion layer exists.
+- `read_toast_history` (Command field 52) returns `toast_history` (result field 20), a
+  non-consuming read of the driver's last 128 accessibility toast observations. Cursor pairs
+  (`stream_id`, exclusive `after_sequence`) provide ordered incremental reads; `gap` reports
+  eviction and `reset` reports a lost stream or ahead cursor. Device wall timestamps are
+  informational; sequences define order. No age expiry, no disk persistence; history clears
+  before runtime reuse. `CAPABILITY_READ_TOAST_HISTORY` (92) reflects driver negotiation.
+  Text is capped at 1024 UTF-16 units with `text_truncated`; package names at 256. The
+  existing `await_toast` lookback and wait behavior are unchanged.
 - Optional fields take their default on the driver only (`distance_percent` = 80, …); the server never fills them in.
 
 `CommandResult` is `duration_ms`, the driver's `request_id`/`session_generation`, and a

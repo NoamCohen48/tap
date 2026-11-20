@@ -181,6 +181,9 @@ class GoldenWireTest {
             ),
             "request-set-progress" to
                 (envelope(Requests.of(Commands.setProgress(Selectors.resource("volume"), 42.5f))) to Request::parseFrom),
+            "request-read-toast-history" to (
+                envelope(Requests.of(Commands.readToastHistory(12, "toast-stream"))) to Request::parseFrom
+            ),
             "request-await-toast" to (
                 envelope(Requests.of(Commands.awaitToast("Saved", MatchMode.MATCH_STARTS_WITH, packageName = AUT))) to Request::parseFrom
             ),

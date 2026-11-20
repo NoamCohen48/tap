@@ -14,6 +14,41 @@ client-owned intent: `record`/`export` for steps, `history` for the original eve
 always, `record` is gone, `history` lists the saved step histories and the event export is
 `export --calls`. The original decision/history below retains its original names.
 
+## Toast event inbox
+
+Owner-approved follow-up: first extend `toast` with retained history, then deliver a toast-only
+inbox. The driver accessibility listener collects continuously, including between commands;
+there is no client polling worker, hierarchy polling or background ref-state mutation.
+`ReadToastHistory` returns the last 128 observations, no age expiry, in sequence order with
+stream identity, timestamps, explicit gaps/resets and text truncation metadata. Driver loss
+ends the buffer; parked-runtime reuse clears it and starts a new stream for the next owner.
+`await_toast` keeps its 3.5-second lookback; `toast --history` reads without consuming.
+
+Successful `snapshot`, `settle` and `--settle` action responses deliver and acknowledge
+unread toasts, clearly labeled as historical evidence. Explicit reads use `toast --history`;
+there is no separate `events` command/tool while the inbox only observes toasts.
+Candidate snapshots stay JSON and add `toast_events` (or `toast_events_error`). Screen filters
+do not filter toast events. Collection values and snapshot refs are unaffected. A failed inbox
+read is explicit and does not hide a successful screen snapshot or advance its cursor.
+
+Acknowledgement is a local stream/sequence cursor, keyed by unique attachment id under
+`TAP_AGENT_DIR` / the configured agent output directory, shared by CLI processes and MCP.
+Cross-process file locks serialize read/render/ack; atomic owner-only files hold only cursor
+metadata, not toast text. A new attachment has a new cursor. `toast --history`, including
+explicit `--after-seq N --stream ID` reads, does not acknowledge. Cursor corruption is reported,
+not silently treated as an empty inbox. Transport/read/render/write failure leaves unread
+observations available for another read. Delivery is not exactly-once: a process can die after
+persisting acknowledgement but before its caller receives stdout; non-consuming history is
+the recovery path while the events are retained. There is no disk-persistent event archive.
+
+The first inbox is deliberately toast-only: window/app changes, snackbar/custom-overlay
+recognition and video are follow-ups, not implied guarantees. A future multi-event `events`
+command and candidate observations are recorded in [Feature TODO](feature-todo.md).
+Toast text is untrusted device
+content, never agent instructions. Accessibility delivery varies by Android/OEM/custom toast.
+The Execute history reads appear in the daemon call log; they are not recorded as user actions
+or explicit waits in the agent step history.
+
 ## Research summary
 
 | Tool | Surface | Taken |

@@ -112,6 +112,8 @@ class CommandValidationTest {
                 "toast unknown mode" to
                     Command.newBuilder().setAwaitToast(AwaitToast.newBuilder().setText("x").setModeValue(99)).build(),
                 "toast blank package" to Commands.awaitToast(packageName = " "),
+                "toast history negative cursor" to Commands.readToastHistory(-1),
+                "toast history long stream" to Commands.readToastHistory(streamId = "x".repeat(129)),
                 "notification mode without title or text" to
                     Commands.awaitNotification(Commands.notificationMatch(AUT, mode = MatchMode.MATCH_CONTAINS)),
                 "notification title too long" to

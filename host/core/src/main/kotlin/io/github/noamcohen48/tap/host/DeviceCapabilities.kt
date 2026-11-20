@@ -60,6 +60,7 @@ object DeviceCapabilities {
             "set_clipboard" to CAPABILITY_CLIPBOARD_WRITE,
             "get_clipboard" to CAPABILITY_CLIPBOARD_READ,
             "await_toast" to CAPABILITY_AWAIT_TOAST,
+            "read_toast_history" to CAPABILITY_READ_TOAST_HISTORY,
             "perform_accessibility_action" to CAPABILITY_ACCESSIBILITY_ACTION,
             "set_progress" to CAPABILITY_SET_PROGRESS,
             "set_location" to CAPABILITY_SET_LOCATION,

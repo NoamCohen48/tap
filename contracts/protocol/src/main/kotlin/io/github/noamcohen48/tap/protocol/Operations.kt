@@ -2,6 +2,8 @@ package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ReadToastHistory
+import io.github.noamcohen48.tap.api.v1.ToastHistory
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
@@ -133,7 +135,7 @@ val Command.isMutation: Boolean
 
             OpCase.DEVICE_INFO, OpCase.DUMP_HIERARCHY, OpCase.EXISTS, OpCase.COUNT, OpCase.SNAPSHOT, OpCase.SNAPSHOTS,
             OpCase.WAIT_VISIBLE, OpCase.WAIT_GONE, OpCase.WAIT_STATE, OpCase.WAIT_APP_VISIBLE, OpCase.WAIT_SCREEN_STABLE,
-            OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST,
+            OpCase.WAIT_PERMISSION_PROMPT, OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.READ_TOAST_HISTORY,
             OpCase.AWAIT_NOTIFICATION, OpCase.LIST_NOTIFICATIONS, OpCase.OP_NOT_SET, null,
             -> false
         }
@@ -172,7 +174,7 @@ val Command.targetSelector: Selector?
             OpCase.WAIT_SCREEN_STABLE, OpCase.OPEN_SYSTEM_PANEL, OpCase.SET_ORIENTATION,
             OpCase.SET_DISPLAY_ROTATION, OpCase.UNFREEZE_ROTATION, OpCase.DISMISS_KEYGUARD,
             OpCase.WAIT_PERMISSION_PROMPT, OpCase.CHOOSE_PERMISSION, OpCase.HIDE_KEYBOARD, OpCase.SET_CLIPBOARD,
-            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.SET_LOCATION, OpCase.AWAIT_NOTIFICATION,
+            OpCase.GET_CLIPBOARD, OpCase.AWAIT_TOAST, OpCase.READ_TOAST_HISTORY, OpCase.SET_LOCATION, OpCase.AWAIT_NOTIFICATION,
             OpCase.LIST_NOTIFICATIONS, OpCase.OPEN_NOTIFICATION, OpCase.DISMISS_NOTIFICATION, OpCase.OP_NOT_SET, null,
             -> null
         }
@@ -228,6 +230,12 @@ object Commands {
                 text?.let { setText(it) }
                 packageName?.let { setPackageName(it) }
             },
+        ).build()
+
+    /** Ordered retained toast observations after an exclusive cursor; never waits or consumes. */
+    fun readToastHistory(afterSequence: Long = 0, streamId: String = ""): Command =
+        Command.newBuilder().setReadToastHistory(
+            ReadToastHistory.newBuilder().setAfterSequence(afterSequence).setStreamId(streamId),
         ).build()
 
     /** A notification matching [match] (any active one when every field is null), the newest. */
@@ -616,6 +624,8 @@ interface CommandHandler {
 
     fun awaitToast(command: AwaitToast): Toast
 
+    fun readToastHistory(command: ReadToastHistory): ToastHistory
+
     fun awaitNotification(command: AwaitNotification): DeviceNotification
 
     fun listNotifications(command: ListNotifications): NotificationList
@@ -714,6 +724,7 @@ private fun Command.dispatch(handler: CommandHandler): CommandResult.Builder {
         OpCase.SET_CLIPBOARD -> result.setDone(done).also { handler.setClipboard(setClipboard) }
         OpCase.GET_CLIPBOARD -> result.setText(handler.getClipboard(getClipboard))
         OpCase.AWAIT_TOAST -> result.setToast(handler.awaitToast(awaitToast))
+        OpCase.READ_TOAST_HISTORY -> result.setToastHistory(handler.readToastHistory(readToastHistory))
         OpCase.AWAIT_NOTIFICATION -> result.setNotification(handler.awaitNotification(awaitNotification))
         OpCase.LIST_NOTIFICATIONS -> result.setNotifications(handler.listNotifications(listNotifications))
         OpCase.OPEN_NOTIFICATION -> result.setDone(done).also { handler.openNotification(openNotification) }

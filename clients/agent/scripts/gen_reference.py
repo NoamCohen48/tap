@@ -39,7 +39,9 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
         "`screenshot`, which an agent has to look at. `elements` reads a collection as JSON values "
-        "in one bulk call, without a diagnostic snapshot; `--texts` projects raw text.",
+        "in one bulk call, without a diagnostic snapshot; `--texts` projects raw text. "
+        "Snapshots and settle append unread historical toasts; `toast --history` inspects retained "
+        "toasts without consuming them. Gaps/resets are explicit; history is not current UI.",
         ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "log", "deaths", "media-record"],
     ),
     (

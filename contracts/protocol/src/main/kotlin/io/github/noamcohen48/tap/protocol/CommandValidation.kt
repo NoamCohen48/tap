@@ -219,6 +219,11 @@ object CommandValidation {
                 if (toast.hasPackageName()) requirePackage(toast.packageName)
             }
 
+            OpCase.READ_TOAST_HISTORY -> {
+                if (command.readToastHistory.afterSequence < 0) invalidRequest("after_sequence must be nonnegative")
+                if (command.readToastHistory.streamId.length > 128) invalidRequest("stream_id must be at most 128 chars")
+            }
+
             OpCase.AWAIT_NOTIFICATION -> validateMatch(command.awaitNotification.match)
 
             OpCase.OPEN_NOTIFICATION -> {

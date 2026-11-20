@@ -4,6 +4,8 @@ import android.app.Instrumentation
 import androidx.test.uiautomator.UiDevice
 import io.github.noamcohen48.tap.api.v1.AwaitNotification
 import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ReadToastHistory
+import io.github.noamcohen48.tap.api.v1.ToastHistory
 import io.github.noamcohen48.tap.api.v1.ChoosePermission
 import io.github.noamcohen48.tap.api.v1.ClearText
 import io.github.noamcohen48.tap.api.v1.Command
@@ -130,11 +132,13 @@ internal class DriverCommandEngine(
     private val artifacts = ArtifactCommands(instrumentation, device)
 
     @Volatile private var syncUsed = false
+    private var toastGeneration: Long? = null
 
     /** Sync provider work is deferred: never reuse a process that may retain a provider call. */
     fun closeForReuse() {
         check(!syncUsed) { "Sessions using synchronization require a cold driver" }
         location.close()
+        toasts.reset()
     }
 
     /** Runs on the pipeline executor. Deadlines are measured from [CommandContext.acceptedAtMs]. */
@@ -143,6 +147,11 @@ internal class DriverCommandEngine(
         request: Request,
         generation: Long,
     ): Response {
+        // Events can arrive while a reusable runtime is parked: never expose them to its next owner.
+        if (toastGeneration != generation) {
+            toasts.reset()
+            toastGeneration = generation
+        }
         if (request.hasSyncBootstrap() || request.hasSyncPoll()) syncUsed = true
         // A selector that does not compile has nothing to explain.
         var compiledOk = false
@@ -272,6 +281,8 @@ internal class DriverCommandEngine(
         override fun getClipboard(command: GetClipboard): String = clipboard.get(context)
 
         override fun awaitToast(command: AwaitToast): Toast = toasts.await(context, command)
+
+        override fun readToastHistory(command: ReadToastHistory): ToastHistory = toasts.history.read(command)
 
         override fun awaitNotification(command: AwaitNotification): DeviceNotification = notifications.await(context, command.match)
 

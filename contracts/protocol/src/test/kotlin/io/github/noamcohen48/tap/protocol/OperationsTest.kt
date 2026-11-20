@@ -1,6 +1,8 @@
 package io.github.noamcohen48.tap.protocol
 
 import io.github.noamcohen48.tap.api.v1.AwaitToast
+import io.github.noamcohen48.tap.api.v1.ReadToastHistory
+import io.github.noamcohen48.tap.api.v1.ToastHistory
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.OpenNotification
 import io.github.noamcohen48.tap.api.v1.NotificationList
@@ -138,7 +140,7 @@ class OperationsTest {
                 "device_info", "press_key", "type_text", "dump_hierarchy", "wait_app_visible", "wait_screen_stable",
                 "open_system_panel", "set_orientation", "set_display_rotation", "unfreeze_rotation",
                 "dismiss_keyguard", "wait_permission_prompt", "choose_permission",
-                "hide_keyboard", "set_clipboard", "get_clipboard", "await_toast", "set_location",
+                "hide_keyboard", "set_clipboard", "get_clipboard", "await_toast", "read_toast_history", "set_location",
                 "await_notification", "list_notifications", "open_notification", "dismiss_notification",
             ),
             targeted,
@@ -172,6 +174,7 @@ class OperationsTest {
                 "wait_permission_prompt" to OutcomeCase.PERMISSION_PROMPT,
                 "get_clipboard" to OutcomeCase.TEXT,
                 "await_toast" to OutcomeCase.TOAST,
+                "read_toast_history" to OutcomeCase.TOAST_HISTORY,
                 "await_notification" to OutcomeCase.NOTIFICATION,
                 "list_notifications" to OutcomeCase.NOTIFICATIONS,
                 "tap_outside_panel" to OutcomeCase.OUTSIDE_TOUCH,
@@ -397,6 +400,8 @@ class OperationsTest {
 
         override fun awaitToast(command: AwaitToast): Toast = record("await_toast", Toast.newBuilder().setText("Saved").setPackageName(AUT).build())
 
+        override fun readToastHistory(command: ReadToastHistory): ToastHistory = record("read_toast_history", ToastHistory.getDefaultInstance())
+
         override fun awaitNotification(command: AwaitNotification): DeviceNotification = record("await_notification", notification)
 
         override fun listNotifications(command: ListNotifications): NotificationList =
@@ -454,6 +459,7 @@ class OperationsTest {
                 "set_clipboard" to Commands.setClipboard("copied"),
                 "get_clipboard" to Commands.getClipboard(),
                 "await_toast" to Commands.awaitToast("Saved", MatchMode.MATCH_CONTAINS),
+                "read_toast_history" to Commands.readToastHistory(7, "stream"),
                 "perform_accessibility_action" to Commands.performAccessibilityAction(button, StandardAction.A11Y_EXPAND),
                 "set_progress" to Commands.setProgress(Selectors.resource("volume"), 40f),
                 "set_location" to Commands.setLocation(48.8584, 2.2945),

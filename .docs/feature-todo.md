@@ -14,6 +14,33 @@ include them without approval.
 
 ## Backlog
 
+- [ ] **Agent event inbox beyond toasts.** Add `tap-agent events` / an MCP `events` tool only
+  when it reports more than toast history. Today `toast --history` covers retained toast reads;
+  snapshots and settle responses automatically deliver unread toasts. Candidate observations:
+  - Toasts, reusing the current accessibility listener and bounded history.
+  - Window/panel appearance and dismissal: dialogs, permission prompts, menus, drawers,
+    notification shade and keyboard visibility. Report observed window transitions, not an
+    assumed semantic outcome; identify windows without retaining live accessibility handles.
+  - Foreground package/activity changes, including app switches and returns from system UI.
+    State what accessibility events prove versus what needs host-side activity inspection.
+  - Accessibility announcements, live-region updates, and exposed snackbar/error/banner text.
+    Custom-drawn or inaccessible transient UI may require separate visual observation; do not
+    promise complete coverage or infer a snackbar from every content-change event.
+  - Notification posts, updates and removals through the existing notification-listener path;
+    permission, package scope and sensitive-content handling must be explicit.
+  - App crashes/ANRs, reusing the existing host death record rather than a second detector.
+  - Relevant device transitions such as rotation, display on/off, keyguard and connection loss,
+    with a clear source and lifecycle for each event type.
+  Design before implementation: ordered stream identities/cursors, timestamps and source,
+  bounded retention with explicit gaps/resets, shared CLI/MCP acknowledgement, package/type
+  filters, and coalescing/deduplication for noisy accessibility content changes. Separate
+  observed facts from inferred meaning; keep untrusted app text as data and apply privacy
+  limits. Collection must continue while the agent thinks without hierarchy polling, changing
+  snapshot refs, keeping idle sessions alive or replaying mutations. Define any optional
+  screenshot/video evidence separately, with cost and coverage limits. Exercise retention,
+  filtering, ordering, runtime reuse, loss/recovery and representative transient UI on the
+  device matrix before claiming support. This is future work, not scope for the toast feature.
+
 - [ ] **Private-data recovery tooling.** Add a read-only status API for interrupted database
   imports, then explicit restore/discard commands. Preserve retained recovery data; never
   silently repair, discard, restart, clear or replay a mutation. Today repair is manual or

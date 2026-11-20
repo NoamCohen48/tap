@@ -23,6 +23,39 @@ assert app.await_toast().text == "Saved"
 app.await_toast("Saved")   # the same check, as a wait for that text
 ```
 
+### Retained history (Python and tap-agent)
+
+For longer pauses, `device.toast_history()` reads the driver's last 128 toast observations,
+oldest first, without waiting or consuming them. They have no age-based expiry. Each event
+has a sequence, device wall timestamp, and toast text/package. History is not current UI state.
+
+```python
+page = device.toast_history()
+for event in page.events:
+    print(event.sequence, event.toast.text)
+next_page = device.toast_history(page.next_sequence, stream_id=page.stream_id)
+```
+
+Check `gap` for lost observations and `reset` for a lost stream or an ahead-of-stream cursor.
+The history is memory-only: driver loss, release/reuse and session termination end it. Text
+is capped at 1024 UTF-16 units (`text_truncated` reports it). Accessibility delivery is not a
+guarantee that every Android/OEM/custom toast is observable.
+
+```sh
+tap-agent toast --history
+tap-agent toast Saved --contains --history --package com.example
+tap-agent toast --history --after-seq 12 --stream STREAM_ID --json
+```
+
+The printed cursor covers all observations, including those excluded by text/package filters.
+History reads do not affect the existing toast wait's 3.5-second lookback.
+
+For agents, snapshots and settle responses deliver and acknowledge unread toast observations.
+CLI and MCP share that unread cursor. `toast --history`, including explicit
+`--after-seq N --stream ID` reads, never acknowledges it. See
+[catching toasts between actions](../agent/session.md#catch-toasts-between-actions) for limits
+and recovery.
+
 Custom-view toasts posted from the background are blocked by Android itself (11+) and never
 appear.
 

@@ -94,6 +94,8 @@ from .models import (
     StabilitySignal,
     StandardAction,
     Toast,
+    ToastEvent,
+    ToastHistory,
     WaitReason,
 )
 from .selectors import (
@@ -236,6 +238,8 @@ __all__ = [
     "StabilitySignal",
     "StandardAction",
     "Toast",
+    "ToastEvent",
+    "ToastHistory",
     "TapClient",
     "TapConnection",
     "TapError",

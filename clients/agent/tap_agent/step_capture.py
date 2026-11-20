@@ -50,7 +50,7 @@ def category(name: str, parameters: dict[str, Any]) -> str | None:
     if name in ACTIONS:
         return "action"
     if name in WAITS:
-        return "wait"
+        return None if name == "toast" and parameters.get("history") else "wait"
     if name == "action":
         return "action" if parameters["name"] is not None else None
     if name in ("keyboard", "screen"):
