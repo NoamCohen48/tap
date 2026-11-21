@@ -242,12 +242,15 @@ def parser() -> argparse.ArgumentParser:
 
     for name, help in (
         ("scroll", "scroll a node towards a content edge (down reveals content below)"),
-        ("swipe", "swipe across a node, the finger moving in the direction"),
+        ("swipe", "swipe across a node, the finger moving towards --finger"),
         ("fling", "fling a node towards a content edge, as for scroll; content may keep moving"),
     ):
         p = verb(name, help, on_device, settle)
         p.add_argument("target", help=TARGET_HELP)
-        p.add_argument("direction", choices=("up", "down", "left", "right"))
+        if name == "swipe":
+            p.add_argument("--finger", required=True, choices=("up", "down", "left", "right"), help="where the finger moves (up reveals what is below)")
+        else:
+            p.add_argument("direction", choices=("up", "down", "left", "right"), help="the content to reveal (down: what is below; the finger moves up)")
         p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
         if name != "fling":
             p.add_argument("--percent", type=int, default=80, help="distance across the node, 1..100")
@@ -496,7 +499,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "scroll":
         return agent.scroll(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "swipe":
-        return agent.swipe(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
+        return agent.swipe(args.target, args.finger, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "fling":
         return agent.fling(args.target, args.direction, device, settle=settle, timeout=args.timeout)
     if v == "scroll-until":

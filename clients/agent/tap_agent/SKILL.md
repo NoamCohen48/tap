@@ -126,8 +126,9 @@ the device, and says so.
 target, such as its title, to test that an outside touch closes it; `--allow-reach-below` lets it
 land on the screen under a panel that passes touches through), `fill <target> <text>` (replaces the text), `type <text>`
 (key events into the focused field; add `--sensitive` to either for a password or token, which keeps it out of the log and export), `clear`, `scroll <target> up|down|left|right` (`down`
-reveals content below), `swipe <target> <direction>`, `fling <target> <direction>` (as
-`scroll`, fast; the content may keep moving), `drag <target> <destination>` (long-press, move
+reveals content below: the finger moves up), `swipe <target> --finger up|down|left|right` (the
+finger's direction, so `--finger up` scrolls down), `fling <target> <direction>` (as `scroll`,
+fast; the content may keep moving). Each prints both, e.g. `scrolled down (finger up)`, `drag <target> <destination>` (long-press, move
 onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
 `key back|home|recents|enter|tab|delete|…`,
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in

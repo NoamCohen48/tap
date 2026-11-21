@@ -245,7 +245,7 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
 
 @pytest.mark.parametrize("method,kwargs", [
     ("scroll", {"target": "id=list", "direction": "down", "percent": True}),
-    ("swipe", {"target": "id=list", "direction": "down", "percent": 101}),
+    ("swipe", {"target": "id=list", "finger": "down", "percent": 101}),
     ("scroll_until", {"target": "id=list", "destination": "id=end", "max_scrolls": 0}),
     ("scroll_until", {"target": "id=list", "destination": "id=end", "timeout": 121}),
     ("type", {"text": "x", "await_focus": False}),

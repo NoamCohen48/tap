@@ -498,7 +498,7 @@ its commands in the [reference](commands.md).
 | Area | Commands |
 |---|---|
 | [Elements](commands.md#acting-on-elements) | `tap` (`--long`, `--double`), `fill`, `type`, `clear`, `submit`, accessibility `action`s, slider `progress`, `keyboard` |
-| [Gestures](commands.md#gestures) | `scroll`, `swipe`, `fling`, `drag`, `pinch`, always on a node, never at coordinates |
+| [Gestures](commands.md#gestures) | `scroll`, `swipe --finger`, `fling`, `drag`, `pinch`, always on a node, never at coordinates; `scroll` and `fling` take the content direction (`down` reveals what is below), `swipe` the finger's |
 | [Apps and permissions](commands.md#apps-and-permissions) | `app launch`, `cold-launch` (with intent extras), `stop`, `clear`, `install`, `grant`, `open-link`, app languages; the runtime-permission dialog |
 | [System UI and display](commands.md#keys-system-panels-and-the-display) | `key back`, `home`, `recents`, …; the notification shade and quick settings; `rotate`; screen on, off and unlock |
 | [Device conditions](commands.md#device-conditions-and-location) | animations, dark mode, font scale, density, airplane mode, Wi-Fi, mobile data, languages, accessibility display settings, a mock location |

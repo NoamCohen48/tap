@@ -951,24 +951,26 @@ class Agent:
         return self._act(device, target, "cleared", lambda e: e.clear_text(timeout), settle)
 
     def scroll(self, target: str, direction: str, device: str | None = None, settle: bool = False, *, percent: int = 80, timeout: float | None = None) -> str:
-        """One bounded SDK scroll; this does not promise that content moved."""
+        """One bounded SDK scroll towards ``direction``'s content (``down`` reveals what is below:
+        the finger moves up); this does not promise that content moved."""
         resolved = _direction(direction)
         _integer(percent, "percent", 1, 100)
         timeout = command_timeout(timeout)
-        return self._act(device, target, f"scrolled {direction}", lambda e: e.scroll(resolved, percent, timeout), settle)
+        return self._act(device, target, f"scrolled {_content(resolved)}", lambda e: e.scroll(resolved, percent, timeout), settle)
 
-    def swipe(self, target: str, direction: str, device: str | None = None, settle: bool = False, *, percent: int = 80, timeout: float | None = None) -> str:
-        """One bounded SDK swipe, the finger moving towards direction."""
-        resolved = _direction(direction)
+    def swipe(self, target: str, finger: str, device: str | None = None, settle: bool = False, *, percent: int = 80, timeout: float | None = None) -> str:
+        """One bounded SDK swipe, the finger moving towards ``finger`` (``up``: the content follows
+        the finger up, revealing what is below)."""
+        resolved = _direction(finger)
         _integer(percent, "percent", 1, 100)
         timeout = command_timeout(timeout)
-        return self._act(device, target, f"swiped {direction}", lambda e: e.swipe(resolved, percent, timeout), settle)
+        return self._act(device, target, f"swiped finger {resolved.name.lower()}", lambda e: e.swipe(resolved, percent, timeout), settle)
 
     def fling(self, target: str, direction: str, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
         """One fast swipe towards ``direction``'s content edge, as for scroll; content may keep moving."""
         resolved = _direction(direction)
         timeout = command_timeout(timeout)
-        return self._act(device, target, f"flung {direction}", lambda e: e.fling(resolved, timeout), settle)
+        return self._act(device, target, f"flung {_content(resolved)}", lambda e: e.fling(resolved, timeout), settle)
 
     def pinch(self, target: str, how: str, percent: int = 80, device: str | None = None, settle: bool = False, *, timeout: float | None = None) -> str:
         """Two fingers moving apart (``open``, zoom in) or together (``close``) across ``percent`` of the node."""
@@ -1896,6 +1898,14 @@ def _direction(name: str) -> Direction:
         return Direction[name.strip().upper()]
     except KeyError:
         raise AgentError(f"direction must be up, down, left or right, not {name!r}", EXIT_USAGE) from None
+
+
+_OPPOSITE = {Direction.UP: Direction.DOWN, Direction.DOWN: Direction.UP, Direction.LEFT: Direction.RIGHT, Direction.RIGHT: Direction.LEFT}
+
+
+def _content(direction: Direction) -> str:
+    """A content direction and the finger movement that produces it: ``down (finger up)``."""
+    return f"{direction.name.lower()} (finger {_OPPOSITE[direction].name.lower()})"
 
 
 def _stamp() -> str:

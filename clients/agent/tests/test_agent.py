@@ -343,7 +343,7 @@ def test_gestures_double_tap_fling_drag_and_pinch(fake, agent):
     fake.devices.refs["e7"] = res("bin")._proto
     assert agent.tap("@e3", double=True) == "double-tapped @e3"
     assert fake.devices.commands[-1].double_tap.selector == res("card")._proto
-    assert agent.fling("id=list", "down") == "flung down id=list"
+    assert agent.fling("id=list", "down") == "flung down (finger up) id=list"
     assert fake.devices.commands[-1].fling.direction == pb.DIR_DOWN
     assert agent.drag("@e3", "@e7") == "dragged @e3 onto @e7"
     drag = fake.devices.commands[-1].drag
@@ -826,3 +826,15 @@ def test_keyboard_and_screen_read_without_a_word_and_refuse_state(fake, agent):
     with pytest.raises(SystemExit):
         cli.parser().parse_args(["keyboard", "state"])
     assert cli.run(cli.parser().parse_args(["keyboard"]), agent) == "keyboard hidden"
+
+
+def test_scroll_and_swipe_say_which_way_the_finger_moved(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.scroll("id=list", "down") == "scrolled down (finger up) id=list"
+    assert agent.swipe("id=list", "up") == "swiped finger up id=list"
+    assert fake.devices.commands[-2].scroll.direction == pb.DIR_DOWN  # the content to reveal
+    assert fake.devices.commands[-1].swipe.direction == pb.DIR_UP  # the finger
+    parser = cli.parser()
+    assert cli.run(parser.parse_args(["swipe", "id=list", "--finger", "left"]), agent) == "swiped finger left id=list"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["swipe", "id=list", "left"])
