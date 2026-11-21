@@ -43,8 +43,10 @@ def _context_screen(fake):
     keyboard = pb.ScreenNode(ref="e3", depth=0, window_index=2, window_type=2,
                              window_package="keyboard", text="Keyboard", interactive=True)
     chrome = pb.ScreenNode(ref="e4", depth=0, window_index=3, window_type=3,
-                           window_package="com.android.systemui", text="Status bar", interactive=True)
-    _screen(fake, row, label, keyboard, chrome)
+                           window_package="com.android.systemui", text="Status bar", interactive=True,
+                           bounds=pb.Bounds(left=0, top=0, right=1080, bottom=63))
+    fake.devices.snapshot = pb.ScreenSnapshotResponse(snapshot_id=1, nodes=[row, label, keyboard, chrome],
+                                                      display_width=1080, display_height=2400, density_dpi=420)
     fake.devices.refs["e1"] = row.selector
     return row.selector
 

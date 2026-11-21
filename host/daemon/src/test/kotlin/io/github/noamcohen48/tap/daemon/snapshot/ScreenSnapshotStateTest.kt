@@ -70,6 +70,19 @@ class ScreenSnapshotStateTest {
     }
 
     @Test
+    fun `the snapshot reports the display the dump was taken on`() {
+        val dump = { root: String ->
+            "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>$root" +
+                "<node class=\"android.widget.FrameLayout\" package=\"p\" bounds=\"[0,0][10,10]\"/></hierarchy>"
+        }
+        val response = ScreenSnapshotState().record(ScreenSnapshots.screen(dump("<hierarchy rotation=\"1\" width=\"2400\" height=\"1080\" density=\"420\">")))
+        assertEquals(listOf(1, 2400, 1080, 420), listOf(response.rotation, response.displayWidth, response.displayHeight, response.densityDpi))
+        // An older driver's dump has none: 0 means unknown.
+        val old = ScreenSnapshotState().record(ScreenSnapshots.screen(dump("<hierarchy rotation=\"0\">")))
+        assertEquals(listOf(0, 0, 0), listOf(old.displayWidth, old.displayHeight, old.densityDpi))
+    }
+
+    @Test
     fun `the same screen twice keeps every ref and marks it unchanged`() {
         val state = ScreenSnapshotState()
         val first = state.record(screen("85e49002-MainActivity"))

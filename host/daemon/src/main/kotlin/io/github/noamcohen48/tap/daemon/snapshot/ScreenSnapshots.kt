@@ -10,6 +10,9 @@ import io.github.noamcohen48.tap.api.v1.StandardAction
 internal class Screen(
     val rotation: Int,
     val nodes: List<ScreenNode>,
+    val displayWidth: Int = 0,
+    val displayHeight: Int = 0,
+    val densityDpi: Int = 0,
 )
 
 /**
@@ -24,7 +27,13 @@ internal object ScreenSnapshots {
         val hierarchy = HierarchyParser.parse(xml)
         val synthesis = SelectorSynthesis(hierarchy)
         val selectors = if (candidates) synthesis.candidates() else synthesis.synthesise().map(::listOfNotNull)
-        return Screen(hierarchy.rotation, hierarchy.nodes.map { screenNode(it, selectors[it.index], candidates) })
+        return Screen(
+            hierarchy.rotation,
+            hierarchy.nodes.map { screenNode(it, selectors[it.index], candidates) },
+            hierarchy.displayWidth,
+            hierarchy.displayHeight,
+            hierarchy.densityDpi,
+        )
     }
 
     /** [synthesised] ranked, best first; with [candidates] all of them go into the node. */

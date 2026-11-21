@@ -171,7 +171,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--window", type=int, help="only this one-based window ordinal from the snapshot header")
     p.add_argument("--keyboard", action="store_true", help="show the keyboard window's nodes (by default it is one header line with a count)")
     p.add_argument("--hide-keyboard", action="store_true", help="hide input-method windows, header included; unknown types remain visible")
-    p.add_argument("--hide-system-chrome", action="store_true", help="hide Android system-type windows, not system-owned apps")
+    p.add_argument("--system-bars", action="store_true", help="show the status and navigation bars' nodes (by default each is one header line)")
+    p.add_argument("--hide-system-chrome", action="store_true", help="hide the status and navigation bars, headers included; the shade and system dialogs stay")
 
     for name, help in (("inspect", "read one node's complete state"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
         p = verb(name, help, on_device)
@@ -477,7 +478,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT, as_json=args.as_json,
                               package=args.package, window=args.window, hide_keyboard=args.hide_keyboard, keyboard=args.keyboard,
-                              hide_system_chrome=args.hide_system_chrome)
+                              hide_system_chrome=args.hide_system_chrome, system_bars=args.system_bars)
     if v in ("inspect", "exists", "count"):
         return getattr(agent, v)(args.target, device, args.timeout, as_json=args.as_json)
     if v == "elements":

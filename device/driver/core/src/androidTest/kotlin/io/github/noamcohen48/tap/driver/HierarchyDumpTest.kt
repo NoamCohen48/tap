@@ -32,7 +32,7 @@ class HierarchyDumpTest {
             repeat(STILL_ATTEMPTS) {
                 device.waitForIdle()
                 val before = fixtureTree(upstreamDump(device))
-                val tap = fixtureTree(ByteArrayOutputStream().also { HierarchyDump.write(device, it) }.toString("UTF-8"), tapDump = true)
+                val tap = fixtureTree(ByteArrayOutputStream().also { HierarchyDump.write(device, it, 420) }.toString("UTF-8"), tapDump = true)
                 if (before != fixtureTree(upstreamDump(device))) return@repeat
                 assertFalse("Fixture must be present, not two empty trees", before.isEmpty())
                 assertEquals(before, tap)

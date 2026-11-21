@@ -101,7 +101,7 @@ def _take(agent: Agent, name: str | None, device: str | None, out: str | None, s
         failures: dict[str, BaseException] = dict(captured.failures)
         try:  # the hierarchy as the outline an agent reads, with its refs; never fails the capture
             from . import render
-            outline = render.snapshot_text(d.screen_snapshot(), render.ALL, filters=render.SnapshotFilter(keyboard=True))
+            outline = render.snapshot_text(d.screen_snapshot(), render.ALL, filters=render.SnapshotFilter(keyboard=True, system_bars=True))
         except Exception as error:  # noqa: BLE001 - reported as a failed part, like the others
             failures["snapshot"] = error
         else:

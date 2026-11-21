@@ -529,4 +529,7 @@ def screen_snapshot(response: pb.ScreenSnapshotResponse) -> ScreenSnapshot:
         nodes=tuple(map(screen_node, response.nodes)),
         removed=tuple(map(screen_node, response.removed)),
         rotation=response.rotation,
+        display_width=response.display_width,
+        display_height=response.display_height,
+        density_dpi=response.density_dpi,
     )

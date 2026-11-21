@@ -441,6 +441,11 @@ message ScreenSnapshotResponse {
   // Nodes of the previous snapshot that are gone; their refs no longer resolve.
   repeated ScreenNode removed = 3;
   int32 rotation = 4;
+  // The display at dump time, as rotated: pixels and density (dpi); 0 when the driver did not
+  // report them. With a node's bounds they say how big a window is on this screen.
+  int32 display_width = 5;
+  int32 display_height = 6;
+  int32 density_dpi = 7;
 }
 
 message ResolveRefRequest {

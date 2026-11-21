@@ -67,6 +67,9 @@ internal class ScreenSnapshotState {
             .addAllNodes(nodes)
             .addAllRemoved(removed)
             .setRotation(screen.rotation)
+            .setDisplayWidth(screen.displayWidth)
+            .setDisplayHeight(screen.displayHeight)
+            .setDensityDpi(screen.densityDpi)
             .build()
     }
 

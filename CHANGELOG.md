@@ -8,6 +8,12 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Screen snapshots report the display they were taken on: `ScreenSnapshotResponse` gains
+  `display_width`, `display_height` and `density_dpi` (the dump's `<hierarchy>` writes `width`,
+  `height` and `density`), and Python `ScreenSnapshot` has the same fields. tap-agent uses them to
+  print the status and navigation bars as one header line each (`--system-bars` shows them) and to
+  leave them out of `--settle` diffs. `--hide-system-chrome` now drops only those bars; the shade,
+  quick settings, the volume panel and system dialogs always show.
 - A soft-keyboard condition: `DeviceService.SetSoftKeyboard` sets Android's "show the on-screen
   keyboard with a hardware keyboard" (`show_ime_with_hard_keyboard`) until detach, and
   `DeviceInfo.soft_keyboard` reads it back. Kotlin `setSoftKeyboard`, Python `set_soft_keyboard`,
