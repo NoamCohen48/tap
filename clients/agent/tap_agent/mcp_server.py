@@ -254,7 +254,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="device_info", annotations=READ_ONLY)
     async def device_info(as_json: AsJson = False, session: Session = "", device: Device = "") -> CallToolResult:
-        """Complete current device state, one line each."""
+        """The whole device state, one line each: display, current package, screen and keyguard,
+        keyboard, every condition and the foreground activity."""
         return await call(session, lambda a: a.device_info(device or None, as_json=as_json))
 
     @mcp.tool(name="capabilities", annotations=READ_ONLY)

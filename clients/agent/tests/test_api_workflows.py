@@ -337,3 +337,17 @@ def test_private_outputs_appear_whole_or_not_at_all(tmp_path, monkeypatch):
     with pytest.raises(OSError, match="No space"):
         output.save_private(tmp_path / "out" / "partial.json", b"data")
     assert sorted(p.name for p in (tmp_path / "out").iterdir()) == ["history.json", "link.json"]
+
+
+def test_device_info_includes_the_top_activity_in_text_and_json(fake, agent, monkeypatch, client):
+    agent.attach("first")
+    fake.devices.foreground = ("com.shop", "com.shop.CheckoutActivity")
+    assert re.search(r"^foreground activity +com\.shop/com\.shop\.CheckoutActivity$", agent.device_info(), re.M)
+    assert json.loads(agent.device_info(as_json=True))["foreground_activity"] == "com.shop/com.shop.CheckoutActivity"
+    fake.devices.foreground = None
+    assert re.search(r"^foreground activity +none$", agent.device_info(), re.M)
+    assert json.loads(agent.device_info(as_json=True))["foreground_activity"] is None
+    def broken(request, timeout=None):
+        raise TapError("activity read lost")
+    monkeypatch.setattr(client.device_stub, "GetForegroundActivity", broken)
+    assert "foreground activity" in agent.device_info() and "unavailable: " in agent.device_info()

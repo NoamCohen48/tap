@@ -130,7 +130,7 @@ def parser() -> argparse.ArgumentParser:
     verb("detach", "detach one device without ending its session", on_device)
     p = verb("server-info", "daemon version, compatibility and configuration", common)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
-    p = verb("device-info", "complete current device information", on_device)
+    p = verb("device-info", "the whole device state: display, screen and keyguard, keyboard, conditions, top activity", on_device)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
     p = verb("capabilities", "read SDK operation support and prerequisites; no device changes", on_device)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured capability entries")
