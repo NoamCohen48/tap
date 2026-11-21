@@ -47,13 +47,23 @@ internal data class DeviceEvidence(
                 suspend fun part(read: suspend () -> String) = part(partTimeoutMs, read)
                 val redactor = captured?.redactor ?: LogRedactor()
 
-                suspend fun logPart(read: suspend () -> String) = part { read().lineSequence().joinToString("\n", transform = redactor::redact) }
+                suspend fun logPart(read: suspend () -> String) =
+                    part { read().lineSequence().joinToString("\n", transform = redactor::redact) }
                 val logcat =
                     async {
-                        if (captured != null) captured(captured) else logPart { adb.logcat(serial, listOf("main", "system", "crash"), sinceEpochSeconds) } to false
+                        if (captured !=
+                            null
+                        ) {
+                            captured(captured)
+                        } else {
+                            logPart {
+                                adb.logcat(serial, listOf("main", "system", "crash"), sinceEpochSeconds)
+                            } to false
+                        }
                     }
                 val crashBuffer = async { logPart { adb.logcat(serial, listOf("crash"), sinceEpochSeconds) } }
-                val events = async { logPart { adb.logcat(serial, listOf("events"), sinceEpochSeconds, tags = listOf("am_crash", "am_anr")) } }
+                val events =
+                    async { logPart { adb.logcat(serial, listOf("events"), sinceEpochSeconds, tags = listOf("am_crash", "am_anr")) } }
                 val activities = async { part { adb.dumpsys(serial, "activity", "activities") } }
                 val windows = async { part { adb.dumpsys(serial, "window", "windows") } }
                 val (full, forgotten) = logcat.await()
@@ -69,7 +79,7 @@ internal data class DeviceEvidence(
 
         /** The captured log as text, one entry a line, and whether the buffer had forgotten its start. */
         private fun captured(log: DeviceLog): Pair<String, Boolean> {
-            val read = log.read()
+            val read = log.read(memoryOnly = true)
             return read.backlog.joinToString("") { DeviceLog.text(it) + "\n" } to (read.dropped > 0)
         }
 

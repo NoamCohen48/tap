@@ -18,11 +18,14 @@ tap sessions [--state-dir DIR] [--json] [--watch] [--interval SECONDS]
 tap sessions show SESSION_ID [--state-dir DIR] [--json]
 tap sessions close SESSION_ID --force [--reason TEXT] [--state-dir DIR] [--json]
 tap logs [--state-dir DIR] [--tail N] [--follow]
+tap logs driver --serial SERIAL [--state-dir DIR] [--json]
 tap config show [startup options] [--json]
 tap diagnostics --out PATH [--state-dir DIR]
 tap completion bash|zsh|fish
 tap doctor  [--state-dir DIR] [--adb PATH] [--serial SERIAL] [--fix] [--json]
 tap unquarantine --serial SERIAL [--state-dir DIR] [--adb PATH]
+tap config logging-policy show [--state-dir DIR]
+tap config logging-policy rolling [--max-age 1h] [--max-size 256MiB] [--hard-size 1GiB] [--min-free 256MiB] [--state-dir DIR]
 tap version
 ```
 
@@ -120,9 +123,16 @@ milliseconds; in-flight calls keep a session's reported idle time at zero.
 
 ### Configuration, logs and diagnostics
 
+`tap logs` reads daemon.log. `tap logs driver --serial SERIAL` instead reads the original
+currently attached driver's bounded instrumentation buffer through the authenticated daemon.
+It requires a unique existing attachment and never creates a session, attaches a device or
+runs `tap-agent`. This buffer is not a durable post-detach archive. For retained device logcat
+and activity use `tap-agent history --logs`; for an explicit current-state bundle use `capture`.
+
 ```bash
 tap config show --json
 tap logs --tail 200 --follow
+tap logs driver --serial SERIAL
 tap diagnostics --out tap-diagnostics.zip
 ```
 
@@ -165,6 +175,32 @@ tap completion fish > ~/.config/fish/completions/tap.fish
 
 Create the target directories first. Add the bash `source` line to your shell configuration
 to load it in future shells. Bash completion supports Bash 3.2 and newer.
+
+## Device-log retention
+
+Device logs are captured automatically while attached and retained after detach/restart.
+`tap config logging-policy show` displays the selected state directory's effective policy;
+`rolling` updates any supplied limits atomically, including while the daemon is stopped:
+
+```sh
+tap config logging-policy rolling --max-age 1h --max-size 256MiB --hard-size 1GiB --min-free 256MiB
+```
+
+Those are the defaults. Age units are `s`, `m`, `h`, `d`; size units are bytes, `B`, `KiB`,
+`MiB`, `GiB`. Limits must be positive, except `--min-free` may be zero; hard size must not be
+smaller than rolling size. Append `--state-dir DIR` to select another daemon's configuration.
+The command does not start a server. Live capture reloads settings on append/read and during
+maintenance every minute, without restarting logcat.
+
+Rolling limits are global across ordinary log history, not multiplied per device. Named
+recordings protect their range until explicit deletion, even after ordinary age/size eviction.
+They still obey the hard storage budget and free-space safeguard; missing capture is reported,
+never silently replaced by success. The private files live under `history-logs/` in this state
+directory; policy settings are in `logging-policy.properties`. Keep the directory private and
+inspect redacted evidence before sharing. Media and exported copies are separate artifacts.
+
+See [Device logs](logs.md#retention-and-protected-recordings) for SDK controls and
+[Agent recordings](../agent/export.md#named-recordings) for intentional reproduction capture.
 
 ## Client and server versions
 

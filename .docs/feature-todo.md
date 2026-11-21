@@ -41,6 +41,11 @@ include them without approval.
   filtering, ordering, runtime reuse, loss/recovery and representative transient UI on the
   device matrix before claiming support. This is future work, not scope for the toast feature.
 
+- [x] **History and daemon logging policy.** Automatic redacted log persistence with global
+  rolling limits and `tap config logging-policy`; named ranges protect steps and logs from
+  ordinary eviction and retain explicit gaps across release/restart. See
+  [History, recordings and daemon logging policy](history-and-logging-policy.md) for the
+  implemented boundaries, privacy choices, safeguards and verification scope.
 - [ ] **Private-data recovery tooling.** Add a read-only status API for interrupted database
   imports, then explicit restore/discard commands. Preserve retained recovery data; never
   silently repair, discard, restart, clear or replay a mutation. Today repair is manual or
@@ -94,6 +99,7 @@ include them without approval.
 - [Private app data](app-data.md)
 - [Device actions](device-actions.md)
 - [Framework gaps](framework-gaps.md)
+- [History, recordings and daemon logging policy](history-and-logging-policy.md)
 - [ ] **Log parser pipeline.** The device log (`app-logs.md`) is lines of text; a test that
   wants "the HTTP calls the app made during this step" has to grep them. Add a pipeline of
   parsers over log entries that turn a library's own log format into typed records, starting

@@ -49,6 +49,9 @@ opens or renews a client connection. Interaction remains in separate SDK/agent/S
 The expanded commands cover device/session list and details, forced session close with an
 audit reason and cleanup results, guarded restart, status/watch, setup doctor, log tail/follow,
 configuration provenance, restricted diagnostic archives and static bash/zsh/fish completion.
+`tap logs driver --serial SERIAL` uses the same metadata/parser/completion and authenticated
+administration channel to read one existing attachment's bounded driver buffer. It never
+opens a session, attaches a device or invokes an agent; `tap logs` still reads daemon.log.
 Restart's active-session guard is explicitly a preflight, not exclusive admission control.
 See the public [server guide](../docs/guide/server.md) for behavior and examples.
 

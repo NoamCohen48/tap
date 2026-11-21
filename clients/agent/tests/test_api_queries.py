@@ -196,85 +196,37 @@ def _entry(cursor: int, **kind) -> pb.LogEntry:
     return pb.LogEntry(cursor=cursor, host_time_ms=HOST_MS + cursor, **kind)
 
 
-def test_log_reads_the_newest_entries_compactly_and_ends_with_the_cursor(fake, agent):
+def test_history_keeps_full_window_logs_and_reports_explicit_tail(fake, agent):
     agent.attach("emulator-5554")
+    owner = next(iter(fake.connections.live))
+    fake.device_log.archives.append(pb.RetainedLog(client_connection_id=owner,
+        attached_device_id="attached-emulator-5554", serial="emulator-5554"))
     fake.device_log.dropped = 4
-    fake.device_log.entries = [
-        _log_line(7, "old"),
-        _entry(8, action=pb.LogAction(operation="tap", target='text="Pay"')),
-        _log_line(9, "paying", pb.LOG_PRIORITY_WARN),
-        _entry(10, action=pb.LogAction(operation="tap", finished=True, outcome="ok", duration_ms=243)),
-    ]
-
-    # No start: the newest entries, each at the server's time.
-    assert agent.log(limit=3).splitlines() == [
-        "(4 older entries are no longer kept by the server)",
-        "(1 earlier entries not shown; raise --limit or narrow the read)",
-        f'{_at(8)} ── tap  text="Pay"',
-        f"{_at(9)} W Shop: paying",
-        f"{_at(10)} ── tap  → ok  243 ms",
-        "cursor 10",
-    ]
-    assert fake.device_log.requests[-1].tail == 3
-
-    # From a start: the first entries, and where to read on.
-    assert agent.log(after=6, limit=2).splitlines() == [
-        "(4 older entries are no longer kept by the server)",
-        f"{_at(7)} I Shop: old",
-        f'{_at(8)} ── tap  text="Pay"',
-        "(2 more entries after this; read on with: log --after 8)",
-        "cursor 8",
-    ]
-    page = json.loads(agent.log(after=6, limit=1, as_json=True))
-    assert [entry["cursor"] for entry in page["entries"]] == [7] and (page["more"], page["omitted"], page["cursor"]) == (3, 0, 7)
-
-    # A device clock far from the host's is said once; the times stay the host's.
-    fake.device_log.entries = [_log_line(11, "late clock", device_ms=HOST_MS - 52 * 86_400_000)]
-    assert agent.log(after=10).splitlines()[1:] == [
-        "(the device's clock is 52 days behind the host's; times are the host's)",
-        f"{_at(11)} I Shop: late clock",
-        "cursor 11",
-    ]
-    assert json.loads(agent.log(after=10, as_json=True))["device_clock_offset_s"] == pytest.approx(-52 * 86_400 - 0.011)
-    fake.device_log.entries = []
-
-    agent.log(after=10, packages=["com.shop"], priority="W", tags=["Shop"], grep="pay", actions=False)
-    request = fake.device_log.requests[-1]
-    assert (request.after_cursor, list(request.packages), request.min_priority) == (10, ["com.shop"], pb.LOG_PRIORITY_WARN)
+    fake.device_log.entries = [_log_line(7, "old"), _entry(8, action=pb.LogAction(operation="tap")),
+        _log_line(9, "paying", pb.LOG_PRIORITY_WARN), _entry(10, gap="capture interrupted")]
+    saved = json.loads(agent.history(logs=True, limit=1, as_json=True))
+    assert len(saved["log"]["emulator-5554"]["entries"]) == 4
+    tail = json.loads(agent.history(tail=1, as_json=True))
+    assert tail["log_omitted"] == 3 and not tail["complete"]
+    assert tail["log"]["emulator-5554"]["entries"][0]["gap"] == "capture interrupted"
+    assert "4 entries are unavailable" in agent.history(logs=True)
+    assert "--tail omitted 3" in agent.history(tail=1)
+    agent.history(packages=["com.shop"], priority="W", tags=["Shop"], grep="pay", actions=False)
+    request = next(r for r in reversed(fake.device_log.requests) if getattr(r, "attached_device_id", "") == "attached-emulator-5554")
+    assert (list(request.packages), request.min_priority) == (["com.shop"], pb.LOG_PRIORITY_WARN)
     assert (list(request.tags), request.message_regex, request.exclude_actions) == (["Shop"], "pay", True)
-    agent.log(last_action=True)
-    assert fake.device_log.requests[-1].last_action
-
-    fake.device_log.entries = []
-    fake.device_log.dropped = 0
-    assert agent.log(tail=5) == "no entries"
 
 
-def test_log_marks_redacts_and_refuses_mixed_arguments(fake, agent):
+def test_history_marks_redacts_and_refuses_mixed_arguments(fake, agent):
     agent.attach("emulator-5554")
-    assert agent.log("mark", "checkout") == "marked 'checkout' at cursor 1; read from it with --since checkout or --since @1"
-    assert agent.log(since="checkout").splitlines() == [f"{render.log_time(0)} ── marker checkout", "cursor 1"]
-    assert agent.log(since="@1").splitlines() == [f"{render.log_time(0)} ── marker checkout", "cursor 1"]
-    assert fake.device_log.requests[-1].after_cursor == 0  # @1 includes the entry at cursor 1
-    # The same name again: still written, and the earlier one stays reachable by its cursor.
-    assert agent.log("mark", "checkout").splitlines() == [
-        "marked 'checkout' at cursor 2; read from it with --since checkout or --since @2",
-        "(this name was already marked at cursor 1: --since checkout now means this one; use --since @1 for that one)",
-    ]
-    assert agent.log("redact", r"session=(\w+)") == "redacting matches in the whole log, lines already captured included, until the device is detached"
+    saved = json.loads(agent.history("mark", "checkout", as_json=True))
+    assert saved["devices"][0]["cursor"] == "attached-emulator-5554:1"
+    agent.history("redact", r"session=(\w+)")
     assert list(fake.device_log.requests[-1].patterns) == [r"session=(\w+)"]
-
-    for call in (
-        lambda: agent.log("mark"),
-        lambda: agent.log("mark", "x", tail=3),
-        lambda: agent.log("read", "x"),
-        lambda: agent.log(since="a", tail=3),
-        lambda: agent.log(priority="loud"),
-        lambda: agent.log(limit=0),
-        lambda: agent.log("tail"),
-    ):
-        with pytest.raises(AgentError) as refused:
-            call()
-        assert refused.value.exit_code == EXIT_USAGE
+    for kwargs in ({"action": "mark"}, {"action": "mark", "value": "x", "tail": 3},
+                   {"action": "read", "value": "x"}, {"start": 1, "last_action": True},
+                   {"priority": "loud"}, {"limit": 0}, {"action": "driver"}):
+        with pytest.raises(AgentError):
+            agent.history(**kwargs)
     with pytest.raises(AgentError, match="never"):
-        agent.log(since="never")
+        agent.history(since_marker="never")

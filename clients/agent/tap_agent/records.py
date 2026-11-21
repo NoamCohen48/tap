@@ -23,7 +23,7 @@ import sqlite3
 import stat
 import time
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from typing import Any
 
 FORMAT = "tap-agent-recording/2"
@@ -58,15 +58,40 @@ _SCHEMA_2 = (
 )
 # Version 3: the app deaths each step reported; steps of earlier versions reported none.
 _SCHEMA_3 = ("ALTER TABLE steps ADD COLUMN deaths TEXT NOT NULL DEFAULT '[]'",)
-_MIGRATIONS = {1: _SCHEMA_2, 2: _SCHEMA_3}
-VERSION = 3
+_SCHEMA_4 = ("ALTER TABLE records ADD COLUMN protected TEXT", "ALTER TABLE records ADD COLUMN log_devices TEXT NOT NULL DEFAULT '{}'", "ALTER TABLE records ADD COLUMN log_status TEXT",)
+_SCHEMA_5 = (
+    "CREATE TABLE history_cursors(cursor INTEGER PRIMARY KEY AUTOINCREMENT, step_key TEXT)",
+    "ALTER TABLE steps ADD COLUMN cursor INTEGER",
+    "INSERT INTO history_cursors(step_key) SELECT record_id || ':' || seq FROM steps ORDER BY started_at,record_id,seq",
+    "UPDATE steps SET cursor=(SELECT cursor FROM history_cursors WHERE step_key=steps.record_id || ':' || steps.seq)",
+    "CREATE UNIQUE INDEX step_cursor ON steps(cursor)",
+    "CREATE INDEX markers_record ON markers(record_id)",
+    "DELETE FROM history_cursors",  # sqlite_sequence survives pruning; committed cursors are never reused.
+)
+_SCHEMA_6 = (
+    "ALTER TABLE markers ADD COLUMN batch_id TEXT",
+    "ALTER TABLE markers ADD COLUMN attached_device_id TEXT",
+    """CREATE TABLE artifacts (
+ id TEXT PRIMARY KEY, record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+ connection_id TEXT NOT NULL, serial TEXT NOT NULL, attached_device_id TEXT NOT NULL,
+ at TEXT NOT NULL, started_at TEXT NOT NULL, directory TEXT NOT NULL, parts TEXT NOT NULL,
+ failures TEXT NOT NULL
+)""",
+    "CREATE INDEX artifacts_time ON artifacts(at)",
+)
+_MIGRATIONS = {1: _SCHEMA_2, 2: _SCHEMA_3, 3: _SCHEMA_4, 4: _SCHEMA_5, 5: _SCHEMA_6}
+VERSION = 6
 
 
 class RecordError(Exception):
     """Recording state/storage failed; never use it as a reason to replay device input."""
 
 
-class _NoCatalog(RecordError):
+class UnknownHistoryError(RecordError):
+    """No local history exists; unlike unavailable/corrupt storage, remote log-only recovery is safe."""
+
+
+class _NoCatalog(UnknownHistoryError):
     """The catalog file exists but no recording was ever started in it (another process created
     the file and has not committed its schema yet, or a first start failed)."""
 
@@ -100,6 +125,49 @@ def _bytes(value: str) -> int:
         return len(value.encode("utf-8"))
     except UnicodeEncodeError as error:
         raise RecordError("recording data must contain valid Unicode; no input was sent") from error
+
+
+def _history_bound(value: str | int | None) -> tuple[str, Any] | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        raise RecordError("history bounds need a step cursor or ISO timestamp")
+    if isinstance(value, int) or (isinstance(value, str) and value.isdecimal()):
+        if isinstance(value, str) and len(value) > 19:
+            raise RecordError("step cursor must be a positive 64-bit integer")
+        cursor = int(value)
+        if not 1 <= cursor <= 2**63 - 1:
+            raise RecordError("step cursor must be a positive 64-bit integer")
+        return "cursor", cursor
+    try:
+        parsed = datetime.datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+        if parsed.tzinfo is None:
+            raise ValueError("timezone required")
+        return "started_at", parsed.astimezone(datetime.timezone.utc).isoformat(timespec="milliseconds").replace("+00:00", "Z")
+    except (ValueError, TypeError, OverflowError) as error:
+        raise RecordError("history time bounds need an ISO timestamp with timezone, e.g. 2026-11-17T12:00:00Z") from error
+
+
+def _history_options(start: str | int | None, until: str | int | None, limit: int):
+    if not isinstance(limit, int) or isinstance(limit, bool) or not 1 <= limit <= 5000:
+        raise RecordError("limit must be an integer from 1 to 5000")
+    lower, upper = _history_bound(start), _history_bound(until)
+    if lower is not None and upper is not None and lower[0] == upper[0] and lower[1] > upper[1]:
+        raise RecordError("--until must not precede --from")
+    return lower, upper
+
+
+def _step_document(row: sqlite3.Row, *, sequence: int | None = None) -> dict[str, Any]:
+    step = {"seq": row["seq"] if sequence is None else sequence, "cursor": row["cursor"], "id": row["step_id"],
+        **{key: row[key] for key in ("action", "kind", "serial", "started_at", "finished_at", "duration_ms")}}
+    step["parameters"] = _decode(row["parameters"])
+    step["targets"] = _decode(row["targets"])
+    step["outcome"] = {"status": row["status"], "error": row["error_type"]}
+    try:
+        step["app_deaths"] = json.loads(row["deaths"])
+    except ValueError as error:
+        raise RecordError("recording contains invalid stored app-death data") from error
+    return step
 
 
 class RecordStore:
@@ -241,14 +309,14 @@ class RecordStore:
 
     def select(self, name: str | None, session: str) -> dict[str, Any]:
         if not self._exists():
-            raise RecordError("no step histories are saved yet; every session records its steps from its first one")
+            raise UnknownHistoryError("no step histories are saved yet; every session records its steps from its first one")
         with self._db() as connection:
             if name is not None:
                 row = connection.execute("SELECT * FROM records WHERE name=?", (name,)).fetchone()
             else:
                 row = connection.execute("SELECT * FROM records WHERE session=? ORDER BY state='recording' DESC, started_at DESC, rowid DESC LIMIT 1", (session,)).fetchone()
             if row is None:
-                raise RecordError(f"no step history named {name!r}; `history` lists them" if name is not None else f"session {session!r} has no step history yet")
+                raise UnknownHistoryError(f"no step history named {name!r}; `history` lists them" if name is not None else f"session {session!r} has no step history yet")
             return dict(row)
 
     def ensure(self, session: str, connection_id: str) -> dict[str, Any]:
@@ -259,6 +327,8 @@ class RecordStore:
         be switched on and never blocks input for being full. Starting a history removes the
         stopped ones beyond the newest ``KEEP_STOPPED``."""
         removed: list[str] = []
+        protection = None
+        log_devices = "{}"
         with self._db(write=True, create=True) as connection:
             row = connection.execute("SELECT * FROM records WHERE session=? AND state='recording'", (session,)).fetchone()
             if row is not None:
@@ -266,6 +336,9 @@ class RecordStore:
                 full = used[0] >= MAX_STEPS or used[1] + MAX_STEP_BYTES > MAX_RECORD_BYTES
                 if row["connection_id"] == connection_id and not full:
                     return dict(row)
+                if row["connection_id"] == connection_id:
+                    protection = row["protected"]
+                    log_devices = row["log_devices"]
                 self._stop(connection, row["id"], "full" if row["connection_id"] == connection_id else "connection ended")
             identifier = uuid.uuid4().hex
             base = re.sub(r"[^A-Za-z0-9_.-]", "-", session).strip("-.")[:40] or "session"
@@ -276,8 +349,8 @@ class RecordStore:
                 suffix += 1
                 name = f"{base}-{suffix}"
             self._create_lease(identifier)
-            connection.execute("INSERT INTO records(id,name,session,connection_id,started_at,state) VALUES(?,?,?,?,?,'recording')", (identifier, name, session, connection_id, _now()))
-            old = [r[0] for r in connection.execute("SELECT id FROM records WHERE state='stopped' ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?", (KEEP_STOPPED,))]
+            connection.execute("INSERT INTO records(id,name,session,connection_id,started_at,state,protected,log_devices) VALUES(?,?,?,?,?,'recording',?,?)", (identifier, name, session, connection_id, _now(), protection, log_devices))
+            old = [r[0] for r in connection.execute("SELECT id FROM records WHERE state='stopped' AND protected IS NULL ORDER BY started_at DESC, rowid DESC LIMIT -1 OFFSET ?", (KEEP_STOPPED,))]
             for stale in old:
                 connection.execute("DELETE FROM records WHERE id=?", (stale,))
             removed = old
@@ -285,6 +358,27 @@ class RecordStore:
         for stale in removed:
             self._lease_path(stale).unlink(missing_ok=True)
         return created
+
+    def start(self, name: str, session: str, connection_id: str, devices: dict[str, str], *, log_status: dict[str, Any] | None = None) -> dict[str, Any]:
+        """Start a protected range in the same history store; full partitions stay protected."""
+        if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,79}", name):
+            raise RecordError("recording name must be 1..80 ASCII letters/digits/dots/dashes/underscores")
+        active = self.active(session)
+        with contextlib.ExitStack() as stack:
+            if active is not None:
+                stack.enter_context(self.lease(active["id"]))
+                if active.get("protected"):
+                    raise RecordError("stop the current named recording before starting another")
+            with self._db(write=True, create=True) as connection:
+                if connection.execute("SELECT 1 FROM records WHERE name=? OR protected=?", (name, name)).fetchone():
+                    raise RecordError(f"recording {name!r} already exists")
+                if active is not None:
+                    self._stop(connection, active["id"], "recording started")
+                identifier = uuid.uuid4().hex
+                self._create_lease(identifier)
+                connection.execute("INSERT INTO records(id,name,session,connection_id,started_at,state,protected,log_devices) VALUES(?,?,?,?,?,'recording',?,?)", (identifier, name, session, connection_id, _now(), name, _json(devices)))
+                connection.execute("UPDATE records SET log_status=? WHERE id=?", (_json(log_status) if log_status is not None else None, identifier))
+        return self.select(name, session)
 
     @staticmethod
     def _stop(connection: sqlite3.Connection, identifier: str, reason: str) -> None:
@@ -321,14 +415,18 @@ class RecordStore:
             connection.execute("UPDATE steps SET status='unknown' WHERE record_id=? AND status='running'", (recording["id"],))
             self._capacity(connection, recording["id"], encoded, "{}")
             sequence = connection.execute("SELECT coalesce(max(seq),0)+1 FROM steps WHERE record_id=?", (recording["id"],)).fetchone()[0]
-            connection.execute("INSERT INTO steps(record_id,seq,action,kind,parameters,started_at,status,step_id) VALUES(?,?,?,?,?,?,'running',?)", (recording["id"], sequence, action, kind, encoded, _now(), step_id))
+            cursor = connection.execute("INSERT INTO history_cursors DEFAULT VALUES").lastrowid
+            connection.execute("DELETE FROM history_cursors")
+            connection.execute("INSERT INTO steps(record_id,seq,action,kind,parameters,started_at,status,step_id,cursor) VALUES(?,?,?,?,?,?,'running',?,?)", (recording["id"], sequence, action, kind, encoded, _now(), step_id, cursor))
             return sequence
 
-    def mark(self, recording: dict[str, Any], name: str, serial: str | None, cursor: int | None) -> None:
+    def mark(self, recording: dict[str, Any], name: str, serial: str | None, cursor: int | None, *,
+             batch_id: str | None = None, attached_device_id: str | None = None, at: str | None = None) -> None:
         """A marker after the history's last step (``cursor``: its entry in the device log)."""
         with self._db(write=True) as connection:
             after = connection.execute("SELECT coalesce(max(seq),0) FROM steps WHERE record_id=?", (recording["id"],)).fetchone()[0]
-            connection.execute("INSERT INTO markers(record_id,after_seq,name,at,serial,cursor) VALUES(?,?,?,?,?,?)", (recording["id"], after, name, _now(), serial, cursor))
+            connection.execute("INSERT INTO markers(record_id,after_seq,name,at,serial,cursor,batch_id,attached_device_id) VALUES(?,?,?,?,?,?,?,?)",
+                (recording["id"], after, name, at or _now(), serial, cursor, batch_id, attached_device_id))
 
     def marker_names(self) -> dict[str, list[str]]:
         """Every history's markers as ``name@cursor`` by history id, oldest first."""
@@ -359,8 +457,11 @@ class RecordStore:
         with self._db() as connection:
             return {row["step_id"]: {"seq": row["seq"], "action": row["action"]} for row in connection.execute("SELECT seq,action,step_id FROM steps WHERE record_id=? AND step_id IS NOT NULL", (recording["id"],))}
 
-    def device(self, identifier: str, sequence: int, serial: str) -> None:
+    def device(self, identifier: str, sequence: int, serial: str, attached_device_id: str | None = None) -> None:
         with self._db(write=True) as connection:
+            recording = connection.execute("SELECT protected,log_devices FROM records WHERE id=?", (identifier,)).fetchone()
+            if recording is not None and recording["protected"] and _decode(recording["log_devices"]).get(serial) != attached_device_id:
+                raise RecordError("device is not in this recording's start set; stop/start a recording with that device attached; no input was sent")
             previous = connection.execute("SELECT serial FROM steps WHERE record_id=? AND seq=?", (identifier, sequence)).fetchone()
             if previous is None or (previous[0] is not None and previous[0] != serial):
                 raise RecordError("one recorded agent step cannot span devices; no new input was sent")
@@ -391,15 +492,29 @@ class RecordStore:
             row = connection.execute("SELECT deaths FROM steps WHERE record_id=? AND seq=?", (identifier, sequence)).fetchone()
             if row is None:
                 raise RecordError("recorded step disappeared")
-            encoded = json.dumps(json.loads(row[0]) + deaths, separators=(",", ":"), ensure_ascii=False)
+            try:
+                previous = json.loads(row[0])
+                if not isinstance(previous, list) or any(not isinstance(item, dict) for item in previous):
+                    raise ValueError("invalid app-death metadata")
+                encoded = json.dumps(previous + deaths, separators=(",", ":"), ensure_ascii=False, allow_nan=False)
+            except (ValueError, TypeError, OverflowError) as error:
+                raise RecordError("app-death metadata could not be stored; the original action outcome remains recorded") from error
             connection.execute("UPDATE steps SET deaths=? WHERE record_id=? AND seq=?", (encoded, identifier, sequence))
 
-    def stop(self, name: str | None, session: str, *, reason: str = "explicit") -> dict[str, Any]:
+    def stop(self, name: str | None, session: str, *, reason: str = "explicit", before_stop: Callable[[], object] | None = None) -> dict[str, Any]:
         recording = self.select(name, session) if name is not None else self.active(session)
         if recording is None:
             raise RecordError(f"session {session!r} has no live step history")
-        with self.lease(recording["id"]), self._db(write=True) as connection:
-            self._stop(connection, recording["id"], reason)
+        if recording.get("protected"):
+            with self._db() as connection:
+                row = connection.execute("SELECT * FROM records WHERE protected=? ORDER BY rowid DESC LIMIT 1", (recording["protected"],)).fetchone()
+                recording = dict(row)
+        with self.lease(recording["id"]):
+            log_status = before_stop() if before_stop is not None else None
+            with self._db(write=True) as connection:
+                self._stop(connection, recording["id"], reason)
+                if isinstance(log_status, dict):
+                    connection.execute("UPDATE records SET log_status=? WHERE id=?", (_json(log_status), recording["id"]))
         return self.select(recording["name"], session)
 
     def export(self, name: str | None, session: str, *, since: str | int | None = None, until: str | int | None = None) -> dict[str, Any]:
@@ -412,15 +527,18 @@ class RecordStore:
             if current is None:
                 raise RecordError("recording was removed during export")
             recording = dict(current)
-            steps = []
-            for row in connection.execute("SELECT * FROM steps WHERE record_id=? ORDER BY seq", (recording["id"],)):
-                step = {"seq": row["seq"], "id": row["step_id"], **{key: row[key] for key in ("action", "kind", "serial", "started_at", "finished_at", "duration_ms")}}
-                step["parameters"] = _decode(row["parameters"])
-                step["targets"] = _decode(row["targets"])
-                step["outcome"] = {"status": row["status"], "error": row["error_type"]}
-                step["app_deaths"] = json.loads(row["deaths"])
-                steps.append(step)
-            markers = [dict(row) for row in connection.execute("SELECT name,at,after_seq,serial,cursor FROM markers WHERE record_id=? ORDER BY rowid", (recording["id"],))]
+            members = [recording]
+            if recording.get("protected"):
+                members = [dict(row) for row in connection.execute("SELECT * FROM records WHERE protected=? ORDER BY rowid", (recording["protected"],))]
+                recording = {**members[0], **{key: members[-1][key] for key in ("state", "stopped_at", "stop_reason")}, "name": recording["protected"]}
+            steps, markers, artifacts = [], [], []
+            for member in members:
+                offset = len(steps)
+                artifacts.extend(self._artifact_document(row) for row in connection.execute("SELECT * FROM artifacts WHERE record_id=? ORDER BY at,id", (member["id"],)))
+                for row in connection.execute("SELECT * FROM steps WHERE record_id=? ORDER BY seq", (member["id"],)):
+                    steps.append(_step_document(row, sequence=offset + row["seq"]))
+                markers.extend({**dict(row), "after_seq": offset + row["after_seq"]} for row in connection.execute("SELECT name,at,after_seq,serial,cursor,batch_id,attached_device_id FROM markers WHERE record_id=? ORDER BY rowid", (member["id"],)))
+        log_status = next((_decode(row["log_status"]) for row in reversed(members) if row.get("log_status")), None)
         bounds = {}
         for key, wanted in (("since", since), ("until", until)):
             if wanted is None:
@@ -439,9 +557,138 @@ class RecordStore:
             last = markers.index(bounds["until"]) if "until" in bounds else len(markers) - 1
             steps = [step for step in steps if low < step["seq"] <= high]
             markers = markers[first:last + 1]
-        return {"format": FORMAT, "markers": markers, **({"range": {key: {"name": marker["name"], "cursor": marker["cursor"]} for key, marker in bounds.items()}} if bounds else {}), **{key: recording[key] for key in ("name", "session", "connection_id", "started_at", "stopped_at", "stop_reason")},
+        return {"format": FORMAT, "artifacts": artifacts, "recording": recording.get("protected"), **({"log_capture": log_status} if log_status is not None else {}), "markers": markers, **({"range": {key: {"name": marker["name"], "cursor": marker["cursor"]} for key, marker in bounds.items()}} if bounds else {}), **{key: recording[key] for key in ("name", "session", "connection_id", "started_at", "stopped_at", "stop_reason")},
             "state": "live" if recording["state"] == "recording" else "stopped",
-            "complete": recording["state"] == "stopped" and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}
+            "complete": recording["state"] == "stopped" and (log_status is None or log_status.get("complete") is True) and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}
+
+    def marker_anchor(self, name: str, devices: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        if not self._exists():
+            raise RecordError("no retained marker named " + repr(name))
+        with self._db() as connection:
+            rows = [dict(row) for row in connection.execute("SELECT m.*,r.connection_id FROM markers m JOIN records r ON r.id=m.record_id WHERE m.name=? ORDER BY m.rowid DESC", (name,))
+                if not devices or row["serial"] in devices]
+            if not rows:
+                raise RecordError("no retained marker named " + repr(name))
+            batch = rows[0]["batch_id"]
+            return [row for row in rows if row["batch_id"] == batch] if batch is not None else rows[:1]
+
+    def artifact(self, recording: dict[str, Any], *, serial: str, attached_device_id: str,
+                 started_at: str, directory: str, parts: list[str], failures: dict[str, str]) -> None:
+        """Index already saved files only; never read their contents or persist exception text."""
+        document = _json({"directory": directory, "parts": parts, "failures": failures})
+        if _bytes(document) > 64 * 1024:
+            raise RecordError("capture reference exceeds 64 KiB; saved files remain available")
+        with self._db(write=True) as connection:
+            connection.execute("INSERT INTO artifacts VALUES(?,?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex,
+                recording["id"], recording["connection_id"], serial, attached_device_id, _now(), started_at,
+                directory, _json(parts), _json(failures)))
+
+    @staticmethod
+    def _artifact_document(row) -> dict[str, Any]:
+        try:
+            parts, failures = json.loads(row["parts"]), json.loads(row["failures"])
+        except (ValueError, TypeError) as error:
+            raise RecordError("capture reference contains invalid stored JSON") from error
+        if not isinstance(parts, list) or not all(isinstance(part, str) for part in parts) or not isinstance(failures, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in failures.items()):
+            raise RecordError("capture reference contains invalid stored metadata")
+        return {**{key: row[key] for key in ("id", "connection_id", "serial", "attached_device_id", "at", "started_at", "directory")},
+            "kind": "capture", "parts": parts, "failures": failures,
+            "scope": "state_captured_at_request_time", "storage": "external_local_files"}
+
+    def artifact_references(self, *, start: str | None = None, until: str | None = None,
+                            devices: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        if not self._exists():
+            return []
+        with self._db() as connection:
+            rows = connection.execute("SELECT * FROM artifacts WHERE at>=? AND at<? ORDER BY at,id", (start or "", until or "\uffff"))
+            return [self._artifact_document(row) for row in rows if not devices or row["serial"] in devices]
+
+    def resolve_step(self, wanted: str | int) -> dict[str, Any]:
+        if not self._exists():
+            raise RecordError("no retained step")
+        with self._db() as connection:
+            row = connection.execute("SELECT s.*,r.connection_id FROM steps s JOIN records r ON r.id=s.record_id WHERE s.cursor=? OR s.step_id=?",
+                (wanted if isinstance(wanted, int) else -1, str(wanted))).fetchone()
+            if row is None:
+                raise RecordError("step is not retained; use a global history cursor or step ID")
+            return {**_step_document(row), "connection_id": row["connection_id"]}
+
+    def cursor_time(self, cursor: int) -> str | None:
+        """Resolve an exact retained step boundary, never invent time for an expired cursor."""
+        if not self._exists():
+            return None
+        with self._db() as connection:
+            row = connection.execute("SELECT started_at FROM steps WHERE cursor=?", (cursor,)).fetchone()
+            return row[0] if row is not None else None
+
+    def timeline(self, *, start: str | int | None = None, until: str | int | None = None, limit: int = 200, devices: tuple[str, ...] = ()) -> dict[str, Any]:
+        """A bounded page of all retained client steps, using stable store-wide cursors.
+
+        Bounds are inclusive from/exclusive until, as positive step cursors or ISO timestamps
+        with a timezone. Default is the latest page, shown oldest first; from pages forward.
+        """
+        lower, upper = _history_options(start, until, limit)
+        result: dict[str, Any] = {"format": "tap-history/1", "steps": [], "markers": [], "complete": False,
+            "next": None, "older": None, "connections": [], "retention": "Only retained activity is available; missing activity is not proof nothing happened."}
+        if not self._exists():
+            return result
+        cursor_low = lower[1] if lower is not None and lower[0] == "cursor" else 1
+        cursor_high = upper[1] - 1 if upper is not None and upper[0] == "cursor" else 2**63 - 1
+        time_low = lower[1] if lower is not None and lower[0] == "started_at" else ""
+        time_high = upper[1] if upper is not None and upper[0] == "started_at" else "\uffff"
+        device_clause = " AND s.serial IN (" + ",".join("?" for _ in devices) + ")" if devices else ""
+        parameters = (cursor_low, cursor_high, time_low, time_high, *devices, limit + 1)
+        ascending = lower is not None
+        with self._db() as connection:
+            if ascending:
+                rows = list(connection.execute("""SELECT s.*,r.connection_id,r.session,r.state AS record_state
+                    FROM steps s JOIN records r ON r.id=s.record_id
+                    WHERE s.cursor>=? AND s.cursor<=? AND s.started_at>=? AND s.started_at<?""" + device_clause + " ORDER BY s.cursor ASC LIMIT ?", parameters))
+            else:
+                rows = list(connection.execute("""SELECT s.*,r.connection_id,r.session,r.state AS record_state
+                    FROM steps s JOIN records r ON r.id=s.record_id
+                    WHERE s.cursor>=? AND s.cursor<=? AND s.started_at>=? AND s.started_at<?""" + device_clause + " ORDER BY s.cursor DESC LIMIT ?", parameters))
+            more = len(rows) > limit
+            rows = rows[:limit]
+            if not ascending:
+                rows.reverse()
+            result["steps"] = [{**_step_document(row), "connection_id": row["connection_id"], "session": row["session"]} for row in rows]
+            result["connections"] = list(dict.fromkeys(row["connection_id"] for row in rows))
+            for record_id in dict.fromkeys(row["record_id"] for row in rows):
+                members = [row for row in rows if row["record_id"] == record_id]
+                low_seq, high_seq = min(row["seq"] for row in members), max(row["seq"] for row in members)
+                for marker in connection.execute("SELECT name,at,serial,cursor,after_seq,batch_id,attached_device_id FROM markers WHERE record_id=? ORDER BY rowid", (record_id,)):
+                    if devices and marker["serial"] not in devices:
+                        continue
+                    if not low_seq - 1 <= marker["after_seq"] <= high_seq:
+                        continue
+                    if lower is not None and lower[0] == "started_at" and marker["at"] < lower[1]:
+                        continue
+                    if upper is not None and upper[0] == "started_at" and marker["at"] >= upper[1]:
+                        continue
+                    anchor = connection.execute("SELECT cursor FROM steps WHERE record_id=? AND seq=?", (record_id, marker["after_seq"])).fetchone()
+                    result["markers"].append({**dict(marker), "after_cursor": anchor[0] if anchor else None,
+                        "connection_id": members[0]["connection_id"]})
+            if not rows and all(bound is None or bound[0] == "started_at" for bound in (lower, upper)):
+                # Bookmarks are activity even when no application step has ever run.
+                for marker in connection.execute("""SELECT m.*,r.connection_id FROM markers m JOIN records r ON r.id=m.record_id
+                    WHERE m.at>=? AND m.at<? ORDER BY m.at,m.rowid""", (time_low, time_high)):
+                    if not devices or marker["serial"] in devices:
+                        result["markers"].append({**dict(marker), "after_cursor": None})
+            result["complete"] = bool(rows) and all(row["record_state"] == "stopped" and row["status"] not in ("running", "unknown", "interrupted") for row in rows)
+            if rows:
+                if ascending and more:
+                    result["next"] = rows[-1]["cursor"] + 1
+                if not ascending and more:
+                    result["older"] = rows[0]["cursor"]
+                # Only integer bounds identify exact missing cursor intervals; time filtering
+                # can intentionally omit other steps and must not invent loss counts.
+                if all(bound is None or bound[0] == "cursor" for bound in (lower, upper)):
+                    first = lower[1] if lower is not None else rows[0]["cursor"]
+                    result["dropped_steps"] = max(0, rows[-1]["cursor"] - first + 1 - len(rows))
+                    if result["dropped_steps"]:
+                        result["complete"] = False
+        return result
 
     def clean(self, name: str | None, session: str, *, all_records: bool = False) -> int:
         if not isinstance(all_records, bool) or (name is not None and not isinstance(name, str)):
@@ -450,7 +697,10 @@ class RecordStore:
             raise RecordError("choose a name or --all, not both")
         if not all_records and name is None:
             raise RecordError("clean needs a name or explicit --all")
-        recordings = [row for row in self.list() if row["state"] == "stopped"] if all_records else [self.select(name, session)]
+        recordings = [row for row in self.list() if row["state"] == "stopped" and not row.get("protected")] if all_records else [self.select(name, session)]
+        if not all_records and recordings[0].get("protected"):
+            protection = recordings[0]["protected"]
+            recordings = [row for row in self.list() if row.get("protected") == protection]
         if any(recording["state"] != "stopped" for recording in recordings):
             raise RecordError("a live session's history cannot be cleaned; release the session first")
         with contextlib.ExitStack() as stack:

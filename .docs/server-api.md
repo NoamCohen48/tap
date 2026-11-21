@@ -49,6 +49,65 @@ startup configuration, never tokens. They are populated by the CLI launcher and 
 configuration inspection and preserving options across restart. Embedded/test daemons may
 leave them empty. These additions do not change the compatibility epoch or device protocol.
 
+## Retained script event exports
+
+Every connection also owns a durable event archive, identified by its connection UUID as the
+archive id. `ListRetainedLogs` distinguishes it with `events=true`; device-log discovery in
+the SDKs hides these streams unless explicitly requested. `ReadLog` reads these original ids
+without a live connection, returning `LogEntry.event` (`LoggedEvent`). They share the global
+age/size/hard/free-space policy and protected recording ranges with device logs.
+`LogRecordingRange.events` identifies an event range; `retained_bytes` measures physical
+segments, potentially shared, not space guaranteed to be reclaimed by deletion.
+
+Events are redacted before persistence, using generated known-field-only protobuf copying
+without reflection. Unknown wire fields, binary payloads and free-form failure/last-state
+text are not copied. Sensitive text commands redact string-bearing selectors/arguments even
+for short values; clipboard strings are always withheld. Late attachment redaction rewrites
+its original attachment's already retained events too. Per-call redactors cannot be replaced
+by reattaching the same serial; `attached_device_id` preserves that original generation.
+Serials, clock ids and step ids remain identity
+metadata; callers must not encode secrets in identifiers.
+
+A cancelled admitted call or an unclassified RPC failure is explicitly `indeterminate`, never
+a successful event. Connection closure or recording stop with calls in flight inserts an
+interruption boundary, with an independently allocated durable receipt cursor.
+Previously stopped ranges keep their original boundary; a later interruption does not
+retroactively make them incomplete. No command is replayed.
+
+Python `client.log_recordings.export(name)` / `.history(original_connection_id)` and Kotlin
+`client.logRecordings.export(name)` / `.history(originalConnectionId)` return `HistoryExport`,
+with structured events, text/JSON formatting and optional device logs. They work after release
+or restart and never stop capture or write files implicitly. SDK events describe actual calls;
+only the agent can supply its additional high-level intent steps. `agent_steps_expected`
+marks such a range; missing local intent makes whole-artifact `complete` false even when
+`evidence_complete` confirms the requested daemon capture. The live `Events` RPC remains
+a bounded diagnostic view, not the durable export API. These additions do not change the
+compatibility epoch or the device wire protocol.
+
+## Independent death receipts and history windows
+
+`LogEntry.death` (`RecordedAppDeath{attached_device_id, serial, death: AppDeath}`) persists each
+new crash/ANR observation outside the `AppDeaths` parser lock, independently of SDK calls and
+whether an app is watched. It shares the connection event archive, atomic receipt cursor,
+clock, quotas and protected ranges. Known message/stack fields are redacted before storage;
+late rules scrub that original attachment's death receipts as well as RPCs. No raw/unknown
+wire-field copying is introduced. Follower/catch-up interruption inserts a durable gap rather
+than implying complete crash coverage. This is separate from bounded live `ListAppDeaths`
+retention and from whether a client later acknowledges a death.
+
+SDK exports include `deaths` regardless of optional device-log inclusion. Text has independent
+CRASH/ANR rows; JSON retains redacted available details, original attachment and sequence,
+`clock_id`, host monotonic receipt time and original device time. Missing stacks are explicit.
+Python `from_time`/`until_time` and Kotlin `fromTime`/`untilTime` filter every entry kind by host
+receipt time. RPC exports preserve both original start and `received_at`/receipt monotonic
+boundaries. Matched step IDs cannot bypass explicit time bounds.
+
+Agent timestamp/`--last` views discover original archives across retained connections even
+without local steps. They never shrink logs to step durations. `--last DURATION` captures one
+fixed positive lookback window and excludes explicit from/until arguments. `--details` is
+presentation only, not a prerequisite for capturing known crash details. Remaining evidence
+boundaries: [debugging gaps](history-debugging-gaps.md).
+
 ## Device capability discovery
 
 `DeviceService.GetDeviceCapabilities` takes the owning `client_connection_id` and
@@ -259,7 +318,7 @@ is in `contracts/api/README.md`. Every RPC has its own `<Rpc>Request`/`<Rpc>Resp
 | `Disconnect(client_connection_id)` → `{attached_devices_detached}` | Explicit teardown. |
 | `Info()` | Daemon version, host build id, protocol version, adb path, state dir, `driver_available`, `pid`. |
 | `ListConnections()` → `repeated ConnectionEntry` | Every live connection: id, name, `hold` when held, `idle_ms` since the last call naming it, and its attached devices (id, serial, generation). How a later process (`tap` CLI) finds a held connection by name. |
-| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent, except that a `sensitive` `SetText` / `TypeText` is logged without its `text`), and install / uninstall / force-stop / clear-data / grant / revoke / launch / cold launch / foreground / open link (`AppCall{operation, package_name, activity?, permission?, timeout_ms?, uri?, any_app?, extras}`), each with serial, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before running (invalid argument, unknown or foreign device) and cancelled calls are not logged. Renews a held connection. Unknown connection: `NOT_FOUND`. |
+| `Events(client_connection_id, after_seq)` → `{repeated LoggedEvent events, dropped}` | The connection's event log (`event_log.proto`), events with `seq > after_seq`, oldest first. Kept for every connection while it lives, the last 2000 (`dropped` counts evictions). Logged: every `Execute` except `device_info` / `dump_hierarchy` (the command as sent, except that a `sensitive` `SetText` / `TypeText` is logged without its `text`), and install / uninstall / force-stop / clear-data / grant / revoke / launch / cold launch / foreground / open link (`AppCall{operation, package_name, activity?, permission?, timeout_ms?, uri?, any_app?, extras}`), each with serial, start, duration, and `error` (driver `Error`) or `failure` (the RPC's `Failure`). Calls rejected before admission (invalid argument, unknown or foreign device) are not logged. Admitted cancelled calls remain indeterminate. Renews a held connection. Unknown connection: `NOT_FOUND`. |
 
 **Steps.** A client may send the header `tap-step: <id>` (1 to 64 of `A-Z a-z 0-9 . _ -`; a
 malformed one is `INVALID_ARGUMENT` before anything runs) with any call. The daemon copies it to
@@ -478,10 +537,16 @@ While a device is attached the daemon runs one `adb -s <serial> logcat -v thread
 -v uid -b main -b system -b crash -T <attach time>` child for it and keeps what it prints, in
 order, with two more kinds of entry in between: the **actions** Tap ran and the **markers** a
 client wrote. `AttachRequest.capture_logs = false` turns the capture off for that attachment
-(absent = on); every call below is then `FAILED_PRECONDITION` / `DAEMON_PRECONDITION`.
+(absent = on); per-device log operations then fail `FAILED_PRECONDITION` /
+`DAEMON_PRECONDITION`, and starting a protected range refuses that opted-out attachment.
 
-- **Storage.** In memory only, newest 16 MiB of entry text per attachment (`LOG_BUFFER_BYTES`),
-  forgotten at detach. Entries are numbered 1, 2, 3, … per attachment (`cursor`) in the order the
+- **Storage.** Redacted entries persist under `<state-dir>/history-logs` (0700 directories,
+  0600 files), surviving detach/restart. `tap config logging-policy` configures global rolling
+  age/bytes (defaults 1 h / 256 MiB), a hard log-storage budget (1 GiB) and free-space reserve
+  (256 MiB). Protected ranges bypass rolling eviction, not hard limits. Entry frames and
+  atomic manifests recover a valid prefix after a torn write; interrupted ranges are incomplete.
+  Long reads stream bounded segments; a 16 MiB hot buffer serves followers and failure previews.
+  Entries are numbered 1, 2, 3, … per attachment (`cursor`) in the order the
   daemon got them and stamped with the host clock (`host_time_ms`) and the daemon's monotonic
   clock (`host_monotonic_ns`, the clock of `LoggedEvent.started_monotonic_ns` and
   `VideoFrame.received_monotonic_ns`, so a watcher can place an entry in a video); a log line also carries the
@@ -505,7 +570,9 @@ client wrote. `AttachRequest.capture_logs = false` turns the capture off for tha
   DeviceService calls that change the device run on the host over ADB, so the daemon writes
   their start and finish entries itself (`operation` = the call in snake_case, `target` = the
   package). An action never carries an argument: no typed text, clipboard or file contents.
-- **Redaction** happens on read, so a pattern added later also hides lines captured earlier.
+- **Redaction** happens before persistence and again on read. Late rules rewrite retained
+  segments; an unsuccessful rewrite is explicit and blocks retained reads of that archive.
+  Earlier unrecognized values may already have existed on disk; no secure-erasure guarantee.
   Always replaced by `<redacted>`: the value of `Authorization` / `Proxy-Authorization` /
   `Cookie` / `Set-Cookie` / `X-Api-Key` / `X-Auth-Token` / `X-CSRF-Token` headers (the rest of
   the line), the value of `password` / `passwd` / `pwd` / `passcode` / `secret` /
@@ -518,9 +585,22 @@ client wrote. `AttachRequest.capture_logs = false` turns the capture off for tha
 
 | RPC | Notes |
 |---|---|
-| `ReadLog(…, from?: after_cursor \| marker \| tail \| last_action, follow, packages[], min_priority?, tags[], message_regex?, exclude_actions, step?)` → stream `{entries[], dropped}` | Entries oldest first in batches of at most 1 000. Start: absent = the oldest entry kept; `after_cursor`; `marker` = the newest marker with that name, included (`NOT_FOUND` / `UNKNOWN_LOG_MARKER` when none); `tail` = the newest N entries that pass the filters (1..100 000); `last_action` = the start of the newest action (everything when there is none). The filters apply to log lines only (markers, actions and gaps always pass): `packages` by the uid of each package (`pm list packages -U`; a package that is not installed is `INVALID_ARGUMENT`), `min_priority`, exact `tags`, `message_regex` (≤ 512 characters). `step` keeps only the entries from the first action of that step to its last, both included (nothing when the log has no action of it; `INVALID_ARGUMENT` with `follow`). The first response always arrives and carries `dropped`: how many entries older than the starting point the buffer had already forgotten (0 for `tail`). With `follow` the stream stays open for new entries until the caller cancels or the device is detached (the stream then ends normally); a follower more than 8 192 entries behind is ended with `RESOURCE_EXHAUSTED` and reads again after its last cursor. Works on an attachment whose driver session is broken. Not in the event log. |
-| `MarkLog(…, name)` → `{cursor}` | Writes a marker entry at the time the daemon gets the call. `name` is 1..200 characters without control characters. A later marker with the same name becomes the one `ReadLog(marker)` starts from. |
+| `ReadLog(…, from?: after_cursor \| marker \| tail \| last_action, follow, packages[], min_priority?, tags[], message_regex?, exclude_actions, step?, recording?)` → stream `{entries[], dropped, capture_error, clock_id}` | Entries oldest first in batches of at most 1 000. Start: absent = the oldest entry kept; `after_cursor`; `marker` = the newest marker with that name, included (`NOT_FOUND` / `UNKNOWN_LOG_MARKER` when none); `tail` = the newest N entries that pass the filters (1..100 000); `last_action` = the start of the newest action (everything when there is none). The filters apply to log lines only (markers, actions and gaps always pass): `packages` by the uid of each package (`pm list packages -U`; a package that is not installed is `INVALID_ARGUMENT`), `min_priority`, exact `tags`, `message_regex` (≤ 512 characters). `step` keeps only the entries from the first action of that step to its last, both included (nothing when the log has no action of it; `INVALID_ARGUMENT` with `follow`). The first response always arrives with capture/clock metadata. Sum `dropped` over all batches: unavailable entries in the requested cursor interval before filtering, including holes rather than only a prefix (0 for `tail`). Non-follow reads accept original retained owner/attachment ids after release/restart. `recording` clips to its protected range and cannot follow; package-name filtering requires a live attachment. A selected tail over 16 MiB is `RESOURCE_EXHAUSTED` rather than a silent truncation. With `follow` the stream stays open for new entries until the caller cancels or the device is detached (the stream then ends normally); a follower more than 8 192 entries behind is ended with `RESOURCE_EXHAUSTED` and reads again after its last cursor. Works on an attachment whose driver session is broken. Not in the event log. |
+| `MarkLog(…, name)` → `{cursor}` | Writes a marker entry at the time the daemon gets the call. `name` is 1..200 characters without control characters. A later marker with the same name becomes the one `ReadLog(marker)` starts from. Storage failure refuses acknowledgment rather than returning an unretained marker as durable. |
 | `RedactLog(…, patterns[])` → `{}` | Adds redaction patterns; all or none (`INVALID_ARGUMENT` names the bad one). |
+| `StartLogRecording(client_connection_id, name, agent_steps_expected)` → `{recording}` | Protects the current attachment set at receipt cursors. Name: 1..80 ASCII letters/digits/dots/dashes/underscores, leading alphanumeric. Atomically checked against attach/detach. No capture restart, app setup or policy change. |
+| `StopLogRecording(name)` → `{recording}` | Finalizes the range, also after connection end. Repeated stop keeps the same boundary; later detected evidence damage can downgrade completeness. |
+| `ListLogRecordings()` → `{recordings[]}` | Named protected ranges in this state directory, including open/incomplete ranges. Authorized by the daemon token, not by a fresh attachment. |
+| `DeleteLogRecording(name)` → `{}` | Explicitly removes protection from a stopped range. Does not delete separately exported copies; rolling policy may then evict its logs. |
+| `ListRetainedLogs(client_connection_id?)` → `{logs[]}` | Original owner/attachment ids, serial, cursor, closed state, capture error and original clock id. Empty connection id discovers all retained daemon logs; no ADB call or new session. |
+
+Each control has its own request/response message. `LogRecording` contains name, original owner,
+start/stop epoch ms, per-attachment `after_cursor` / optional `through_cursor`, `complete` and
+`capture_error`. Complete means finalized evidence without known interruption, not a passing
+test. Invalid names are `INVALID_ARGUMENT`; duplicate names, unavailable capture/storage and
+active deletion are `FAILED_PRECONDITION` / `DAEMON_PRECONDITION`. Missing names are
+`NOT_FOUND` / `DAEMON_PRECONDITION` with detail `UNKNOWN_LOG_RECORDING`. Reads with a wrong
+original owner still fail `PERMISSION_DENIED`. See [retention decisions](history-and-logging-policy.md).
 
 ### AppDataService: debuggable private files and SQLite (`app_data.proto`)
 

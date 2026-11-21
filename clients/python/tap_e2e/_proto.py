@@ -477,6 +477,12 @@ def logged_event(event: pb.LoggedEvent) -> LoggedEvent:
         error=_json(event.error) if event.HasField("error") else None,
         failure=_json(event.failure) if event.HasField("failure") else None,
         step=event.step if event.HasField("step") else None,
+        device=_json(event.device) if event.HasField("device") else None,
+        indeterminate=event.indeterminate,
+        clock_id=event.clock_id,
+        attached_device_id=event.attached_device_id,
+        started_monotonic_ns=event.started_monotonic_ns if event.HasField("started_monotonic_ns") else None,
+        finished_monotonic_ns=event.finished_monotonic_ns if event.HasField("finished_monotonic_ns") else None,
     )
 
 

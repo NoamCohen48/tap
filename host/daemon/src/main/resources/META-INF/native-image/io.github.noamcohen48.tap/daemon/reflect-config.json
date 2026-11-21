@@ -1,4 +1,18 @@
 [
+  {"name": "io.github.noamcohen48.tap.api.v1.RecordedAppDeath", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.ListLogRecordingsRequest", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.ListLogRecordingsResponse", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.ListRetainedLogsRequest", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.ListRetainedLogsResponse", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.LogRecording", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.LogRecordingRange", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.StartLogRecordingResponse", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.StopLogRecordingRequest", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.StopLogRecordingResponse", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.DeleteLogRecordingRequest", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.DeleteLogRecordingResponse", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.RetainedLog", "allDeclaredFields": true},
+  {"name": "io.github.noamcohen48.tap.api.v1.StartLogRecordingRequest", "allDeclaredFields": true},
   {
     "name": "android.app.Application"
   },

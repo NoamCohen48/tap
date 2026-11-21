@@ -1,26 +1,30 @@
 package io.github.noamcohen48.tap.daemon.grpc
 
+import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
+import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
+import io.github.noamcohen48.tap.api.v1.DeleteLogRecordingRequest
 import io.github.noamcohen48.tap.api.v1.DeviceCall
 import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
 import io.github.noamcohen48.tap.api.v1.Done
 import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.api.v1.InfoRequest
+import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.api.v1.ListLogRecordingsRequest
 import io.github.noamcohen48.tap.api.v1.LogEntry
 import io.github.noamcohen48.tap.api.v1.LogPriority
 import io.github.noamcohen48.tap.api.v1.MarkLogRequest
 import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.github.noamcohen48.tap.api.v1.RedactLogRequest
+import io.github.noamcohen48.tap.api.v1.StartLogRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopLogRecordingRequest
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WatchLogRequest
-import io.github.noamcohen48.tap.host.MediaClock
-import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.FakeProcess
 import io.github.noamcohen48.tap.host.LogcatLine
-import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
-import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.InfoRequest
-import io.github.noamcohen48.tap.api.v1.InfoResponse
+import io.github.noamcohen48.tap.host.MediaClock
 import io.grpc.Context
 import io.grpc.Metadata
 import io.grpc.ServerInterceptors
@@ -32,14 +36,14 @@ import io.grpc.inprocess.InProcessServerBuilder
 import io.grpc.kotlin.GrpcContextElement
 import io.grpc.stub.MetadataUtils
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.flow.onEach
-import kotlinx.coroutines.withContext
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.onEach
 import kotlinx.coroutines.flow.take
 import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import kotlinx.coroutines.yield
 import java.util.concurrent.CopyOnWriteArrayList
@@ -50,6 +54,93 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class DeviceLogServiceTest {
+    @Test
+    fun `protected evidence remains readable through the original ids after release`(): Unit =
+        runBlocking {
+            AttachedHarness.with(Device(), captureLogs = true) {
+                val log = attached.logs!!
+                log.line(line("before"))
+                logs.startLogRecording(
+                    StartLogRecordingRequest
+                        .newBuilder()
+                        .setClientConnectionId(connectionId)
+                        .setName("flow")
+                        .build(),
+                )
+                log.line(line("inside"))
+                val saved = logs.stopLogRecording(StopLogRecordingRequest.newBuilder().setName("flow").build()).recording
+                assertTrue(saved.complete)
+                log.line(line("after"))
+                daemon.disconnectClient(connectionId, "test release")
+                val replies = logs.readLog(request().setRecording("flow").build()).toList()
+                assertEquals(listOf("inside"), messages(replies.flatMap { it.entriesList }))
+                assertTrue(replies.first().clockId.isNotEmpty())
+                assertEquals(0, replies.sumOf { it.dropped })
+                assertEquals(
+                    "flow",
+                    logs
+                        .listLogRecordings(ListLogRecordingsRequest.getDefaultInstance())
+                        .recordingsList
+                        .single()
+                        .name,
+                )
+            }
+        }
+
+    @Test
+    fun `recording caller errors are typed rather than INTERNAL`(): Unit =
+        runBlocking {
+            AttachedHarness.with(Device(), captureLogs = true) {
+                assertEquals(
+                    Status.Code.INVALID_ARGUMENT,
+                    status {
+                        logs.startLogRecording(
+                            StartLogRecordingRequest
+                                .newBuilder()
+                                .setClientConnectionId(connectionId)
+                                .setName("../bad")
+                                .build(),
+                        )
+                    }.status.code,
+                )
+                assertEquals(
+                    Status.Code.NOT_FOUND,
+                    status {
+                        logs.stopLogRecording(StopLogRecordingRequest.newBuilder().setName("absent").build())
+                    }.status.code,
+                )
+                logs.startLogRecording(
+                    StartLogRecordingRequest
+                        .newBuilder()
+                        .setClientConnectionId(connectionId)
+                        .setName("flow")
+                        .build(),
+                )
+                assertEquals(
+                    Status.Code.FAILED_PRECONDITION,
+                    status {
+                        logs.deleteLogRecording(DeleteLogRecordingRequest.newBuilder().setName("flow").build())
+                    }.status.code,
+                )
+            }
+        }
+
+    @Test
+    fun `a step assigned after its driver lines arrived survives durable reads`(): Unit =
+        runBlocking {
+            AttachedHarness.with(Device(), captureLogs = true) {
+                val log = attached.logs!!.also { it.driverUid = DRIVER }
+                val sentAt = System.currentTimeMillis() - 1
+                log.line(line("> #7 tap text=Pay", uid = DRIVER, tag = "Tap"))
+                log.line(line("< #7 tap ok 1ms", uid = DRIVER, tag = "Tap"))
+                log.commandStep(7, "late-step", sentAt)
+                val entries = read { step = "late-step" }
+                assertEquals(2, entries.size)
+                assertTrue(entries.all { it.action.step == "late-step" })
+                assertTrue(read { afterCursor = Long.MAX_VALUE }.isEmpty())
+            }
+        }
+
     /** A device whose logcat child prints nothing: the tests write the lines themselves. */
     private class Device : Adb("fake-adb") {
         val children = CopyOnWriteArrayList<FakeProcess>()
@@ -94,10 +185,26 @@ class DeviceLogServiceTest {
         logs.readLog(request().apply(configure).build()).toList().flatMap { it.entriesList }
 
     private suspend fun AttachedHarness.mark(name: String): Long =
-        logs.markLog(MarkLogRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).setName(name).build()).cursor
+        logs
+            .markLog(
+                MarkLogRequest
+                    .newBuilder()
+                    .setClientConnectionId(connectionId)
+                    .setAttachedDeviceId(attached.id)
+                    .setName(name)
+                    .build(),
+            ).cursor
 
     private fun messages(entries: List<LogEntry>): List<String> =
-        entries.map { if (it.hasLine()) it.line.message else if (it.hasMarker()) "marker:${it.marker}" else "action:${it.action.operation}" }
+        entries.map {
+            if (it.hasLine()) {
+                it.line.message
+            } else if (it.hasMarker()) {
+                "marker:${it.marker}"
+            } else {
+                "action:${it.action.operation}"
+            }
+        }
 
     private suspend fun status(block: suspend () -> Unit): StatusException = assertFailsWith<StatusException> { block() }
 
@@ -113,8 +220,24 @@ class DeviceLogServiceTest {
                 log.line(line("card declined", priority = 'E'))
 
                 assertEquals(listOf("starting", "marker:checkout", "pay clicked", "unrelated", "card declined"), messages(read()))
-                assertEquals(listOf("marker:checkout", "pay clicked", "card declined"), messages(read { marker = "checkout"; addPackages("com.shop") }))
-                assertEquals(listOf("card declined"), messages(read { afterCursor = cursor; minPriority = LogPriority.LOG_PRIORITY_ERROR }))
+                assertEquals(
+                    listOf("marker:checkout", "pay clicked", "card declined"),
+                    messages(
+                        read {
+                            marker = "checkout"
+                            addPackages("com.shop")
+                        },
+                    ),
+                )
+                assertEquals(
+                    listOf("card declined"),
+                    messages(
+                        read {
+                            afterCursor = cursor
+                            minPriority = LogPriority.LOG_PRIORITY_ERROR
+                        },
+                    ),
+                )
                 assertEquals(listOf("card declined"), messages(read { tail = 1 }))
             }
         }
@@ -159,11 +282,24 @@ class DeviceLogServiceTest {
                     CommandResult.newBuilder().setDone(Done.getDefaultInstance()),
                 )
                 logs.redactLog(
-                    RedactLogRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).addPatterns("""order (\w+)""").build(),
+                    RedactLogRequest
+                        .newBuilder()
+                        .setClientConnectionId(
+                            connectionId,
+                        ).setAttachedDeviceId(attached.id)
+                        .addPatterns("""order (\w+)""")
+                        .build(),
                 )
 
                 assertEquals(listOf("login as noam with <redacted>, order <redacted>"), messages(read()))
-                val evidence = devices.deviceLogs(DeviceLogsRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).build())
+                val evidence =
+                    devices.deviceLogs(
+                        DeviceLogsRequest
+                            .newBuilder()
+                            .setClientConnectionId(connectionId)
+                            .setAttachedDeviceId(attached.id)
+                            .build(),
+                    )
                 assertTrue("with <redacted>, order <redacted>" in evidence.logcat, evidence.logcat)
                 assertFalse("ring buffer" in evidence.logcat, "the captured log replaces the ring buffer read")
                 assertFalse(evidence.logcatTruncated)
@@ -207,11 +343,28 @@ class DeviceLogServiceTest {
                 log.line(line("< #$requestId type_text ok 3ms", uid = DRIVER, tag = "Tap"))
                 log.line(line("after"))
 
-                assertEquals(listOf("s-1", "s-1"), attached.events.after(0).first.map { it.step })
+                assertEquals(
+                    listOf("s-1", "s-1"),
+                    attached.events
+                        .after(0)
+                        .first
+                        .map { it.step },
+                )
                 val step = read { step = "s-1" }
-                assertEquals(listOf("action:set_dark_mode", "action:set_dark_mode", "action:type_text", "typed", "action:type_text"), messages(step))
+                assertEquals(
+                    listOf("action:set_dark_mode", "action:set_dark_mode", "action:type_text", "typed", "action:type_text"),
+                    messages(step),
+                )
                 assertTrue(step.filter { it.hasAction() }.all { it.action.step == "s-1" })
-                assertEquals(Status.Code.INVALID_ARGUMENT, status { read { this.step = "s-1"; follow = true } }.status.code)
+                assertEquals(
+                    Status.Code.INVALID_ARGUMENT,
+                    status {
+                        read {
+                            this.step = "s-1"
+                            follow = true
+                        }
+                    }.status.code,
+                )
                 assertEquals(Status.Code.INVALID_ARGUMENT, status { read { this.step = "not a step" } }.status.code)
             }
         }
@@ -220,10 +373,18 @@ class DeviceLogServiceTest {
     fun `a call's tap-step header is its step and a malformed one is refused`() {
         val service =
             object : ClientConnectionServiceGrpcKt.ClientConnectionServiceCoroutineImplBase() {
-                override suspend fun info(request: InfoRequest): InfoResponse = InfoResponse.newBuilder().setDaemonVersion(STEP.get() ?: "none").build()
+                override suspend fun info(request: InfoRequest): InfoResponse =
+                    InfoResponse.newBuilder().setDaemonVersion(STEP.get() ?: "none").build()
             }
         val name = InProcessServerBuilder.generateName()
-        val server = InProcessServerBuilder.forName(name).directExecutor().addService(ServerInterceptors.intercept(service, StepInterceptor())).build().start()
+        val server =
+            InProcessServerBuilder
+                .forName(
+                    name,
+                ).directExecutor()
+                .addService(ServerInterceptors.intercept(service, StepInterceptor()))
+                .build()
+                .start()
         val channel = InProcessChannelBuilder.forName(name).directExecutor().build()
         try {
             fun info(step: String?): String {
@@ -294,7 +455,10 @@ class DeviceLogServiceTest {
                 assertEquals(listOf("pay clicked", "paid"), messages(entries), "after the cursor, live, and ended by the detach")
 
                 assertEquals(Status.Code.NOT_FOUND, status { watch.watchLog(request.build()).toList() }.status.code)
-                assertEquals(Status.Code.INVALID_ARGUMENT, status { watch.watchLog(WatchLogRequest.getDefaultInstance()).toList() }.status.code)
+                assertEquals(
+                    Status.Code.INVALID_ARGUMENT,
+                    status { watch.watchLog(WatchLogRequest.getDefaultInstance()).toList() }.status.code,
+                )
             }
             AttachedHarness.with(Device()) {
                 val refused = status { watch.watchLog(WatchLogRequest.newBuilder().setAttachedDeviceId(attached.id).build()).toList() }
@@ -312,7 +476,14 @@ class DeviceLogServiceTest {
                 assertEquals(FailureReason.FAILURE_REASON_DAEMON_PRECONDITION, refused.trailers?.get(FAILURE_TRAILER)?.reason)
                 assertEquals(Status.Code.FAILED_PRECONDITION, status { mark("m") }.status.code)
 
-                val evidence = devices.deviceLogs(DeviceLogsRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).build())
+                val evidence =
+                    devices.deviceLogs(
+                        DeviceLogsRequest
+                            .newBuilder()
+                            .setClientConnectionId(connectionId)
+                            .setAttachedDeviceId(attached.id)
+                            .build(),
+                    )
                 assertEquals("ring buffer token=<redacted>", evidence.logcat.trim())
             }
             assertTrue(device.children.isEmpty(), "no logcat child without capture")
@@ -329,9 +500,20 @@ class DeviceLogServiceTest {
                 assertEquals(Status.Code.INVALID_ARGUMENT, status { read { messageRegex = "(" } }.status.code)
                 assertEquals(Status.Code.INVALID_ARGUMENT, status { read { tail = 0 } }.status.code)
                 assertEquals(Status.Code.INVALID_ARGUMENT, status { mark("two\nlines") }.status.code)
-                val pattern = RedactLogRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).addPatterns("(")
+                val pattern =
+                    RedactLogRequest
+                        .newBuilder()
+                        .setClientConnectionId(
+                            connectionId,
+                        ).setAttachedDeviceId(attached.id)
+                        .addPatterns("(")
                 assertEquals(Status.Code.INVALID_ARGUMENT, status { logs.redactLog(pattern.build()) }.status.code)
-                assertEquals(Status.Code.PERMISSION_DENIED, status { logs.readLog(request().setClientConnectionId("someone-else").build()).first() }.status.code)
+                assertEquals(
+                    Status.Code.PERMISSION_DENIED,
+                    status {
+                        logs.readLog(request().setClientConnectionId("someone-else").build()).first()
+                    }.status.code,
+                )
             }
         }
 
@@ -342,7 +524,12 @@ class DeviceLogServiceTest {
             AttachedHarness.with(device, captureLogs = true) {
                 withTimeout(5_000) { while (device.children.isEmpty()) yield() }
             }
-            assertTrue(device.children.single().destroyed.get())
+            assertTrue(
+                device.children
+                    .single()
+                    .destroyed
+                    .get(),
+            )
         }
 
     private companion object {

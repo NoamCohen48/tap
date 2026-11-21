@@ -4,7 +4,6 @@ import io.github.noamcohen48.tap.api.v1.AcknowledgeAppDeathsRequest
 import io.github.noamcohen48.tap.api.v1.AppDeath
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.Done
-import io.github.noamcohen48.tap.api.v1.Error as CommandError
 import io.github.noamcohen48.tap.api.v1.ErrorCode
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
 import io.github.noamcohen48.tap.api.v1.ListAppDeathsRequest
@@ -16,6 +15,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.toList
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
@@ -30,6 +30,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import io.github.noamcohen48.tap.api.v1.Error as CommandError
 
 /** Deaths Android logged become records; a failing command names a watched app's death, and a wait ends at it. */
 class AppDeathsServiceTest {
@@ -93,7 +94,52 @@ class AppDeathsServiceTest {
         ): Process = child.also { started.countDown() }
     }
 
-    private val notFound = CommandResult.newBuilder().setError(CommandError.newBuilder().setCode(ErrorCode.ERR_NOT_FOUND).setMessage("no such node"))
+    @Test
+    fun `background crash and ANR survive named recording stop and release without device calls`() =
+        runBlocking {
+            val adb = Followed()
+            AttachedHarness.with(adb) {
+                assertTrue(adb.started.await(2, TimeUnit.SECONDS))
+                daemon.retainedLogs.start("incident", connectionId, listOf(connectionId))
+                stack.forEach(attached.appDeaths::ingest)
+                attached.appDeaths.ingest(crash.replace("boom, really", "password=secret-diagnostic, really"))
+                attached.appDeaths.ingest(anr)
+                // The same source line cannot create a second durable observation.
+                attached.appDeaths.ingest(crash.replace("boom, really", "password=secret-diagnostic, really"))
+                val archive = daemon.retainedLogs.archive(connectionId, connectionId)
+                val deaths =
+                    daemon.retainedLogs
+                        .entries(archive)
+                        .filter { it.hasDeath() }
+                        .map { it.death }
+                assertEquals(listOf(AppDeath.Kind.KIND_CRASH, AppDeath.Kind.KIND_ANR), deaths.map { it.death.kind })
+                assertTrue(deaths.all { it.serial == AttachedHarness.SERIAL && it.attachedDeviceId == attached.id })
+                assertTrue(deaths[0].death.stackTrace.contains("Main.pay"))
+                assertFalse(deaths[0].death.message.contains("secret-diagnostic"))
+                assertTrue(deaths[0].death.message.contains("<redacted>"))
+                attached.eventRedactor.literal("Main.pay")
+                assertFalse(
+                    daemon.retainedLogs
+                        .entries(archive)
+                        .first { it.hasDeath() }
+                        .death.death.stackTrace
+                        .contains("Main.pay"),
+                )
+                daemon.stopLogRecording("incident")
+                daemon.disconnectClient(connectionId, "released")
+                assertEquals(2, daemon.retainedLogs.entries(archive, "incident").count { it.hasDeath() })
+                val exported = logs.readLog(io.github.noamcohen48.tap.api.v1.ReadLogRequest.newBuilder()
+                    .setClientConnectionId(connectionId).setAttachedDeviceId(connectionId).setRecording("incident").build())
+                    .toList().flatMap { it.entriesList }
+                assertEquals(2, exported.count { it.hasDeath() })
+                assertFalse(exported.first { it.hasDeath() }.death.death.stackTrace.contains("Main.pay"))
+            }
+        }
+
+    private val notFound =
+        CommandResult.newBuilder().setError(
+            CommandError.newBuilder().setCode(ErrorCode.ERR_NOT_FOUND).setMessage("no such node"),
+        )
     private val tap = Commands.tap(Selectors.text("Pay"))
 
     private suspend fun AttachedHarness.started(packageName: String = pkg) = attached.appDeaths.watch(packageName)
@@ -140,7 +186,11 @@ class AppDeathsServiceTest {
                 assertEquals(1_790_000_014_107, death.atEpochMs)
                 assertEquals("java.lang.RuntimeException", death.exceptionClass)
                 assertEquals("boom, really", death.message)
-                assertTrue(death.stackTrace.startsWith("FATAL EXCEPTION: main\n") && "\tat com.example.shop.Main.pay(Main.kt:20)" in death.stackTrace, death.stackTrace)
+                assertTrue(
+                    death.stackTrace.startsWith("FATAL EXCEPTION: main\n") &&
+                        "\tat com.example.shop.Main.pay(Main.kt:20)" in death.stackTrace,
+                    death.stackTrace,
+                )
                 assertTrue(death.watched && death.handled)
                 assertEquals(ErrorCode.ERR_NOT_FOUND, execute(tap, notFound).error.code, "the same crash is reported once")
             }
@@ -168,7 +218,10 @@ class AppDeathsServiceTest {
                 val (crashed, hung) = deaths().deathsList
                 assertEquals(31010, crashed.pid)
                 assertEquals("Tap fixture crashed on purpose", crashed.message)
-                assertTrue(crashed.stackTrace.startsWith("FATAL EXCEPTION: main\n") && "DyingActivity.kt:19" in crashed.stackTrace, crashed.stackTrace)
+                assertTrue(
+                    crashed.stackTrace.startsWith("FATAL EXCEPTION: main\n") && "DyingActivity.kt:19" in crashed.stackTrace,
+                    crashed.stackTrace,
+                )
                 assertEquals(30695, hung.pid)
                 assertEquals(AppDeath.Kind.KIND_ANR, hung.kind)
             }
@@ -281,7 +334,10 @@ class AppDeathsServiceTest {
                 assertEquals(listOf(false, false, false), listed.deathsList.map { it.watched }, "none was watched when it died")
                 assertEquals(3, listed.lastSequence)
                 assertEquals(listOf(3L), deaths(after = 2).deathsList.map { it.sequence })
-                assertEquals(listOf("com.google.android.gms"), deaths(packageName = "com.google.android.gms").deathsList.map { it.packageName })
+                assertEquals(
+                    listOf("com.google.android.gms"),
+                    deaths(packageName = "com.google.android.gms").deathsList.map { it.packageName },
+                )
                 val only = deaths(sequenceOnly = true)
                 assertEquals(0, only.deathsCount)
                 assertEquals(3, only.lastSequence)
@@ -295,9 +351,17 @@ class AppDeathsServiceTest {
             AttachedHarness.with(adb) {
                 started()
                 adb.lines = adb.lines + crash.replace(",$pkg,", ",com.other.app,").replace("boom, really", pkg)
-                assertEquals(ErrorCode.ERR_NOT_FOUND, execute(tap, notFound).error.code, "package mentioned only in another app's exception")
+                assertEquals(
+                    ErrorCode.ERR_NOT_FOUND,
+                    execute(tap, notFound).error.code,
+                    "package mentioned only in another app's exception",
+                )
                 adb.lines = adb.lines + crash.replace("boom, really", "am_anr").replace("14.107", "18.000")
-                assertEquals(ErrorCode.ERR_AUT_CRASHED, execute(tap, notFound).error.code, "the event tag, not the exception text, decides the code")
+                assertEquals(
+                    ErrorCode.ERR_AUT_CRASHED,
+                    execute(tap, notFound).error.code,
+                    "the event tag, not the exception text, decides the code",
+                )
             }
         }
 
@@ -383,7 +447,10 @@ class AppDeathsServiceTest {
                 assertTrue(deaths().deathsList.single().handled)
             }
             assertTrue(adb.child.destroyed, "detach stops the follower")
-            assertTrue(withContext(Dispatchers.IO) { adb.child.readerClosed.await(5, TimeUnit.SECONDS) }, "detach closes the blocked reader")
+            assertTrue(
+                withContext(Dispatchers.IO) { adb.child.readerClosed.await(5, TimeUnit.SECONDS) },
+                "detach closes the blocked reader",
+            )
         }
 
     @Test
@@ -397,7 +464,13 @@ class AppDeathsServiceTest {
                 val call =
                     async {
                         devices.execute(
-                            ExecuteRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).setCommand(wait).build(),
+                            ExecuteRequest
+                                .newBuilder()
+                                .setClientConnectionId(
+                                    connectionId,
+                                ).setAttachedDeviceId(attached.id)
+                                .setCommand(wait)
+                                .build(),
                         )
                     }
                 val frame = withTimeout(2_000) { withContext(Dispatchers.IO) { driver.nextFrame() } }
@@ -416,7 +489,13 @@ class AppDeathsServiceTest {
                 val taps =
                     async {
                         devices.execute(
-                            ExecuteRequest.newBuilder().setClientConnectionId(connectionId).setAttachedDeviceId(attached.id).setCommand(tap).build(),
+                            ExecuteRequest
+                                .newBuilder()
+                                .setClientConnectionId(
+                                    connectionId,
+                                ).setAttachedDeviceId(attached.id)
+                                .setCommand(tap)
+                                .build(),
                         )
                     }
                 val tapFrame = withTimeout(2_000) { withContext(Dispatchers.IO) { driver.nextFrame() } }
@@ -436,7 +515,8 @@ class AppDeathsServiceTest {
                 started()
                 adb.child.emit(crash)
                 withTimeout(5_000) { while (deaths().deathsCount == 0) delay(20) }
-                val done = execute(Commands.waitVisible(Selectors.text("Paid")), CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
+                val done =
+                    execute(Commands.waitVisible(Selectors.text("Paid")), CommandResult.newBuilder().setDone(Done.getDefaultInstance()))
                 assertFalse(done.hasError())
             }
         }

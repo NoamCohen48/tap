@@ -6,6 +6,31 @@ name the components affected. Earlier releases used independent version lines. T
 
 ## Unreleased
 
+### Engine
+
+- `tap-agent history` replaces the separate `log` command/tool, with repeated device selection,
+  log filters, explicit marker/step/action/opaque-cursor bounds and omission-reporting log tails.
+  `history mark/redact` control only held attachments and report partial acknowledgements.
+  Driver diagnostics move to `tap logs driver --serial SERIAL`. Explicit `capture` creates
+  new private bundles and indexes external references in history/protected exports; historical
+  reads never collect fresh device state or embed file contents.
+- Incident history now supports `tap-agent history --last 30s` and full timestamp windows,
+  including background logs/calls with no agent steps or live connection. Independent crashes
+  and ANRs survive release/restart and appear in every history/recording text and JSON mode.
+  Known messages and available stacks are retained after redaction; `--details` expands text,
+  while JSON includes available details by default. Source gaps/missing traces stay explicit.
+  Python/Kotlin SDK history accepts inclusive/exclusive host-receipt time bounds.
+- Redacted device logs and RPC events survive release/daemon restart under one retention
+  policy: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve
+  (`tap config logging-policy`). Python `client.log_recordings` and Kotlin
+  `client.logRecordings` protect named ranges and export `tap-history/1` directly after a
+  script, without a CLI or a live original connection. `tap-agent history` reads paginated
+  activity; `record start|stop|list|export|clean` protects and reads the same evidence plus
+  high-level intent. Default output is readable stdout text; `--json` selects JSON, `--logs`
+  adds device logs. Stable step/time bounds, shared disk usage, missing intent, capture gaps
+  and unknown outcomes stay explicit. No standalone agent export, release-time file export,
+  mutation replay or inferred assertions. See [history and recordings](docs/agent/export.md).
+
 ## 0.2.0
 
 All components use 0.2.0. Install the server and clients from this release together; Tap agent,
@@ -35,7 +60,7 @@ API compatibility epoch is unchanged; the internal device protocol is 5.3 (also 
   app's lines in order with the actions Tap ran (the driver logs each action and wait when it
   starts and finishes) and the markers a test wrote, filtered by package, priority, tag or a
   regular expression, read from a marker, a cursor, the newest N or the newest action, or
-  followed live. Secrets are replaced on read (auth headers, tokens, sensitive typed text, your
+  followed live. Secrets are replaced before persistence and on read (auth headers, tokens, sensitive typed text, your
   own patterns). A client that sends a `tap-step` header gets its step id on the actions and
   calls it caused. Python: `device.logs.read(...)` / `follow` / `mark` / `redact`,
   `with tap_e2e.step() as id:`; `tap-agent log`. Each app line names the packages installed

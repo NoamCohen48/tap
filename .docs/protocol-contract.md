@@ -513,6 +513,22 @@ logcat sees which command an app line follows. The host daemon reads them back a
 line only when its uid is `DeviceInfo.driver_uid`. This is additive within protocol 5.1: a
 driver without it reports `driver_uid` 0 and its commands are simply missing from the log.
 
+Host-side retention is separate from this wire format: the daemon persists redacted entries
+under its logging policy and can protect named receipt-cursor ranges across detach/restart
+([history and logging policy](history-and-logging-policy.md)). This changes the `tap.v1`
+DeviceLogService, not the server-driver protocol or these action-line bytes. `LogEntry.event`
+also retains known-field-redacted `LoggedEvent` receipts; `indeterminate` preserves unknown
+outcomes and `attached_device_id` identifies the original attachment generation. Event archives
+share retention/protection with logs; interruption gaps have their own receipt cursors. Named
+range metadata includes event ranges, shared physical bytes and expected local agent intent.
+Exports use these durable archives rather than the bounded live `Events` ring.
+`LogEntry.death` additionally carries `RecordedAppDeath` (original attachment/serial plus the
+structured `AppDeath`), independently of commands. Known crash message/stack strings are
+redacted before persistence; death-source interruption is a gap. SDK/agent time-window reads
+use host receipt time across logs, RPC completions and deaths, including idle periods. The
+original device and RPC-start clocks remain separate. This adds no device wire command or
+change to action-line bytes.
+
 ### Artifacts
 
 A command whose result is binary streams it on the writer lane *before* its terminal

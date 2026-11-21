@@ -10,14 +10,26 @@ import io.github.noamcohen48.tap.api.v1.LoggedEvent
 class EventLog(
     private val capacity: Int = EVENT_LOG_CAPACITY,
     private val onAppend: (LoggedEvent) -> Unit = {},
+    private val onPersist: (LoggedEvent, (LoggedEvent) -> LoggedEvent) -> Unit = { _, _ -> },
 ) {
     private val events = ArrayDeque<LoggedEvent>()
     private var lastSeq = 0L
     private var dropped = 0L
 
-    /** Appends [event] with the next sequence number. */
+    /** Append a non-device event with built-in durable redaction. */
+    fun append(event: LoggedEvent.Builder) = appendUsing(event) { durableEvent(it, LogRedactor()) }
+
+    /** The admitting attachment's rules remain available even after detach or reattachment. */
+    internal fun appendRedacted(
+        event: LoggedEvent.Builder,
+        redactor: LogRedactor,
+    ) = appendUsing(event) { durableEvent(it, redactor) }
+
     @Synchronized
-    fun append(event: LoggedEvent.Builder) {
+    private fun appendUsing(
+        event: LoggedEvent.Builder,
+        redact: (LoggedEvent) -> LoggedEvent,
+    ) {
         if (events.size == capacity) {
             events.removeFirst()
             dropped++
@@ -25,6 +37,7 @@ class EventLog(
         val recorded = event.setSeq(++lastSeq).build()
         events.addLast(recorded)
         onAppend(recorded)
+        onPersist(recorded, redact)
     }
 
     /** The kept events with `seq > afterSeq`, oldest first, and the evicted count. */

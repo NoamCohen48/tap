@@ -49,6 +49,31 @@ class DeviceLogServiceStub:
                 request_serializer=device__log__pb2.RedactLogRequest.SerializeToString,
                 response_deserializer=device__log__pb2.RedactLogResponse.FromString,
                 _registered_method=True)
+        self.StartLogRecording = channel.unary_unary(
+                '/tap.v1.DeviceLogService/StartLogRecording',
+                request_serializer=device__log__pb2.StartLogRecordingRequest.SerializeToString,
+                response_deserializer=device__log__pb2.StartLogRecordingResponse.FromString,
+                _registered_method=True)
+        self.StopLogRecording = channel.unary_unary(
+                '/tap.v1.DeviceLogService/StopLogRecording',
+                request_serializer=device__log__pb2.StopLogRecordingRequest.SerializeToString,
+                response_deserializer=device__log__pb2.StopLogRecordingResponse.FromString,
+                _registered_method=True)
+        self.ListLogRecordings = channel.unary_unary(
+                '/tap.v1.DeviceLogService/ListLogRecordings',
+                request_serializer=device__log__pb2.ListLogRecordingsRequest.SerializeToString,
+                response_deserializer=device__log__pb2.ListLogRecordingsResponse.FromString,
+                _registered_method=True)
+        self.DeleteLogRecording = channel.unary_unary(
+                '/tap.v1.DeviceLogService/DeleteLogRecording',
+                request_serializer=device__log__pb2.DeleteLogRecordingRequest.SerializeToString,
+                response_deserializer=device__log__pb2.DeleteLogRecordingResponse.FromString,
+                _registered_method=True)
+        self.ListRetainedLogs = channel.unary_unary(
+                '/tap.v1.DeviceLogService/ListRetainedLogs',
+                request_serializer=device__log__pb2.ListRetainedLogsRequest.SerializeToString,
+                response_deserializer=device__log__pb2.ListRetainedLogsResponse.FromString,
+                _registered_method=True)
 
 
 class DeviceLogServiceServicer:
@@ -58,6 +83,7 @@ class DeviceLogServiceServicer:
         """The entries from a starting point, oldest first, in batches. With `follow` the stream stays
         open for new entries until the caller cancels it or the device is detached; a follower that
         falls too far behind is ended with RESOURCE_EXHAUSTED and reads again after its last cursor.
+        Non-follow reads support retained ids after release/restart; follow uses a live hot buffer.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -73,6 +99,41 @@ class DeviceLogServiceServicer:
     def RedactLog(self, request, context):
         """Adds patterns whose matches are replaced by `<redacted>` in everything read from now on,
         lines already captured included.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StartLogRecording(self, request, context):
+        """Protect the current attachment set from rolling eviction, starting at acknowledgment.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def StopLogRecording(self, request, context):
+        """Finalize a protected range. Works after the owning connection ended.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListLogRecordings(self, request, context):
+        """Named protected ranges in this daemon state directory; requires the daemon token.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteLogRecording(self, request, context):
+        """Explicit deletion removes protection, never an active recording.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def ListRetainedLogs(self, request, context):
+        """Discover ordinary retained history after release/restart. The daemon token authorizes access.
         """
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -95,6 +156,31 @@ def add_DeviceLogServiceServicer_to_server(servicer, server):
                     servicer.RedactLog,
                     request_deserializer=device__log__pb2.RedactLogRequest.FromString,
                     response_serializer=device__log__pb2.RedactLogResponse.SerializeToString,
+            ),
+            'StartLogRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StartLogRecording,
+                    request_deserializer=device__log__pb2.StartLogRecordingRequest.FromString,
+                    response_serializer=device__log__pb2.StartLogRecordingResponse.SerializeToString,
+            ),
+            'StopLogRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.StopLogRecording,
+                    request_deserializer=device__log__pb2.StopLogRecordingRequest.FromString,
+                    response_serializer=device__log__pb2.StopLogRecordingResponse.SerializeToString,
+            ),
+            'ListLogRecordings': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListLogRecordings,
+                    request_deserializer=device__log__pb2.ListLogRecordingsRequest.FromString,
+                    response_serializer=device__log__pb2.ListLogRecordingsResponse.SerializeToString,
+            ),
+            'DeleteLogRecording': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteLogRecording,
+                    request_deserializer=device__log__pb2.DeleteLogRecordingRequest.FromString,
+                    response_serializer=device__log__pb2.DeleteLogRecordingResponse.SerializeToString,
+            ),
+            'ListRetainedLogs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListRetainedLogs,
+                    request_deserializer=device__log__pb2.ListRetainedLogsRequest.FromString,
+                    response_serializer=device__log__pb2.ListRetainedLogsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -178,6 +264,141 @@ class DeviceLogService:
             '/tap.v1.DeviceLogService/RedactLog',
             device__log__pb2.RedactLogRequest.SerializeToString,
             device__log__pb2.RedactLogResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StartLogRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceLogService/StartLogRecording',
+            device__log__pb2.StartLogRecordingRequest.SerializeToString,
+            device__log__pb2.StartLogRecordingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def StopLogRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceLogService/StopLogRecording',
+            device__log__pb2.StopLogRecordingRequest.SerializeToString,
+            device__log__pb2.StopLogRecordingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListLogRecordings(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceLogService/ListLogRecordings',
+            device__log__pb2.ListLogRecordingsRequest.SerializeToString,
+            device__log__pb2.ListLogRecordingsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteLogRecording(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceLogService/DeleteLogRecording',
+            device__log__pb2.DeleteLogRecordingRequest.SerializeToString,
+            device__log__pb2.DeleteLogRecordingResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListRetainedLogs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceLogService/ListRetainedLogs',
+            device__log__pb2.ListRetainedLogsRequest.SerializeToString,
+            device__log__pb2.ListRetainedLogsResponse.FromString,
             options,
             channel_credentials,
             insecure,

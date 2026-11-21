@@ -86,24 +86,50 @@ data class LogEntry(
     val action: LogAction? = null,
     /** The capture was interrupted here (the device disconnected, logcat ended) and lines may be missing: why. */
     val gap: String? = null,
+    /** Redacted SDK call, only present in a retained connection event archive. */
+    val event: io.github.noamcohen48.tap.api.v1.LoggedEvent? = null,
+    /** Independent redacted crash/ANR, including deaths between SDK calls. */
+    val death: io.github.noamcohen48.tap.api.v1.RecordedAppDeath? = null,
+    /** Original host receipt clock; compare only within the capture clock identity. */
+    val hostMonotonicNs: Long = 0,
 ) {
     override fun toString(): String {
         val stamp = STAMP.format(at)
         return when {
-            line != null ->
+            line != null -> {
                 with(line) {
                     "%s %5s %5d %5d %s %s: %s".format(stamp, uid?.toString() ?: "?", pid, tid, priority?.letter ?: '?', tag, message)
                 }
-            marker != null -> "$stamp ── marker $marker"
-            gap != null -> "$stamp ── gap $gap"
-            action != null ->
+            }
+
+            death != null -> {
+                "$stamp ── ${death.death.kind.name.removePrefix("KIND_")} ${death.death.packageName} (pid ${death.death.pid})"
+            }
+
+            event != null -> {
+                "$stamp ── event ${event.seq} ${eventJson(event)}"
+            }
+
+            marker != null -> {
+                "$stamp ── marker $marker"
+            }
+
+            gap != null -> {
+                "$stamp ── gap $gap"
+            }
+
+            action != null -> {
                 buildString {
                     append(stamp).append(" ── ").append(action.operation)
                     action.target?.let { append("  ").append(it) }
                     if (action.finished) append("  → ").append(action.outcome)
                     action.duration?.let { append("  ").append(it.inWholeMilliseconds).append(" ms") }
                 }
-            else -> stamp
+            }
+
+            else -> {
+                stamp
+            }
         }
     }
 
@@ -116,10 +142,14 @@ data class LogEntry(
 data class LogEntries(
     val entries: List<LogEntry>,
     /**
-     * How many entries older than the starting point the server had already forgotten (it keeps
-     * the newest 16 MiB per attachment). Always 0 for [LogStart.Tail].
+     * Entries unavailable in the requested cursor range before user filtering, summed across
+     * all response batches. Protected ranges can leave holes in ordinary history. Zero for [LogStart.Tail].
      */
     val dropped: Long,
+    /** Nonempty when durable capture could not preserve all evidence, such as a hard disk limit. */
+    val captureError: String = "",
+    /** Original capture daemon's monotonic clock identity. */
+    val clockId: String = "",
 ) : List<LogEntry> by entries {
     /** The entries as text, one per line. */
     val text: String get() = entries.joinToString("") { "$it\n" }
@@ -187,8 +217,9 @@ data class LogFilter(
  *
  * The server captures it from the moment the device is attached, unless the attachment turned
  * that off ([DeviceOptions.captureLogs]; every call here then fails with [ServerException],
- * [FailureReason.DAEMON_PRECONDITION]). It keeps the newest 16 MiB and forgets them at
- * [Device.detach]. Secrets are replaced by `<redacted>` in everything read: see [redact].
+ * [FailureReason.DAEMON_PRECONDITION]). Redacted evidence follows durable daemon retention;
+ * [TapClient.logRecordings] discovers archived logs and protects named ranges after detach/restart.
+ * A 16 MiB hot buffer serves live followers. Secrets are replaced before storage and on read.
  *
  * ```
  * device.logs.mark("checkout")
@@ -239,14 +270,18 @@ class DeviceLog internal constructor(
             mapped(device.serial) {
                 val entries = mutableListOf<LogEntry>()
                 var dropped = 0L
+                var captureError = ""
+                var clockId = ""
                 stub
                     .withDeadlineAfter(timeout.inWholeMilliseconds, TimeUnit.MILLISECONDS)
                     .readLog(request(start, filter, follow = false))
                     .collect { response ->
                         dropped += response.dropped
+                        if (response.captureError.isNotEmpty()) captureError = response.captureError
+                        if (response.clockId.isNotEmpty()) clockId = response.clockId
                         response.entriesList.mapTo(entries) { it.toModel() }
                     }
-                LogEntries(entries, dropped)
+                LogEntries(entries, dropped, captureError, clockId)
             }
         }
     }
@@ -254,7 +289,8 @@ class DeviceLog internal constructor(
     /**
      * The entries from [start] and then every new one as it is logged. The flow is cold: each
      * collection is one stream, which ends when the collector is cancelled or the device is
-     * detached. Collect it in its own coroutine, or to wait for a line:
+     * detached. Backlog comes from the bounded live hot buffer; read retained history separately
+     * for older evidence. Collect it in its own coroutine, or to wait for a line:
      *
      * ```
      * val settled = device.logs.follow(LogStart.Marker("checkout"), LogFilter(tags = listOf("Payments")))
@@ -284,7 +320,8 @@ class DeviceLog internal constructor(
     /**
      * Writes a named marker into the log, at the time the server gets the call, and returns its
      * cursor. Read from it with [LogStart.Marker]; a later marker with the same name replaces it
-     * as the starting point. [name] is 1 to 200 characters on one line.
+     * as the starting point. [name] is 1 to 200 characters on one line. Closed capture or failed
+     * persistence refuses acknowledgment.
      */
     suspend fun mark(
         name: String,
@@ -315,7 +352,9 @@ class DeviceLog internal constructor(
      *
      * Redacted without any call: `Authorization` / `Cookie` style headers, `password=` /
      * `token=` style values, bearer tokens, JWTs, and the text of every `sensitive` `setText` /
-     * `typeText` on this device. At most 64 patterns per attachment.
+     * `typeText` on this device (literals of at least four characters). At most 64 patterns per
+     * attachment. Late rules rewrite retained segments and report failure explicitly. Earlier
+     * copies/backups of unrecognized values cannot be securely erased this way.
      */
     suspend fun redact(
         vararg patterns: String,
@@ -374,4 +413,7 @@ internal fun LogEntryProto.toModel(): LogEntry =
                 null
             },
         gap = if (hasGap()) gap else null,
+        event = if (hasEvent()) event else null,
+        death = if (hasDeath()) death else null,
+        hostMonotonicNs = hostMonotonicNs,
     )

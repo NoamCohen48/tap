@@ -42,7 +42,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "in one bulk call, without a diagnostic snapshot; `--texts` projects raw text. "
         "Snapshots and settle append unread historical toasts; `toast --history` inspects retained "
         "toasts without consuming them. Gaps/resets are explicit; history is not current UI.",
-        ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "log", "deaths", "media-record"],
+        ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "deaths", "media-record"],
     ),
     (
         "Acting on elements",
@@ -103,9 +103,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     (
         "Turning a session into a test",
         "Every session records its actions and explicit waits by itself; the history survives "
-        "release and exports as JSON, cut between markers and, while the session lives, with the "
-        "device log and the server's calls. See [Sessions to tests](export.md).",
-        ["history", "export"],
+        "release. History displays activity with pagination; record export displays a named protected "
+        "range without stopping it. Both default to text on stdout, support JSON and optional logs, "
+        "and include durable redacted RPC events after release/restart. See [History and recordings](export.md).",
+        ["record", "history"],
     ),
     (
         "Device events",
@@ -289,7 +290,7 @@ def render(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, Tool]) ->
         "| Command | What it does | MCP tool |",
         "|---|---|---|",
     ]
-    for title, _, names in GROUPS:
+    for _title, _, names in GROUPS:
         for verb in names:
             description = sentence(verbs[verb].description)
             tool = mcp_name(verb)

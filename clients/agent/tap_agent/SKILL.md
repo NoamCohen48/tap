@@ -28,8 +28,9 @@ tap-agent release                                   # when done: frees the devic
 status, typed reasons, API requirements and remaining prerequisites. The read-only MCP
 `capabilities` tool returns the same JSON. It changes no settings, grants no permissions and
 starts no operations. Unsupported is a known blocker; conditional and unknown are not a promise
-of success. Check a selected element's actions separately. Recording needs scrcpy on the daemon
-host, and a present executable alone does not prove capture will work.
+of success. Check a selected element's actions separately. Video/audio recording needs scrcpy
+on the daemon host; named history/log protection does not. A present executable alone does not
+prove media capture will work.
 
 ## Reading the screen
 
@@ -267,24 +268,33 @@ not an app-state assertion. None of this uses synchronization/awaitIdle.
 ## Evidence
 
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
-`capture` saves screenshot, hierarchy, device info and driver log together. Files go under
-`.tap/agent/` unless `-o` says otherwise.
+`capture` saves screenshot, hierarchy, device info, driver diagnostics and device logs/crashes,
+including **current** activity/task/window state. It creates a new private directory (0700)
+and files (0600), refusing existing destinations. Files go under `.tap/agent/` unless `-o`
+says otherwise. History/record exports retain timestamped references to the external files,
+not their contents. Clean never deletes those files. Index failure preserves saved files and
+warns; do not repeat capture to recover them. A history read never collects current state.
 
-`log` prints the device log since the attach: the app's logcat lines with Tap's own actions
-(`── tap  text="Pay"`) and markers between them, secrets redacted, times on the host's clock.
-- At most 200 entries (`--limit` up to 5000). From a start: the first ones, ending with
-  `(N more entries …; read on with: log --after C …)`; run that for the next page. No start: the newest.
-- A phone logs hundreds of lines a second: add `--package PKG`. The driver's own lines are hidden (`--driver-lines` shows them).
-- What an action caused: `log --last-action --package PKG --priority warn`.
-- A flow: `log mark NAME` before it, then `log --since NAME [--until OTHER]`. A name means its
-  newest marker; `mark` prints the cursor, and `@CURSOR` (`--since @1840`) names exactly that marker.
-- Your steps are named in it (`── step 3 fill  [id]`); `log --step 3` prints one step's part.
-- `--json` returns the entries as data (`kind`: line / action / marker / gap) to filter or compute on.
- `log driver` and `log evidence` save the Tap driver's log and the
-device's failure evidence (log, crashes/ANRs, activity and window state) to
-new private files (0600), never inline or overwritten. Treat accessibility data and logs as
-potentially sensitive. `snapshot --candidates` returns structured SDK data instead of rendered
-lines, including selector candidates; use the default view.
+Use `history` for logs and activity, not a separate `log` tool:
+- Merge devices by default; repeat `--device SERIAL` to filter before step pagination.
+- `history --last-action --priority warn` reads from each selected device's latest action.
+- `history mark NAME` bookmarks selected held attachments; `--since-marker NAME` and
+  `--until-marker OTHER` resolve the latest acknowledged batch, with original receipt identity.
+- `history redact REGEX` adds attachment-scoped Java regex redaction, including retained lines.
+  Controls require this held session, never attach devices, and report partial acknowledgements.
+- `--step CURSOR|STEP_ID` selects one global step. `--after ARCHIVE_UUID:CURSOR` uses a retained
+  log/RPC receipt, not a bare integer; same-time observations on other devices remain visible.
+- `--package`, `--priority`, `--tag`, `--grep`, `--no-actions`, `--driver-lines` imply logs.
+  Line filters never remove crashes/ANRs, RPC outcomes or capture gaps. Package filtering needs
+  original live ownership; use tag/priority/regex for closed archives. Unknown driver ownership
+  is not inferred from a replacement attachment.
+- `--limit` limits intent steps, not window logs. `--tail N` explicitly limits displayed log
+  entries and reports omissions, keeping gaps. `--json` is the common `tap-history/1` snapshot.
+- Infrastructure: **daemon CLI** `tap logs driver --serial SERIAL` reads the current attachment's
+  bounded driver buffer; `tap logs` reads daemon.log. No agent `log driver` or `log evidence`.
+
+Treat accessibility data and logs as potentially sensitive. `snapshot --candidates` returns
+structured SDK data with selector candidates instead of rendered lines; use the default view.
 
 `media-record start --max-seconds 10` explicitly starts silent video through the daemon's scrcpy;
 `media-record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,
@@ -326,36 +336,70 @@ when a watched app dies, 0 when the session ends (or after `--timeout 30m`), and
 idle session alive. It only notifies: the next step still reports the death with its frames. `deaths` lists every death since
 attach (`--all` adds unwatched apps, `--trace SEQ` prints one full trace, `--json`).
 
-## Step history and export
+## History and recordings
 
-Nothing to start: every action and explicit wait of a session is recorded as a step from the
-first one, and the history stops at `release`. `export [-o NEW_FILE]` returns it as
-`tap-agent-recording/2` on stdout or in a new 0600 file, also after release/offline; it does not
-stop anything. `log mark NAME` puts a marker in the device log and in the history, so
-`export --since NAME [--until OTHER]` (or `@CURSOR`) exports only the steps between markers.
-The device log and call record end with the session: `release --export FILE` saves both first.
-While the session is live, `export --logs` adds each device's log for that range (narrow it with
-`--package` / `--priority` / `--tag` / `--grep`: unfiltered it is mostly other processes) and
-`export --calls` the server's record of every device call; each log action and call carries the
-`id` of the step that caused it. A failed step's `outcome.error` is its Tap code (`NOT_FOUND`,
-`WAIT_TIMEOUT`, `SESSION_UNUSABLE`). `history` lists saved histories with their state, stop
-reason, times and markers (the newest 20 stopped ones are kept), `export NAME` exports an older
-one, `history clean NAME` / `history clean --all` delete stopped ones.
+Activity is retained automatically; recording protects a named range of the same activity.
+All these commands belong to `tap-agent`, not the daemon-admin `tap` CLI:
 
-Storage is private under `$TAP_AGENT_DIR/records` (default `.tap/agent/records`); CLI/MCP must
-share that directory. A history belongs to one held connection: a new connection of the same
-session name starts the next history. Steps retain actual device/resolved SDK selectors,
-not transient refs or internal polls/snapshots. Sensitive text is redacted before storage;
-clipboard writes always are. Do not put secrets in later waits/selectors/extras or unmarked inputs.
-Output/exception messages are not saved. A failed action's status says what the device may have
-seen: `rejected_before_input` (nothing sent), `failed` (one command sent, and its error code proves
-it changed nothing) or `unknown` (the input may have happened: never repeat it without checking the
-screen). Later steps are still recorded after an `unknown` or interrupted one.
+```sh
+tap-agent history [--logs] [--json] [--details] [--from STEP_OR_TIME] [--until STEP_OR_TIME] [--limit N]
+tap-agent history --last 30s [--logs] [--json] [--details]
+tap-agent record list [-L]
+tap-agent record start NAME
+tap-agent record stop NAME
+tap-agent record export NAME [--logs] [--json] [--details]
+tap-agent record clean NAME
+```
 
-Limits: 10,000 steps, 1 MiB/step, 32 MiB/history; a full history is stopped and the next one
-starts. A post-input storage error preserves the action result with a warning not to repeat it.
-`complete: true` means a stopped history with known outcomes, not a passing app/test assertion.
-The export is language-neutral data, not automatic replay or generated test code.
+Default output is readable text on stdout; JSON is `tap-history/1`. Redirect stdout yourself
+if needed: no implicit file, standalone export command, history catalog/cleanup subcommands
+or release-time export. History defaults to the latest 200 steps, oldest first. Bounds are
+stable positive step cursors or timezone-qualified ISO times, from inclusive/until exclusive.
+Use returned `next` with `--from`, or `older` with `--until`; cursors survive pruning.
+For an unexpected incident, use `history --last 30s --logs --details`. `--last` cannot combine
+with `--from`/`--until`. Time windows discover all retained archives, even without local steps
+or a live attachment; logs include idle periods, not only step durations. Step-page limits do
+not trim that evidence window. Bounds use host receipt time, not guessed device time.
+
+CRASH/ANR summaries and JSON `deaths` appear in every history/record-export presentation mode,
+independently of `--logs`. Redacted messages and available stacks survive release/restart;
+`--details` prints stacks, JSON always retains them. Missing stacks/source interruptions remain
+explicit. Do not mistake a historical death for the app's current state or infer causality.
+Query return values, full generic error context, transient accessibility-event streams and
+historical screenshots/media are not all automatically retained. Screenshots/capture and media
+need explicit collection; full ANR thread dumps may be inaccessible. Never claim an optional
+read flag can recover evidence that was not captured.
+
+`record start` protects steps, durable RPC events and the fixed attached-device log set from
+rolling eviction. Attach every desired device first; stop/start before using a new attachment.
+Export is a read, not a stop. A live export or stop with calls in flight is explicitly incomplete.
+`record list` prints names; `-L` adds states/times/shared backing-segment bytes, not guaranteed
+reclaimable space. Clean requires a stopped recording and updates daemon protection.
+
+RPC events and logs survive release/restart under the same policy. Export reads the original
+archives, not the live bounded call ring or a new attachment. Missing local intent after a
+partial start is explicit; acknowledged daemon protection survives for recovery. Offline local
+history reports unavailable daemon evidence instead of claiming it inspected it. SDKs call
+`client.log_recordings.export/history` directly, not this CLI. `media-record` remains separate.
+
+Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve. Configure
+with `tap config logging-policy`; protection cannot override hard limits. Local bounded
+history is private under `$TAP_AGENT_DIR/records` (default `.tap/agent/records`); share it between
+CLI/MCP processes. Original connection/attachment/step/clock IDs and resolved selectors remain
+intact. Monotonic times compare only within their clock ID. Internal polls and diagnostic
+snapshots are not invented high-level steps, assertions, replay scripts or generated tests.
+
+Redaction precedes durable storage. Mark secrets `--sensitive`; clipboard writes are withheld.
+Do not put secrets in names, identifiers, selectors, extras or unmarked inputs. Unexpected
+failure output, unknown fields and binary payloads are not raw retained evidence. Treat live
+diagnostic APIs, screenshots and redirected exports as sensitive.
+
+Outcomes distinguish `rejected_before_input`, `failed` and `unknown`. The last means the input
+may have happened: inspect the screen, never repeat it blindly. Cancellation remains unknown.
+A successful input does not prove the app's expected result. A post-input storage failure
+preserves the action result and warns. `complete: true` means final capture without known loss
+or unknown outcomes, never a passing test. Check `dropped`, `capture_error`, gaps and
+`log_capture`; missing evidence is not proof that nothing happened.
 
 ## Several devices or sessions
 

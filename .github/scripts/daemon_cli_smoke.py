@@ -51,12 +51,19 @@ def main() -> int:
             except json.JSONDecodeError as error:
                 raise AssertionError(f"CLI returned invalid JSON for {args}: {output!r}") from error
 
-        for args in ((), ("--help",), ("-h",), ("help",), ("start", "--help"), ("help", "sessions", "close"), ("unquarantine", "--help")):
+        for args in ((), ("--help",), ("-h",), ("help",), ("start", "--help"), ("help", "sessions", "close"), ("unquarantine", "--help"), ("config", "logging-policy", "--help"), ("logs", "driver", "--help"), ("help", "config", "logging-policy", "rolling")):
             assert "Usage:" in run(*args)
         assert not state.exists(), "help must not create daemon state"
         assert "tap daemon" in run("--version")
         assert data("status", code=1)["state"] == "stopped"
         run("devices", "--force", code=2)
+        assert "max-age=3600000ms max-size=268435456B hard-size=1073741824B min-free=268435456B" in run("config", "logging-policy", "show")
+        assert not state.exists(), "default policy inspection must not create state"
+        run("config", "logging-policy", "rolling", "--max-age", "10m", "--max-size", "2MiB", "--hard-size", "3MiB", "--min-free", "0")
+        assert (state / "logging-policy.properties").stat().st_mode & 0o777 == 0o600
+        before = (state / "logging-policy.properties").read_bytes()
+        run("config", "logging-policy", "rolling", "--hard-size", "1MiB", code=2)
+        assert (state / "logging-policy.properties").read_bytes() == before
         for shell in ("bash", "zsh", "fish"):
             script = root / f"tap.{shell}"
             script.write_text(run("completion", shell))
@@ -71,6 +78,10 @@ def main() -> int:
             run("start", "--adb", str(adb), "--driver-idle-timeout-ms", "1000")
             assert data("status")["healthy"]
             assert data("devices")["devices"] == []
+            assert data("sessions")["sessions"] == []
+            run("logs", "driver", code=2)
+            missing = data("logs", "driver", "--serial", "missing", code=1)
+            assert missing and not marker.exists()
             assert data("sessions")["sessions"] == []
             descriptor = json.loads((state / "daemon.json").read_text())
             with TapClient.create(f"127.0.0.1:{descriptor['port']}", token=descriptor["token"]) as client:

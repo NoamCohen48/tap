@@ -14,6 +14,7 @@ from tap_e2e import (
     Device,
     Element,
     Elements,
+    LogRecordings,
     Selector,
     TapClient,
     TapConnection,
@@ -29,7 +30,7 @@ from .test_reference import _generator
 
 ROOT = Path(__file__).resolve().parents[3]
 REGISTRY = json.loads((ROOT / "clients/agent/api-coverage.json").read_text())
-SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector)
+SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector, LogRecordings)
 
 
 @pytest.fixture(scope="module")
@@ -54,7 +55,7 @@ def test_every_rpc_and_execute_operation_is_classified(tools):
             _check_tools(via, tools)
     excluded = REGISTRY["excluded_rpcs"]
     assert set(excluded) == {
-        "tap.v1.ClientConnectionService.Observe", "tap.v1.AppService.AwaitIdle",
+        "tap.v1.ClientConnectionService.Observe", "tap.v1.ClientConnectionService.Events", "tap.v1.AppService.AwaitIdle",
         "tap.v1.WatchService.Watch", "tap.v1.WatchService.WatchVideo",
         "tap.v1.WatchService.WatchLog",
     }

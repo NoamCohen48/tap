@@ -64,6 +64,7 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
                 at_epoch_ms=1_790_000_000_000 + len(log),
                 duration_ms=5,
                 serial=serial,
+                attached_device_id=f"attached-{serial}",
                 **call,
             )
         )
@@ -96,6 +97,7 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         self.connects += 1
         cid = f"conn-{self.connects}"
         self.live[cid] = request
+        self.logs.setdefault(cid, [])
         return pb.ConnectResponse(client_connection_id=cid)
 
     def ListConnections(self, request, context):
@@ -519,10 +521,11 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
         self.locales: list[str] = []
         self.log: FakeConnections | None = None
 
-    def _record(self, operation: str, app: pb.AppTarget, **call) -> None:
+    def _record(self, operation: str, app: pb.AppTarget, context, **call) -> None:
         if self.log is not None:
             serial = app.attached_device_id.removeprefix("attached-")
-            self.log.record(app.client_connection_id, serial, app=pb.AppCall(operation=operation, package_name=app.package_name, **call))
+            step = dict(context.invocation_metadata()).get("tap-step")
+            self.log.record(app.client_connection_id, serial, app=pb.AppCall(operation=operation, package_name=app.package_name, **call), **({"step": step} if step else {}))
 
     def IsInstalled(self, request, context):
         self.owners.append(("is_installed", request.app.client_connection_id))
@@ -531,25 +534,25 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
     def ForceStop(self, request, context):
         self.owners.append(("force_stop", request.app.client_connection_id))
         self.force_stops.append(request)
-        self._record("force_stop", request.app)
+        self._record("force_stop", request.app, context)
         return pb.ForceStopResponse()
 
     def Launch(self, request, context):
         self.owners.append(("launch", request.app.client_connection_id))
         self.launches.append(request)
-        self._record("launch", request.app, **({"activity": request.activity} if request.HasField("activity") else {}))
+        self._record("launch", request.app, context, **({"activity": request.activity} if request.HasField("activity") else {}))
         return pb.LaunchResponse()
 
     def ColdLaunch(self, request, context):
         self.owners.append(("cold_launch", request.app.client_connection_id))
         self.cold_launches.append(request)
-        self._record("cold_launch", request.app)
+        self._record("cold_launch", request.app, context)
         return pb.ColdLaunchResponse(process=pb.ProcessIdentity(pid=4242, start_token="t"))
 
     def RevokePermission(self, request, context):
         self.owners.append(("revoke_permission", request.app.client_connection_id))
         self.revokes.append(request)
-        self._record("revoke_permission", request.app, permission=request.permission)
+        self._record("revoke_permission", request.app, context, permission=request.permission)
         return pb.RevokePermissionResponse()
 
     def IsPermissionGranted(self, request, context):
@@ -568,13 +571,13 @@ class FakeApps(app_pb2_grpc.AppServiceServicer):
     def Foreground(self, request, context):
         self.owners.append(("foreground", request.app.client_connection_id))
         self.foregrounds.append(request)
-        self._record("foreground", request.app)
+        self._record("foreground", request.app, context)
         return pb.ForegroundResponse()
 
     def OpenLink(self, request, context):
         self.owners.append(("open_link", request.app.client_connection_id))
         self.links.append(request)
-        self._record("open_link", request.app, uri=request.uri, **({"any_app": True} if request.any_app else {}))
+        self._record("open_link", request.app, context, uri=request.uri, **({"any_app": True} if request.any_app else {}))
         if request.any_app:
             return pb.OpenLinkResponse()
         return pb.OpenLinkResponse(activity=f"{request.app.package_name}/.Link")
@@ -651,10 +654,17 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
         self.live: queue.Queue[pb.LogEntry | None] = queue.Queue()
         self.capture_off = False
         self.cancelled = threading.Event()
+        self.recordings: dict[str, pb.LogRecording] = {}
+        self.archives: list[pb.RetainedLog] = []
+        self.capture_error = ""
+        self.clock_id = ""
+        self.connections: FakeConnections | None = None
 
     def _check(self, request, context) -> None:
         self.requests.append(request)
-        if self.capture_off:
+        event_archive = (self.connections is not None and getattr(request, "attached_device_id", "") == request.client_connection_id
+            and request.client_connection_id in self.connections.logs)
+        if self.capture_off and not event_archive:
             fail(
                 context,
                 grpc.StatusCode.FAILED_PRECONDITION,
@@ -664,8 +674,9 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
 
     def ReadLog(self, request, context):
         self._check(request, context)
+        available = self._entries_for(request.attached_device_id, request.client_connection_id)
         if request.WhichOneof("from") == "marker" and not any(
-            e.marker == request.marker for e in self.entries if e.WhichOneof("kind") == "marker"
+            e.marker == request.marker for e in available if e.WhichOneof("kind") == "marker"
         ):
             fail(
                 context,
@@ -674,8 +685,12 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
                 f"no marker {request.marker}",
             )
         # Only `after_cursor` is honoured; every other start replays all entries.
-        entries = [e for e in self.entries if e.cursor > request.after_cursor] if request.WhichOneof("from") == "after_cursor" else self.entries
-        yield pb.ReadLogResponse(entries=entries[:1], dropped=self.dropped)
+        entries = [e for e in available if e.cursor > request.after_cursor] if request.WhichOneof("from") == "after_cursor" else available
+        if request.HasField("recording"):
+            recording = self.recordings[request.recording]
+            r = next(r for r in recording.ranges if r.attached_device_id == request.attached_device_id)
+            entries = [e for e in entries if e.cursor > r.after_cursor and (not r.HasField("through_cursor") or e.cursor <= r.through_cursor)]
+        yield pb.ReadLogResponse(entries=entries[:1], dropped=self.dropped, capture_error=self.capture_error, clock_id=self.clock_id)
         yield pb.ReadLogResponse(entries=entries[1:])
         if not request.follow:
             return
@@ -697,6 +712,106 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
     def RedactLog(self, request, context):
         self._check(request, context)
         return pb.RedactLogResponse()
+
+    def _archives(self):
+        result = []
+        for archive in self.archives:
+            saved = pb.RetainedLog()
+            saved.CopyFrom(archive)
+            if self.connections is not None and archive.client_connection_id in self.connections.logs:
+                saved.closed = archive.client_connection_id not in self.connections.live
+            result.append(saved)
+        if self.connections is not None:
+            known = {a.client_connection_id for a in result if a.events}
+            for cid in set(self.connections.live) | set(self.connections.logs):
+                if cid not in known:
+                    result.append(pb.RetainedLog(client_connection_id=cid, attached_device_id=cid,
+                        events=True, closed=cid not in self.connections.live, last_cursor=len(self.connections.logs.get(cid, []))))
+        return result
+
+    @staticmethod
+    def _redact_proto(message, secrets, sensitive=False):
+        result = type(message)()
+        result.CopyFrom(message)
+        if message.DESCRIPTOR.name == "Command":
+            op = message.WhichOneof("op")
+            sensitive = sensitive or (op in ("set_text", "type_text") and getattr(message, op).sensitive)
+        sensitive = sensitive or "Clipboard" in message.DESCRIPTOR.name
+        for field, value in message.ListFields():
+            if message.DESCRIPTOR.name in ("Error", "Failure") and field.name in ("message", "last_state"):
+                result.ClearField(field.name)
+            elif field.type == field.TYPE_STRING:
+                def redact(text):
+                    if sensitive:
+                        return "<redacted>" if text else text
+                    for secret in secrets:
+                        if len(secret) >= 4:
+                            text = text.replace(secret, "<redacted>")
+                    return text
+                if field.is_repeated:
+                    getattr(result, field.name)[:] = [redact(text) for text in value]
+                else:
+                    setattr(result, field.name, redact(value))
+            elif field.type == field.TYPE_MESSAGE:
+                if field.is_repeated:
+                    for i, child in enumerate(value):
+                        getattr(result, field.name)[i].CopyFrom(FakeDeviceLog._redact_proto(child, secrets, sensitive))
+                else:
+                    getattr(result, field.name).CopyFrom(FakeDeviceLog._redact_proto(value, secrets, sensitive))
+        return result
+
+    def _entries_for(self, archive_id, owner):
+        if self.connections is None or archive_id != owner or owner not in (set(self.connections.live) | set(self.connections.logs)):
+            return self.entries
+        events = self.connections.logs.get(owner, [])
+        secrets = []
+        for event in events:
+            if event.HasField("command"):
+                op = event.command.WhichOneof("op")
+                if op in ("set_text", "type_text") and getattr(event.command, op).sensitive:
+                    secrets.append(getattr(event.command, op).text)
+        result = []
+        for event in events:
+            saved = pb.LoggedEvent()
+            saved.CopyFrom(event)
+            for name in ("command", "app", "device", "error", "failure"):
+                if saved.HasField(name):
+                    getattr(saved, name).CopyFrom(self._redact_proto(getattr(saved, name), secrets))
+            result.append(pb.LogEntry(cursor=event.seq, host_time_ms=event.at_epoch_ms, event=saved))
+        return result
+
+    def StartLogRecording(self, request, context):
+        self._check(request, context)
+        recording = pb.LogRecording(
+            name=request.name,
+            client_connection_id=request.client_connection_id,
+            started_at_ms=1,
+            agent_steps_expected=request.agent_steps_expected,
+            ranges=[pb.LogRecordingRange(attached_device_id=a.attached_device_id, serial=a.serial, events=a.events,
+                after_cursor=max((e.cursor for e in self._entries_for(a.attached_device_id, request.client_connection_id)), default=0)) for a in self._archives() if a.client_connection_id == request.client_connection_id],
+        )
+        self.recordings[request.name] = recording
+        return pb.StartLogRecordingResponse(recording=recording)
+
+    def StopLogRecording(self, request, context):
+        recording = self.recordings[request.name]
+        if not recording.HasField("stopped_at_ms"):
+            recording.stopped_at_ms = 2
+            recording.complete = not bool(self.capture_error)
+            recording.capture_error = self.capture_error
+            for r in recording.ranges:
+                r.through_cursor = max((e.cursor for e in self._entries_for(r.attached_device_id, recording.client_connection_id)), default=0)
+        return pb.StopLogRecordingResponse(recording=recording)
+
+    def ListLogRecordings(self, request, context):
+        return pb.ListLogRecordingsResponse(recordings=self.recordings.values())
+
+    def DeleteLogRecording(self, request, context):
+        del self.recordings[request.name]
+        return pb.DeleteLogRecordingResponse()
+
+    def ListRetainedLogs(self, request, context):
+        return pb.ListRetainedLogsResponse(logs=[a for a in self._archives() if not request.client_connection_id or a.client_connection_id == request.client_connection_id])
 
 
 class _TokenCheck(grpc.ServerInterceptor):
@@ -735,6 +850,7 @@ class Fake:
         self.apps = FakeApps()
         self.app_data = FakeAppData()
         self.device_log = FakeDeviceLog()
+        self.device_log.connections = self.connections
         self.connections.devices = self.devices
         self.devices.log = self.connections
         self.apps.log = self.connections

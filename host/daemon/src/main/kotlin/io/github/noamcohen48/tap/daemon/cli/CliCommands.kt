@@ -60,6 +60,10 @@ internal val OPTION_HELP =
         "--tail" to OptionHelp("N", "Print the last N log lines, 0..10000 (default: 100)."),
         "--follow" to OptionHelp(null, "Follow appended log lines until interrupted; reopen after replacement/truncation."),
         "--out" to OptionHelp("PATH", "Create a new owner-only diagnostics ZIP; never overwrite."),
+        "--max-age" to OptionHelp("AGE", "Global rolling log age, e.g. 1h (s/m/h/d)."),
+        "--max-size" to OptionHelp("BYTES", "Global rolling log bytes, e.g. 256MiB (B/KiB/MiB/GiB)."),
+        "--hard-size" to OptionHelp("BYTES", "Hard log budget including protected recordings, e.g. 1GiB."),
+        "--min-free" to OptionHelp("BYTES", "Free-disk reserve before persistence stops, e.g. 256MiB; zero allowed."),
     )
 
 internal val COMMAND_HELP =
@@ -131,11 +135,35 @@ internal val COMMAND_HELP =
                 STATE + setOf("--tail", "--follow"),
                 example = "tap logs --tail 200 --follow",
             ),
+        "logs driver" to
+            CommandHelp(
+                "Read the currently attached device driver's bounded diagnostics; never attach a device.",
+                STATE + setOf("--serial", "--json"),
+                example = "tap logs driver --serial SERIAL",
+            ),
         "config show" to
             CommandHelp(
                 "Show effective running configuration and local startup defaults with their sources; no credentials.",
                 INSPECT + START_OPTIONS,
                 example = "tap config show --json",
+            ),
+        "config logging-policy" to
+            CommandHelp(
+                "Inspect or update automatic device-log retention without starting a daemon.",
+                STATE,
+                example = "tap config logging-policy show\ntap config logging-policy rolling --max-age 1h --max-size 256MiB",
+            ),
+        "config logging-policy show" to
+            CommandHelp(
+                "Show local effective rolling retention and hard disk safeguards.",
+                STATE,
+                example = "tap config logging-policy show",
+            ),
+        "config logging-policy rolling" to
+            CommandHelp(
+                "Atomically update supplied limits; protected recordings bypass rolling eviction, not hard safeguards.",
+                STATE + setOf("--max-age", "--max-size", "--hard-size", "--min-free"),
+                example = "tap config logging-policy rolling --max-age 1h --max-size 256MiB --hard-size 1GiB --min-free 256MiB",
             ),
         "diagnostics" to
             CommandHelp(
@@ -207,7 +235,7 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
     (options.keys - spec.options - "--state-dir").firstOrNull()?.let {
         throw UsageException("option $it is not valid for `tap $command`", command)
     }
-    if (wantsHelp) return CommandLine(command, help = true)
+    if (wantsHelp || (command == "config logging-policy" && words.size == 2)) return CommandLine(command, help = true)
     val arguments = words.drop(command.split(' ').size)
     if (arguments.size != if (spec.argument == null) 0 else 1) {
         throw UsageException(
@@ -234,6 +262,7 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
         if (it.toDoubleOrNull()?.takeIf { n -> n.isFinite() && n in 0.1..3600.0 } == null) invalid("--interval must be 0.1..3600 seconds")
     }
     if (("--driver-apk" in options) != ("--driver-test-apk" in options)) invalid("--driver-apk and --driver-test-apk go together")
+    if (command == "logs driver" && "--serial" !in options) invalid("`tap logs driver` needs --serial SERIAL")
     if (command == "unquarantine" && "--serial" !in options) invalid("`tap unquarantine` needs --serial SERIAL")
     if (command == "sessions close" && "--force" !in options) invalid("closing a session interrupts its client; pass --force to confirm")
     options["--reason"]?.let {
@@ -258,9 +287,10 @@ internal fun helpText(command: String = ""): String {
     if (command ==
         "config"
     ) {
-        return "Usage: tap config show [options]\n\n${COMMAND_HELP.getValue(
-            "config show",
-        ).summary}\nRun tap config show --help for options."
+        return "Usage: tap config COMMAND [options]\n\nSubcommands:\n" +
+            "  show             Explain startup configuration and its sources.\n" +
+            "  logging-policy   Inspect/update device-log retention and disk safeguards.\n" +
+            "Run tap config show --help or tap config logging-policy --help for options."
     }
     if (command.isNotEmpty()) {
         val spec = COMMAND_HELP.getValue(command)
@@ -293,6 +323,7 @@ internal fun helpText(command: String = ""): String {
         """
 
           config show    Explain effective configuration and its sources (no credentials).
+          config logging-policy  Inspect/update durable device-log retention.
 
         Start and explore:
           tap start

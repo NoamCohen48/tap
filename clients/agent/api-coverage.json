@@ -3,18 +3,19 @@
   "note": "Covered means a practical SDK-backed tool, not identical signatures or raw RPC access. SDK helper aliases are grouped. Empty tool lists require an explicit client-only/deferred reason.",
   "rpcs": {
     "tap.v1.ClientConnectionService": {
-      "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"], "Events": ["export"]
+      "Connect": ["attach"], "Disconnect": ["release"], "Info": ["server_info"], "ListConnections": ["sessions", "devices"]
     },
     "tap.v1.DeviceService": {
       "ListDevices": ["devices"], "Unquarantine": ["unquarantine"], "Attach": ["attach"], "Detach": ["detach"], "Execute": ["tap"],
-      "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["log", "capture"], "DeviceLogs": ["log"], "ListAppDeaths": ["deaths", "tap"], "AcknowledgeAppDeaths": ["tap"],
+      "GetDeviceCapabilities": ["capabilities"], "Screenshot": ["screenshot"], "DriverLog": ["capture"], "DeviceLogs": ["capture"], "ListAppDeaths": ["deaths", "tap"], "AcknowledgeAppDeaths": ["tap"],
       "StartRecording": ["media_record"], "StopRecording": ["media_record"],
       "ScreenSnapshot": ["snapshot", "settle"], "ResolveRef": ["tap"], "WatchDeviceEvents": ["wait_event", "watch", "tap"],
       "SetAnimations": ["condition"], "SetDarkMode": ["condition"], "SetFontScale": ["condition"], "SetDensity": ["condition"], "SetNetwork": ["condition"], "SetSystemLocales": ["condition"], "SetLocation": ["set_location"], "SetStayAwake": ["condition"], "SetAccessibilityDisplay": ["condition"],
       "GetForegroundActivity": ["foreground_activity"], "PushFile": ["push_file"], "PullFile": ["pull_file"], "AddMedia": ["add_media"]
     },
     "tap.v1.DeviceLogService": {
-      "ReadLog": ["log"], "MarkLog": ["log"], "RedactLog": ["log"]
+      "ReadLog": ["history", "record"], "MarkLog": ["history"], "RedactLog": ["history"],
+      "StartLogRecording": ["record"], "StopLogRecording": ["record"], "ListLogRecordings": ["record"], "DeleteLogRecording": ["record"], "ListRetainedLogs": ["history", "record"]
     },
     "tap.v1.AppService": {
       "Install": ["app"], "Uninstall": ["app"], "IsInstalled": ["app"], "ForceStop": ["app"], "ClearData": ["app"], "GrantPermission": ["app"], "RevokePermission": ["app"], "IsPermissionGranted": ["app"], "SetLocales": ["app"], "GetLocales": ["app"], "Launch": ["app"], "ColdLaunch": ["app"], "Foreground": ["app"], "OpenLink": ["app"], "Process": ["app"], "IsRunning": ["app"]
@@ -24,6 +25,7 @@
     }
   },
   "excluded_rpcs": {
+    "tap.v1.ClientConnectionService.Events": "Bounded live SDK diagnostic ring; history and record export read durable archives instead.",
     "tap.v1.ClientConnectionService.Observe": "Observed test-client liveness is infrastructure; agents use held connections.",
     "tap.v1.AppService.AwaitIdle": "Synchronization is work in progress and intentionally deferred; state/tree/pixel waits are independent.",
     "tap.v1.WatchService.Watch": "Passive shared observation belongs to tap-watcher, not an agent-owned recording.",
@@ -42,12 +44,17 @@
     "await_notification": ["notification"], "list_notifications": ["notification"], "open_notification": ["notification"], "dismiss_notification": ["notification"]
   },
   "sdk": {
+    "LogRecordings": [
+      {"methods": ["archives", "read_archive", "start", "stop", "list", "delete", "read", "export", "history"], "tools": ["record", "history"], "reason": "Protected ranges and durable redacted event/log exports share one model and renderer."}
+    ],
     "TapClient": [
+      {"methods": ["log_recordings"], "tools": ["record", "history"], "reason": "Protected log ranges and retained ordinary logs survive the original connection."},
       {"methods": ["info", "devices", "unquarantine", "connect", "connections"], "tools": ["server_info", "devices", "unquarantine", "attach", "sessions"], "reason": "connect uses held mode only"},
       {"methods": ["create", "resume", "close"], "tools": [], "reason": "Client transport/handle lifecycle; Agent constructs and closes its SDK client, never starts a daemon."}
     ],
     "TapConnection": [
-      {"methods": ["attach_device", "attached_devices", "close", "event_log", "events"], "tools": ["attach", "sessions", "release", "export"]},
+      {"methods": ["attach_device", "attached_devices", "close"], "tools": ["attach", "sessions", "release"]},
+      {"methods": ["event_log", "events"], "tools": [], "reason": "The live bounded event ring is SDK diagnostics; agent history uses durable redacted archives."},
       {"methods": ["ensure_usable", "available_serials", "broken", "usable"], "tools": [], "reason": "Client usability/filtering helpers; devices exposes inventory, no raw connection escape hatch."}
     ],
     "App": [
@@ -70,7 +77,7 @@
       {"methods": ["await_permission_prompt", "choose_permission", "keyboard_shown", "hide_keyboard", "set_clipboard", "clipboard"], "tools": ["permission", "keyboard", "clipboard"]},
       {"methods": ["set_animations", "set_dark_mode", "set_font_scale", "set_density", "set_network", "set_system_locales", "set_stay_awake", "set_accessibility_display", "set_location"], "tools": ["condition", "set_location"]},
       {"methods": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "toast_history", "await_notification", "notifications", "open_notification", "dismiss_notification", "type_text"], "tools": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "notification", "type_text"]},
-      {"methods": ["screenshot", "start_recording", "stop_recording", "dump_hierarchy", "screen_snapshot", "resolve_ref", "driver_log", "device_logs", "capture", "detach"], "tools": ["screenshot", "media_record", "log", "snapshot", "capture", "detach", "tap"]},
+      {"methods": ["screenshot", "start_recording", "stop_recording", "dump_hierarchy", "screen_snapshot", "resolve_ref", "driver_log", "device_logs", "capture", "detach"], "tools": ["screenshot", "media_record", "snapshot", "capture", "detach", "tap"]},
       {"methods": ["temporary_settings"], "tools": [], "reason": "Python-only scoped context manager over existing condition setters; agent tools have no Python block lifetime or automatic block-exit cleanup."},
       {"methods": ["await_until", "detached"], "tools": [], "reason": "Local handle state and arbitrary Python predicates remain client-side; use held-session inventory and bounded waits, not user-code execution."}
     ],
@@ -98,7 +105,7 @@
   },
   "cli_field_aliases": {
     "*": {"timeout": "timeout_seconds", "focus_timeout": "focus_timeout_seconds", "idle": "idle_minutes", "wait_for_device": "wait_for_device_seconds", "level": "view", "accuracy": "accuracy_m", "altitude": "altitude_m", "local": "local_path", "out": "path", "extra": "extras", "event_timeout": "event_timeout_seconds"},
-    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}
+    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}, "history": {"history_devices": "devices"}
   },
   "cli_only_fields": {"capabilities": ["as_json"], "devices": ["session"], "unquarantine": ["session"], "sessions": ["session"], "server-info": ["session"], "deaths": ["wait", "timeout"], "watch": ["as_json"]},
   "limitations": [
