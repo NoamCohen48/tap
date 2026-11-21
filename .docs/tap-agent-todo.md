@@ -204,6 +204,8 @@ Do:
 
 ## `capture`: a complete bundle, with the device's history
 
+Status: done (the snapshot-outline pairing is not done).
+
 `capture` saves the device's state now (screenshot, hierarchy, device info, driver log, logcat,
 crashes, activities, windows). Its logcat includes Tap's device-side action lines, but not what
 `history` has: the agent's steps and their outcomes (including steps refused before input), app

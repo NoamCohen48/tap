@@ -9,7 +9,7 @@ import pathlib
 import uuid
 
 import pytest
-from tap_e2e import Device, FailureReason, ServerError, TapClient, res
+from tap_e2e import Device, FailureReason, ServerError, TapClient, TapError, res
 from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
@@ -352,3 +352,47 @@ def test_bare_keyboard_and_screen_reads_are_not_recorded_as_input_steps():
         assert category(name, {"action": " "}) is None
     assert category("keyboard", {"action": "hide"}) == "action"
     assert category("screen", {"action": "unlock"}) == "action"
+
+
+def test_capture_saves_the_device_history_as_text_and_json(fake, agent, tmp_path):
+    agent.attach("first")
+    agent.tap("id=pay")
+    agent.tap("id=confirm")
+    paths = [pathlib.Path(p) for p in agent.capture(out=tmp_path / "bundle").splitlines()]
+    names = [p.name for p in paths]
+    assert "first.history.txt" in names and "first.history.json" in names
+    text = (tmp_path / "bundle" / "first.history.txt").read_text()
+    assert 'step 1: tap res("pay") → succeeded' in text and 'step 2: tap res("confirm")' in text
+    saved = json.loads((tmp_path / "bundle" / "first.history.json").read_text())
+    assert saved["format"] == "tap-history/2" and saved["next"] is None
+    assert [s["action"] for s in saved["steps"]] == ["tap", "tap"]
+    assert "first.history.json" in document(agent)["artifacts"][-1]["parts"]
+
+
+def test_capture_history_merges_every_page_once(fake, agent):
+    from tap_agent.history import complete
+    agent.attach("first")
+    for name in ("a", "b", "c"):
+        agent.tap(f"id={name}")
+    device = agent._device(None)
+    whole_text, whole = complete(agent, device.owner_connection.id, "first")
+    paged_text, paged = complete(agent, device.owner_connection.id, "first", limit=1)
+    assert [s["id"] for s in paged["steps"]] == [s["id"] for s in whole["steps"]]
+    assert len(paged["entries"]) == len(whole["entries"]) and paged["next"] is None
+    assert paged_text == whole_text
+
+
+def test_capture_history_bound_and_a_failed_read(fake, agent, tmp_path, monkeypatch):
+    agent.attach("first")
+    agent.tap("id=pay")
+    agent.capture(out=tmp_path / "recent", last="5m")
+    assert fake.history.requests[-1].from_time_ms > 0
+    with pytest.raises(AgentError, match="not both"):
+        agent.capture(out=tmp_path / "x", last="5m", start="2026-11-21T12:00:00Z")
+    def lost(*args, **kwargs):
+        raise TapError("history read lost")
+    monkeypatch.setattr(type(agent.client.history), "read", lost)
+    lines = agent.capture(out=tmp_path / "failed").splitlines()
+    assert any(line.startswith("history failed: ") and "history read lost" in line for line in lines)
+    assert not any(line.endswith(".history.txt") for line in lines)
+    assert any(line.endswith(".screenshot.png") for line in lines)

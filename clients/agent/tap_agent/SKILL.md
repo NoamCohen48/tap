@@ -275,8 +275,13 @@ not an app-state assertion. None of this uses synchronization/awaitIdle.
 ## Evidence
 
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
-`capture` saves screenshot, hierarchy, device info, driver diagnostics and device logs/crashes,
-including **current** activity/task/window state. It creates a new private directory (0700)
+`capture` saves one evidence bundle: screenshot, hierarchy, device info, driver diagnostics and
+device logs/crashes, including **current** activity/task/window state, plus the device's history
+as `history.txt` (what `history --logs --details` prints) and `history.json` (`tap-history/2`):
+the session's steps, calls, crashes, ANRs, gaps and device log, all that is kept or
+`--last 10m` / `--from TIME`. A part that fails is listed (`history failed: …`) and the rest are
+saved. When something goes wrong and the screen matters, `capture` first: the screen does not
+wait. `history --last 30s --logs --details` reads what led up to it at any time. It creates a new private directory (0700)
 and files (0600), refusing existing destinations. Files go under `.tap/agent/` unless `-o`
 says otherwise. History keeps timestamped references to the external files,
 not their contents. Clean never deletes those files. Index failure preserves saved files and

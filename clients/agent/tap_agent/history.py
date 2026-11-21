@@ -324,6 +324,49 @@ def _step(agent: Agent, step: str | int) -> dict[str, Any]:
         _usage(str(error))
 
 
+def _span(page: HistoryPage, *, backward: bool, low: float | None, edge: float | None) -> tuple[float | None, float]:
+    """The time slice a page owns, so consecutive pages split the agent's steps exactly once."""
+    times = [entry.at for entry in page.entries]
+    if backward:
+        return (min(times) if page.next_cursor and times else low), (edge if edge is not None else page.through)
+    span_low = edge if edge is not None else low if low is not None else (min(times) if times else None)
+    return span_low, (max(times) + 0.001 if page.next_cursor and times else page.through)
+
+
+def complete(agent: Agent, connection_id: str, serial: str, since: float | None = None, *, limit: int = 5000) -> tuple[str, dict[str, Any]]:
+    """Everything kept of one connection on one device from ``since`` (default: all of it),
+    oldest first across every page: the server's calls, crashes, ANRs, gaps and device log merged
+    with the agent's steps, markers and captures. As text (``history --logs --details``) and as
+    one ``tap-history/2`` document."""
+    texts: list[str] = []
+    document: dict[str, Any] = {}
+    page = agent.client.history.read(connections=[connection_id], serials=[serial], since=since, logs=True, limit=limit)
+    low: float | None = since if since is not None else 0.0  # the agent's steps before the first entry belong here
+    edge: float | None = None
+    while True:
+        options = dict(backward=False, devices=(serial,), low=low, wanted_step=None, logs=True, details=True, edge=edge)
+        texts += [line for line in _render(agent, page, as_json=False, **options).splitlines() if not line.startswith("next: ")]
+        part = json.loads(_render(agent, page, as_json=True, **options))
+        if not document:
+            document = {**part, "next": None}
+        else:
+            for key in ("entries", "steps", "markers", "artifacts"):
+                document[key] = document.get(key, []) + part.get(key, [])
+            known = {source.get("id") for source in document.get("sources", [])}
+            document["sources"] = document.get("sources", []) + [s for s in part.get("sources", []) if s.get("id") not in known]
+            document["issues"] = document.get("issues", []) + [i for i in part.get("issues", []) if i not in document.get("issues", [])]
+            document["through"] = part.get("through")
+        if page.next_cursor is None:
+            break
+        edge = _span(page, backward=False, low=low, edge=edge)[1]
+        low = None
+        resumed = page.next_page()
+        if resumed is None:
+            break
+        page = resumed
+    return "\n".join(texts) + "\n", document
+
+
 def _render(agent: Agent, page: HistoryPage, *, backward: bool, devices: tuple[str, ...], low: float | None,
             wanted_step: str | None, logs: bool, as_json: bool, details: bool,
             recording: HistoryRecording | None = None, edge: float | None = None) -> str:
@@ -331,13 +374,7 @@ def _render(agent: Agent, page: HistoryPage, *, backward: bool, devices: tuple[s
     Consecutive pages own adjacent time slices (``edge`` is where the previous one ended), so a
     step without a call on any page is still shown exactly once."""
     entries = list(reversed(page.entries)) if backward else list(page.entries)
-    times = [entry.at for entry in entries]
-    if backward:
-        span_low = min(times) if page.next_cursor and times else low
-        span_high = edge if edge is not None else page.through
-    else:
-        span_low = edge if edge is not None else low if low is not None else (min(times) if times else None)
-        span_high = max(times) + 0.001 if page.next_cursor and times else page.through
+    span_low, span_high = _span(page, backward=backward, low=low, edge=edge)
     if recording is not None:  # a recording owns only the steps taken while it was recording
         span_low = recording.started_at if span_low is None else max(span_low, recording.started_at)
         if recording.stopped_at is not None:
