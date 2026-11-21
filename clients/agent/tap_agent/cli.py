@@ -62,6 +62,14 @@ def _duration(value: str) -> float:
         raise argparse.ArgumentTypeError(str(error)) from None
 
 
+def _whole_seconds(text: str) -> int:
+    """A duration in whole seconds (``20s``, ``1m``), for the recording limit the server takes."""
+    seconds = _duration(text)
+    if not float(seconds).is_integer():
+        raise argparse.ArgumentTypeError(f"{text!r} is not a whole number of seconds")
+    return int(seconds)
+
+
 def _command_duration(value: str) -> float:
     try:
         seconds = parse_duration(value)
@@ -151,7 +159,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=("start", "stop"))
     p.add_argument("--no-video", action="store_false", dest="video", help="start: audio only")
     p.add_argument("--audio-source", choices=("output", "playback", "mic"), help="start: output mutes speakers; mic captures microphone")
-    p.add_argument("--max-seconds", type=int, help="start: 1..30 with video, 1..60 audio only")
+    p.add_argument("--max", type=_whole_seconds, metavar="DURATION", help="start: stop after this long, whole seconds: 1s..30s with video, 1s..60s audio only")
     p.add_argument("-o", "--out", help="stop: additional new output; a private canonical copy is retained")
 
     p = verb("snapshot", "print the screen, one node per line with its ref", on_device)
@@ -445,7 +453,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
             raise UsageError("--timeout needs --wait")
         return agent.deaths(device, package=args.package, all_apps=args.all_apps, trace=args.trace, as_json=args.as_json)
     if v == "media-record":
-        return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
+        return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max, out=args.out)
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT, as_json=args.as_json,
                               package=args.package, window=args.window, hide_keyboard=args.hide_keyboard,

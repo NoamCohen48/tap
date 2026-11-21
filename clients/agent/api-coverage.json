@@ -109,7 +109,7 @@
   },
   "cli_field_aliases": {
     "*": {"timeout": "timeout_seconds", "focus_timeout": "focus_timeout_seconds", "idle": "idle_minutes", "wait_for_device": "wait_for_device_seconds", "level": "view", "accuracy": "accuracy_m", "altitude": "altitude_m", "local": "local_path", "out": "path", "extra": "extras", "event_timeout": "event_timeout_seconds"},
-    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}, "history": {"history_devices": "devices"}
+    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}, "media-record": {"max": "max_seconds"}, "history": {"history_devices": "devices"}
   },
   "cli_only_fields": {"devices": ["session"], "unquarantine": ["session"], "sessions": ["session"], "server-info": ["session"], "deaths": ["wait", "timeout"], "watch": ["as_json"]},
   "limitations": [
