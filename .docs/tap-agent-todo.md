@@ -182,7 +182,12 @@ Do:
 
 ## `key`: every Android key name, and long, held, double and repeated presses
 
-Status: the full key table and `key --list` are done; the press modes are not.
+Status: done (key table, `key --list`, long/held/double/counted presses). Device check
+(2026-11-21): on the API 34 emulator 15 counted Volume Up presses, one press, a double press and a
+2 s hold of Volume Down stepped the media volume as expected (the hold repeated down to 0), and a
+long Power press opened the Assistant where a short one turns the screen off. On the API 29
+Samsung a 2 s hold of Volume Down stepped the ringer down to 0. On both, the first press after the
+volume panel has closed only shows the panel, as SystemUI does for a finger.
 
 `key` knows 17 names (`clients/agent/tap_agent/targets.py`, `KEYS`) plus raw key codes, so
 `key volume-up`, `key media-play-pause` or `key camera` fail. A `KEYCODE_` prefix is stripped, so

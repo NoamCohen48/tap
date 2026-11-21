@@ -52,6 +52,10 @@ from .selectors import Selector
 from .screen import Screen
 from .client import TapConnection, mapped_errors
 
+# A long press is the device's long-press timeout: 0.4-0.5 s by default, up to 1.5 s with the
+# accessibility setting. Only pads the default timeout.
+_LONG_PRESS_ESTIMATE = 1.5
+
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
     from typing_extensions import Self
@@ -257,9 +261,45 @@ class Device:
         """Send ``KEYCODE_HOME``."""
         self.press_key(KEYCODE_HOME)
 
-    def press_key(self, key_code: int) -> None:
-        """Injects one Android key code (a mutation: never replayed on transport loss)."""
-        self._execute_or_raise(press_key=pb.PressKey(key_code=key_code))
+    def press_key(self, key_code: int, *, presses: int = 1, interval: float = 0.1, hold: float | None = None,
+                  timeout: float | None = None) -> None:
+        """Presses an Android key code ``presses`` times (a mutation: never replayed on transport
+        loss), ``interval`` seconds (0.04..1) from each release to the next press.
+
+        With ``hold`` (seconds, up to 30) each press stays down that long and repeats as a held key
+        does: the repeat at the device's long-press timeout is Android's long press, so holding
+        Volume Down steps the volume. The sequence must fit in 30 seconds; ``timeout`` defaults to
+        the action timeout plus the sequence. Only whether the key events were injected is
+        reported: what the key does is up to the device and the app in front.
+        """
+        if hold is not None and (isinstance(hold, bool) or not math.isfinite(hold) or not 0.001 <= hold <= 30):
+            raise ValueError("hold must be in 0.001..30 seconds")
+        self._press_keys(key_code, presses, interval, hold, False, timeout)
+
+    def long_press_key(self, key_code: int, *, presses: int = 1, interval: float = 0.1, timeout: float | None = None) -> None:
+        """Long-presses an Android key code ``presses`` times: each press is held for the device's
+        long-press timeout and sends the repeat Android reports as a long press
+        (``KeyEvent.FLAG_LONG_PRESS``), as a held key does. Otherwise as ``press_key``."""
+        self._press_keys(key_code, presses, interval, None, True, timeout)
+
+    def _press_keys(self, key_code: int, presses: int, interval: float, hold: float | None, long_press: bool,
+                    timeout: float | None) -> None:
+        if isinstance(presses, bool) or not isinstance(presses, int) or not 1 <= presses <= 100:
+            raise ValueError("presses must be an integer in 1..100")
+        if isinstance(interval, bool) or not math.isfinite(interval) or not 0.04 <= interval <= 1:
+            raise ValueError("interval must be in 0.04..1 seconds")
+        press = _LONG_PRESS_ESTIMATE if long_press else (hold or 0.0)
+        sequence = press * presses + interval * (presses - 1)
+        if hold is not None and sequence > 30:
+            raise ValueError("The key sequence must not exceed 30 seconds")
+        key = pb.PressKey(key_code=key_code)
+        if presses != 1:
+            key.presses, key.interval_ms = presses, round(interval * 1000)
+        if hold is not None:
+            key.hold_ms = round(hold * 1000)
+        if long_press:
+            key.long_press = True
+        self._execute_or_raise(_or(timeout, self.timeouts.action + sequence), press_key=key)
 
     def open_notifications(self) -> None:
         """Open the notification shade (the system's accessibility action).

@@ -371,6 +371,10 @@ internal fun redactPinch(value: io.github.noamcohen48.tap.api.v1.Pinch, redact: 
 internal fun redactPressKey(value: io.github.noamcohen48.tap.api.v1.PressKey, redact: (String) -> String): io.github.noamcohen48.tap.api.v1.PressKey =
     io.github.noamcohen48.tap.api.v1.PressKey.newBuilder().apply {
         setKeyCode(value.getKeyCode())
+        setLongPress(value.getLongPress())
+        if (value.hasHoldMs()) setHoldMs(value.getHoldMs())
+        if (value.hasPresses()) setPresses(value.getPresses())
+        if (value.hasIntervalMs()) setIntervalMs(value.getIntervalMs())
     }.build()
 
 internal fun redactRange(value: io.github.noamcohen48.tap.api.v1.Range, redact: (String) -> String): io.github.noamcohen48.tap.api.v1.Range =

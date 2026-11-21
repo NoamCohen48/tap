@@ -139,7 +139,8 @@ fast; the content may keep moving). Each prints both, e.g. `scrolled down (finge
 onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
 `key NAME` (any Android key name: `back`, `home`, `recents`, `enter`, `volume-up`,
 `media-play-pause`, … `key --list` prints all; a number is a raw key code; what a key does is up
-to the device and app),
+to the device and app; `--long` long-presses, `--hold 2s` holds with key repeats, `--double` or
+`--times N [--interval 300ms]` presses again),
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in
 `pkg=com.android.systemui`; `key back` closes them, twice from quick settings on newer
 Android; use `--settle` before opening another), and

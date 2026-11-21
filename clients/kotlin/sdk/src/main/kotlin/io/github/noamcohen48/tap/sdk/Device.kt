@@ -87,6 +87,9 @@ import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import io.github.noamcohen48.tap.api.v1.ErrorCode as ErrorCodeProto
 
+/** A long press is the device's long-press timeout: 400-500 ms by default, up to 1500 ms with the accessibility setting. Only pads the default timeout. */
+private val LONG_PRESS_ESTIMATE: Duration = 1500.milliseconds
+
 /** Largest file [Device.pushFile], [Device.pullFile] and [Device.addMedia] move (512 MiB). */
 const val MAX_FILE_BYTES = 512L shl 20
 
@@ -325,9 +328,57 @@ class Device internal constructor(
     /** Send `KEYCODE_HOME`. */
     suspend fun pressHome() = pressKey(KEYCODE_HOME)
 
-    /** Injects one Android key code (a mutation: never replayed on transport loss). */
-    suspend fun pressKey(keyCode: Int) {
-        executeOrThrow { pressKey = PressKey.newBuilder().setKeyCode(keyCode).build() }
+    /**
+     * Presses an Android key code [presses] times (a mutation: never replayed on transport loss),
+     * [interval] apart from each release to the next press. With [hold] (1..30000 ms) each press
+     * stays down that long and repeats as a held key does: the repeat at the device's long-press
+     * timeout is Android's long press, so holding Volume Down steps the volume. The sequence must
+     * fit in 30000 ms; [timeout] defaults to the action timeout plus the sequence. Only whether the
+     * key events were injected is reported: what the key does is up to the device and the app.
+     */
+    suspend fun pressKey(
+        keyCode: Int,
+        presses: Int = 1,
+        interval: Duration = 100.milliseconds,
+        hold: Duration? = null,
+        timeout: Duration? = null,
+    ) {
+        if (hold != null) require(hold in 1.milliseconds..30000.milliseconds) { "hold must be in 1..30000 ms" }
+        pressKeys(keyCode, presses, interval, hold, longPress = false, timeout)
+    }
+
+    /**
+     * Long-presses an Android key code [presses] times: each press is held for the device's
+     * long-press timeout and sends the repeat Android reports as a long press
+     * (`KeyEvent.FLAG_LONG_PRESS`), as a held key does. Otherwise as [pressKey].
+     */
+    suspend fun longPressKey(
+        keyCode: Int,
+        presses: Int = 1,
+        interval: Duration = 100.milliseconds,
+        timeout: Duration? = null,
+    ) = pressKeys(keyCode, presses, interval, hold = null, longPress = true, timeout)
+
+    private suspend fun pressKeys(
+        keyCode: Int,
+        presses: Int,
+        interval: Duration,
+        hold: Duration?,
+        longPress: Boolean,
+        timeout: Duration?,
+    ) {
+        require(presses in 1..100) { "presses must be in 1..100" }
+        require(interval in 40.milliseconds..1000.milliseconds) { "interval must be in 40..1000 ms" }
+        val press = if (longPress) LONG_PRESS_ESTIMATE else hold ?: Duration.ZERO
+        val sequence = press * presses + interval * (presses - 1)
+        require(hold == null || sequence <= 30000.milliseconds) { "The key sequence must not exceed 30000 ms" }
+        val key =
+            PressKey.newBuilder().setKeyCode(keyCode).apply {
+                if (presses != 1) setPresses(presses).setIntervalMs(interval.inWholeMilliseconds)
+                if (hold != null) setHoldMs(hold.inWholeMilliseconds)
+                if (longPress) setLongPress(true)
+            }.build()
+        executeOrThrow(timeout ?: (timeouts.action + sequence)) { pressKey = key }
     }
 
     /**

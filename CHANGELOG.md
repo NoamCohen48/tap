@@ -8,6 +8,12 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Key presses can be long, held, double or counted: `PressKey` gains `long_press`, `hold_ms`,
+  `presses` and `interval_ms`, which the driver injects in real time with the key repeats a held
+  key sends (`FLAG_LONG_PRESS` at the device's long-press timeout). Kotlin `pressKey(code, presses,
+  interval, hold)` / `longPressKey`, Python `press_key(code, presses=, interval=, hold=)` /
+  `long_press_key`, and tap-agent `key NAME --long | --hold 2s | --double | --times N [--interval]`
+  (MCP `press_key` `long`, `hold_seconds`, `presses`, `interval_seconds`).
 - tap-agent `key` accepts every Android key name (`volume-up`, `media-play-pause`, `camera`, …,
   generated from `KeyEvent` by `clients/agent/scripts/gen_keys.py`), and `key --list` (MCP
   `press_key(list_keys=true)`) prints them with their codes. Digit keys are `keycode-0` ..

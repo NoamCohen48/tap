@@ -1733,6 +1733,21 @@ class TapClientTest {
                         assertFailsWith<IllegalArgumentException> { element.longTap(duration = 0.milliseconds) }
                         assertFailsWith<IllegalArgumentException> { element.longTap(duration = 31.seconds) }
                         assertEquals(before, fakeDevices.executeRequests.size)
+                        device.pressKey(25)
+                        device.pressKey(25, presses = 2, interval = 300.milliseconds)
+                        device.pressKey(25, hold = 2.seconds)
+                        device.longPressKey(26)
+                        val keys = fakeDevices.executeRequests.map { it.command }.filter { it.opCase == Command.OpCase.PRESS_KEY }
+                        assertEquals(listOf(false, false, false, true), keys.map { it.pressKey.longPress })
+                        assertFalse(keys[0].pressKey.hasPresses() || keys[0].pressKey.hasHoldMs())
+                        assertEquals(2 to 300L, keys[1].pressKey.presses to keys[1].pressKey.intervalMs)
+                        assertEquals(2000L, keys[2].pressKey.holdMs)
+                        assertTrue(keys[2].timeoutMs > 2000L, "the default timeout covers the hold")
+                        val sent = fakeDevices.executeRequests.size
+                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, presses = 0) }
+                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, hold = 31.seconds) }
+                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, presses = 100, hold = 1.seconds) }
+                        assertEquals(sent, fakeDevices.executeRequests.size)
                     } finally {
                         device.detach()
                     }

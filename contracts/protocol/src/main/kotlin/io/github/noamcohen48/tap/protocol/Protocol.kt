@@ -120,6 +120,67 @@ fun multiTapDurationMs(
     intervalMs: Long,
 ): Long = count * TAP_DURATION_MS + (count - 1L) * intervalMs
 
+/** How long each press of a [PressKey] stays down: the device's [longPressMs] for `long_press`, `hold_ms`, else none. */
+fun keyHoldMs(
+    key: io.github.noamcohen48.tap.api.v1.PressKey,
+    longPressMs: Long,
+): Long =
+    when {
+        key.longPress -> longPressMs
+        key.hasHoldMs() -> key.holdMs
+        else -> 0
+    }
+
+/** Duration of all of [key]'s presses and the gaps between them; validate the fields before calling. */
+fun keyPressesDurationMs(
+    key: io.github.noamcohen48.tap.api.v1.PressKey,
+    longPressMs: Long,
+): Long {
+    val presses = if (key.hasPresses()) key.presses else 1
+    val interval = if (key.hasIntervalMs()) key.intervalMs else DEFAULT_TAP_INTERVAL_MS
+    return presses * keyHoldMs(key, longPressMs) + (presses - 1L) * interval
+}
+
+/** One key event of a [keyPressPlan]: when, from the first down, and how. */
+data class KeyStep(
+    val atMs: Long,
+    val down: Boolean,
+    val repeat: Int = 0,
+    val longPress: Boolean = false,
+)
+
+/**
+ * The key events [key] sends, as a real key would: each press is a down; a press held past
+ * [longPressMs] repeats then (repeat 1, marked as the long press) and every [repeatDelayMs] after,
+ * as Android's key repeat does; then an up. `long_press` holds for exactly [longPressMs], so its one
+ * repeat is the long press. Presses are `interval_ms` apart, release to press.
+ */
+fun keyPressPlan(
+    key: io.github.noamcohen48.tap.api.v1.PressKey,
+    longPressMs: Long,
+    repeatDelayMs: Long,
+): List<KeyStep> {
+    require(longPressMs > 0 && repeatDelayMs > 0) { "Key timeouts must be positive" }
+    val presses = if (key.hasPresses()) key.presses else 1
+    val interval = if (key.hasIntervalMs()) key.intervalMs else DEFAULT_TAP_INTERVAL_MS
+    val hold = keyHoldMs(key, longPressMs)
+    val steps = mutableListOf<KeyStep>()
+    var start = 0L
+    repeat(presses) {
+        steps += KeyStep(start, down = true)
+        var repeat = 1
+        var at = longPressMs
+        while (at <= hold) {
+            steps += KeyStep(start + at, down = true, repeat = repeat, longPress = repeat == 1)
+            repeat++
+            at += repeatDelayMs
+        }
+        steps += KeyStep(start + hold, down = false)
+        start += hold + interval
+    }
+    return steps
+}
+
 /** `Swipe`/`Scroll.distance_percent`. */
 const val DEFAULT_GESTURE_PERCENT = 80
 
