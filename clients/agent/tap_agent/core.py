@@ -1078,8 +1078,16 @@ class Agent:
 
         return self._run(step)
 
-    def key(self, name: str, device: str | None = None, settle: bool = False) -> str:
-        """Presses a key: back, home, enter, tab, delete, ... or an Android key code."""
+    def key(self, name: str | None = None, device: str | None = None, settle: bool = False, *, list_keys: bool = False) -> str:
+        """Presses a key: any Android key name (back, home, enter, volume-up, media-play-pause, ...)
+        or an Android key code. ``list_keys`` prints every name with its code instead, without a
+        device; whether a key does anything is up to the device and the app in front."""
+        if list_keys:
+            if name is not None or settle:
+                raise AgentError("key --list takes no key and no --settle", EXIT_USAGE)
+            return key_listing()
+        if name is None:
+            raise AgentError("key needs a key name or code (`key --list` prints the names)", EXIT_USAGE)
 
         def step() -> str:
             code = parse_key(name)
@@ -1836,6 +1844,18 @@ def _device_action(command: str, action: str | None, actions: tuple[str, ...], s
     if action not in actions:
         raise AgentError(f"{command} takes {' or '.join(actions)}, or nothing to read, not {action!r}", EXIT_USAGE)
     return action
+
+
+def key_listing() -> str:
+    """Every key name with its code, by code; an alias says what it stands for."""
+    from .keycodes import CODES
+    from .targets import KEY_ALIASES
+    by_code: dict[int, str] = {}
+    for key, code in CODES.items():
+        by_code.setdefault(code, key)
+    rows = [f"{key}  {code}" + (f"  (keycode-{key})" if key.isdigit() else "") for key, code in sorted(CODES.items(), key=lambda kv: (kv[1], kv[0]))]
+    rows += [f"{alias}  {code}  (= {by_code.get(code, code)})" for alias, code in KEY_ALIASES.items()]
+    return "\n".join(rows)
 
 
 def _condition_change(name: str, value: str) -> Callable[[Device], None]:

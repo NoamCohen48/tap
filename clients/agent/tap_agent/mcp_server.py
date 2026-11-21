@@ -718,7 +718,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="press_key")
     async def press_key(
-        key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],
+        key: Annotated[str, Field(description="Any Android key name (back, home, enter, volume-up, media-play-pause, ...; digit keys are keycode-0 .. keycode-9) or an Android key code.")] = "",
+        list_keys: Annotated[bool, Field(description="Return every key name with its code instead of pressing one.")] = False,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -727,8 +728,11 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Press a key."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.key(key, device or None, settle=settle))
+        """Press a key, or with list_keys return every key name. What a key does is up to the device
+        and the app in front."""
+        if list_keys:
+            return await call(session, report=False, step=lambda a: a.key(key or None, list_keys=True))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.key(key or None, device or None, settle=settle))
 
     @mcp.tool(name="open_panel")
     async def open_panel(

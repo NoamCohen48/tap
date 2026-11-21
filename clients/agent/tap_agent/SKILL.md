@@ -137,7 +137,9 @@ reveals content below: the finger moves up), `swipe <target> --finger up|down|le
 finger's direction, so `--finger up` scrolls down), `fling <target> <direction>` (as `scroll`,
 fast; the content may keep moving). Each prints both, e.g. `scrolled down (finger up)`, `drag <target> <destination>` (long-press, move
 onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
-`key back|home|recents|enter|tab|delete|…`,
+`key NAME` (any Android key name: `back`, `home`, `recents`, `enter`, `volume-up`,
+`media-play-pause`, … `key --list` prints all; a number is a raw key code; what a key does is up
+to the device and app),
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in
 `pkg=com.android.systemui`; `key back` closes them, twice from quick settings on newer
 Android; use `--settle` before opening another), and

@@ -284,8 +284,9 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--percent", type=int, default=80, help="how far across the node, 1..100 (default 80)")
     p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
 
-    p = verb("key", "press a key: back, home, recents, enter, tab, delete, … or a key code", on_device, settle)
-    p.add_argument("name")
+    p = verb("key", "press a key: any Android key name (back, home, enter, volume-up, media-play-pause, …) or a key code", on_device, settle)
+    p.add_argument("name", nargs="?", help="a key name (`--list` prints them all; digit keys are keycode-0 .. keycode-9) or a numeric key code")
+    p.add_argument("--list", dest="list_keys", action="store_true", help="print every key name with its code (no device needed)")
 
     p = verb("panel", "open the notification shade or quick settings (key back closes it)", on_device, settle)
     p.add_argument("name", choices=PANELS)
@@ -525,7 +526,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "pinch":
         return agent.pinch(args.target, args.how, args.percent, device, settle=settle, timeout=args.timeout)
     if v == "key":
-        return agent.key(args.name, device, settle=settle)
+        return agent.key(args.name, device, settle=settle, list_keys=args.list_keys)
     if v == "panel":
         return agent.panel(args.name, device, settle=settle)
     if v == "rotate":

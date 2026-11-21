@@ -910,3 +910,25 @@ def test_focus_selection_and_copy_alone_accept_nothing():
     line = node_line(screen_node(pb.ScreenNode(ref="e1", window_package="p", text="Total", flags=[pb.FLAG_ENABLED],
         actions=[pb.A11Y_FOCUS, pb.A11Y_SELECT, pb.A11Y_COPY, pb.A11Y_SHOW_ON_SCREEN])))
     assert "accepts=" not in line
+
+
+@pytest.mark.parametrize("name,code", [
+    ("back", 4), ("volume-up", 24), ("VOLUME_UP", 24), ("KEYCODE_VOLUME_UP", 24), ("media-play-pause", 85),
+    ("dpad-center", 23), ("delete", 67), ("del", 67), ("backspace", 67), ("recents", 187), ("app-switch", 187),
+    ("keycode-0", 7), ("7", 7), ("camera", 27),
+])
+def test_every_android_key_name_and_the_aliases_resolve(name, code):
+    from tap_agent.targets import parse_key
+    assert parse_key(name) == code
+
+
+def test_key_list_needs_no_device_and_names_every_key(agent):
+    from tap_agent.keycodes import CODES
+    listing = agent.key(list_keys=True)
+    assert len(listing.splitlines()) > 330 and "volume-up  24" in listing and "backspace  67  (= del)" in listing
+    assert "0  7  (keycode-0)" in listing and len(CODES) > 300
+    with pytest.raises(AgentError, match="close: volume-up"):
+        agent.key("volume-u")
+    with pytest.raises(AgentError):
+        agent.key("back", list_keys=True)
+    assert cli.run(cli.parser().parse_args(["key", "--list"]), agent) == listing

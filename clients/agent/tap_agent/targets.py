@@ -292,30 +292,34 @@ def format_duration(seconds: float) -> str:
     return f"{round(seconds * 1000)}ms"
 
 
-# Android KeyEvent codes by the names an agent is likely to use.
-KEYS = {
-    "home": 3,
-    "back": 4,
+# Short names an agent is likely to use, on top of every Android key name (keycodes.CODES).
+KEY_ALIASES = {
     "up": 19,
     "down": 20,
     "left": 21,
     "right": 22,
-    "tab": 61,
-    "space": 62,
-    "enter": 66,
+    "center": 23,
     "delete": 67,
     "backspace": 67,
-    "menu": 82,
-    "search": 84,
-    "escape": 111,
     "forward-delete": 112,
-    "app-switch": 187,
     "recents": 187,
 }
+COMMON_KEYS = ("back", "home", "recents", "enter", "tab", "delete", "escape", "up", "down", "left", "right",
+               "volume-up", "volume-down", "power", "media-play-pause")
+
+
+def _keys() -> dict[str, int]:
+    from .keycodes import CODES
+    return {**CODES, **KEY_ALIASES}
+
+
+KEYS = _keys()
 
 
 def parse_key(name: str) -> int:
-    """A key name from ``KEYS`` or a numeric Android key code."""
+    """A key name (every Android ``KEYCODE_*`` name in lowercase-dash form, with or without the
+    ``keycode-`` prefix, plus the aliases in ``KEY_ALIASES``) or a numeric Android key code. A
+    bare number is always a code: the digit keys are ``keycode-0`` .. ``keycode-9``."""
     lowered = name.strip().lower().replace("_", "-")
     if lowered.isdigit():
         return parse_int32(lowered, "key code")
@@ -324,4 +328,6 @@ def parse_key(name: str) -> int:
     try:
         return KEYS[lowered]
     except KeyError:
-        raise UsageError(f"unknown key {name!r} (known: {', '.join(KEYS)}, or a key code)") from None
+        close = [key for key in KEYS if lowered in key][:8]
+        hint = f"; close: {', '.join(close)}" if close else ""
+        raise UsageError(f"unknown key {name!r}{hint} (`key --list` prints all {len(KEYS)} names, or give a key code)") from None
