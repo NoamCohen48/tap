@@ -303,15 +303,15 @@ async def test_mcp_workflow_schema_and_forwarding(fake, agent):
         assert "installed" in tools["app"].input_schema["properties"]["action"]["enum"]
         result = await client.call_tool("scroll", {"target": "id=list", "direction": "down", "percent": 45, "timeout_seconds": 4})
         assert not result.is_error
-        assert fake.devices.commands[-1].scroll.distance_percent == 45
-        assert fake.devices.commands[-1].timeout_ms == 4000
+        assert _last(fake, "scroll").scroll.distance_percent == 45
+        assert _last(fake, "scroll").timeout_ms == 4000
         result = await client.call_tool("settle", {"package": "com.example", "signal": "pixels", "stable_for": .1})
         assert not result.is_error
         assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_PIXELS
-        assert fake.devices.commands[-1].WhichOneof("op") == "read_toast_history"
+        assert _last(fake, "read_toast_history") is not None
         result = await client.call_tool("type_text", {"text": "hello", "target": "id=input", "await_focus": False})
         assert not result.is_error
-        assert fake.devices.commands[-1].WhichOneof("op") == "type_text"
+        assert _last(fake, "type_text") is not None
         result = await client.call_tool("detach", {})
         assert not result.is_error and fake.devices.detaches == ["attached-first"]
 
@@ -360,3 +360,8 @@ def test_media_record_max_is_a_whole_second_duration():
     for bad in (["--max", "1500ms"], ["--max-seconds", "20"]):
         with pytest.raises(SystemExit):
             parser.parse_args(["media-record", "start", *bad])
+
+
+def _last(fake, op):
+    """The newest command of ``op``: an MCP action settles by default, so commands follow it."""
+    return next((c for c in reversed(fake.devices.commands) if c.WhichOneof("op") == op), None)

@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent MCP action tools settle by default (`settle=true`) and return what changed, so an
+  agent rarely needs a `snapshot` after an action; `settle=false` skips it. The CLI keeps
+  `--settle` opt-in. Read forms (`keyboard`, `screen`, `notification` with no action) never
+  settle.
 - tap-agent no longer fails a step whose input was sent when the `--settle` after it fails (for
   example with no focused app): the output reports `! not settled (...)` instead, so the step
   is not mistaken for one that did not run.

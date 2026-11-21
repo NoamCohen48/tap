@@ -37,9 +37,10 @@ Drive an Android device through the Tap daemon (it must be running: `tap start`)
 Flow: devices -> attach(serial="SERIAL") -> app(action="cold-launch", package="com.example.app")
 -> snapshot -> act (tap, fill, scroll, press_key(key="back"), ...) -> release. Selectors search the whole screen unless `pkg=` names a package.
 snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pass `@e3` as
-`target`, or write a selector. A ref keeps naming the same node while it stays on screen; an
-action with settle=true waits for the screen to settle and returns what changed (+ added,
-- removed), so a fresh snapshot is rarely needed. An action needs exactly one matching node.
+`target`, or write a selector. A ref keeps naming the same node while it stays on screen. An
+action waits for the screen to settle and returns what changed (+ added, - removed) by default,
+so a fresh snapshot is rarely needed; pass settle=false to skip it (faster, e.g. several inputs
+in a row). A failed settle after an action is reported, and the action still ran. An action needs exactly one matching node.
 elements reads all current selector matches, one line each (or texts=true for raw text),
 including checkbox state, in one bulk read without a diagnostic snapshot. It accepts written
 selectors with pkg and relations, not refs or first/index. It returns values, not refs.
@@ -101,7 +102,7 @@ Target = Annotated[
     ),
 ]
 Device = Annotated[str, Field(description="Serial; needed only when the session has several devices.")]
-Settle = Annotated[bool, Field(description="Wait for the screen to settle, then return what changed.")]
+Settle = Annotated[bool, Field(description="Wait for the screen to settle, then return what changed (default true; false to skip).")]
 ExpectDeath = Annotated[
     bool,
     Field(description="The step must make a watched app crash or stop responding (within 10 s); a command failing because of it is no failure."),
@@ -396,7 +397,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout: Annotated[float | None, Field(ge=0.001, le=120, description="Command budget in seconds, including the whole gesture.")] = None,
         outside_panel: Annotated[bool, Field(description="Tap outside the dialog, menu, drawer or sheet the target is in, instead of on the target.")] = False,
         allow_reach_below: Annotated[bool, Field(description="With outside_panel: touch even the screen under a panel that lets touches through.")] = False,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -415,7 +416,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         text: Annotated[str, Field(description="The new text.")],
         timeout_seconds: Budget = None,
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -434,7 +435,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="Per tap/type budget, not an overall deadline.")] = None,
         focus_timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="Separate target focus wait; SDK default 10 seconds.")] = None,
         sensitive: Annotated[bool, Field(description="A secret (password, token): the session log and export never hold the text.")] = False,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -446,7 +447,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.type(text, device or None, settle=settle, sensitive=sensitive, target=target or None, await_focus=await_focus, timeout=timeout_seconds, focus_timeout=focus_timeout_seconds))
 
     @mcp.tool(name="clear")
-    async def clear(target: Target, timeout_seconds: Budget = None, settle: Settle = False,
+    async def clear(target: Target, timeout_seconds: Budget = None, settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -456,7 +457,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="scroll")
     async def scroll(
-        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
+        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -469,7 +470,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def swipe(
         target: Target,
         finger: Annotated[Literal["up", "down", "left", "right"], Field(description="Where the finger moves; up reveals what is below (scroll down).")],
-        percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
+        percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -481,7 +482,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="fling")
     async def fling(
-        target: Target, direction: Direction, timeout_seconds: Budget = None, settle: Settle = False,
+        target: Target, direction: Direction, timeout_seconds: Budget = None, settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -496,7 +497,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         target: Target,
         destination: Annotated[str, Field(description="Where to drop it: a ref (@e7) or selector terms, as for target.")],
         timeout_seconds: Budget = None,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -513,7 +514,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         how: Annotated[Literal["open", "close"], Field(description="open: fingers apart (zoom in); close: together.")],
         percent: Percent = 80,
         timeout_seconds: Budget = None,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -525,7 +526,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.pinch(target, how, percent, device or None, settle=settle, timeout=timeout_seconds))
 
     @mcp.tool(name="submit")
-    async def submit(target: Target, timeout_seconds: Budget = None, settle: Settle = False,
+    async def submit(target: Target, timeout_seconds: Budget = None, settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -548,7 +549,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ] = "",
         custom: Annotated[bool, Field(description="name is a custom action's label (e.g. 'Archive').")] = False,
         timeout_seconds: Budget = None,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -567,7 +568,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         target: Target,
         value: Annotated[float, Field(description="The value in the node's own units (see accessibility_action's range).")],
         timeout_seconds: Budget = None,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -585,7 +586,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["", "hide"],
             Field(description="Omit to report whether a soft keyboard shows; hide: hide it (Back, only when one shows)."),
         ] = "",
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -594,7 +595,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """The soft keyboard: is it showing, or hide it."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.keyboard(action or None, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.keyboard(action or None, device or None, settle=settle and bool(action)))
 
     @mcp.tool(name="set_location")
     async def set_location(
@@ -691,7 +692,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         package: Annotated[str, Field(description="Only this package's notifications; omit for any app's.")] = "",
         button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
         timeout_seconds: Annotated[float, Field(ge=0.001, le=120, description="Command/wait budget in seconds.")] = 10,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -707,14 +708,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds),
             step=lambda a: a.notification(
                 action or None, title or None, text or None, device or None, contains=contains, package=package or None,
-                button=button or None, timeout=timeout_seconds, settle=settle, wait=wait,
+                button=button or None, timeout=timeout_seconds, settle=settle and bool(action), wait=wait,
             ),
         )
 
     @mcp.tool(name="press_key")
     async def press_key(
         key: Annotated[str, Field(description="back, home, recents, enter, tab, delete, escape, ... or an Android key code.")],
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -731,7 +732,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["notifications", "quick_settings"],
             Field(description="The notification shade, or the quick settings panel."),
         ],
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -749,7 +750,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["portrait", "landscape", "natural", "left", "upside-down", "right", "auto"],
             Field(description="A geometry, an exact rotation from the natural one, or auto (back to the sensor)."),
         ],
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -767,7 +768,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["", "on", "off", "unlock"],
             Field(description="Omit to report; on/off: wake or sleep; unlock: wake and dismiss a keyguard without a PIN."),
         ] = "",
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
@@ -776,7 +777,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """Screen power and lock screen. A keyguard with a PIN, pattern or password is never unlocked."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.screen(action or None, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.screen(action or None, device or None, settle=settle and bool(action)))
 
     @mcp.tool(name="permission")
     async def permission(
@@ -789,7 +790,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["precise", "approximate"] | None,
             Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
         ] = None,
-        settle: Settle = False,
+        settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),

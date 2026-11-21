@@ -766,26 +766,26 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         result = await client.call_tool("tap", {"target": "@e42"})
         assert result.is_error and "run `snapshot`" in result.content[0].text
         result = await client.call_tool("tap", {"target": "text=OK", "count": 3, "interval": 0.2})
-        assert not result.is_error and fake.devices.commands[-1].multi_tap.count == 3
+        assert not result.is_error and _last(fake, "multi_tap").multi_tap.count == 3
         result = await client.call_tool("tap", {"target": "text=OK", "duration": 1.5, "timeout": 4})
-        assert not result.is_error and fake.devices.commands[-1].hold.duration_ms == 1500
+        assert not result.is_error and _last(fake, "hold").hold.duration_ms == 1500
         result = await client.call_tool("tap", {"target": "text=OK", "duration": 1.5, "double": True})
         assert result.is_error
         result = await client.call_tool("tap", {"target": "text=OK", "outside_panel": True})
-        assert not result.is_error and fake.devices.commands[-1].WhichOneof("op") == "tap_outside_panel"
+        assert not result.is_error and _last(fake, "tap_outside_panel") is not None
         result = await client.call_tool("screenshot", {})
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
         result = await client.call_tool("open_panel", {"panel": "quick_settings"})
-        assert not result.is_error and result.content[0].text == "opened quick-settings"
+        assert not result.is_error and result.content[0].text.splitlines()[0] == "opened quick-settings"
         result = await client.call_tool("screen", {})
         assert not result.is_error and result.content[0].text.startswith("screen off")
         assert (await client.call_tool("screen", {"action": "state"})).is_error
         result = await client.call_tool("permission", {"choice": "deny"})
-        assert not result.is_error and result.content[0].text == "pressed deny"
+        assert not result.is_error and result.content[0].text.splitlines()[0] == "pressed deny"
         result = await client.call_tool("keyboard", {})
-        assert not result.is_error and result.content[0].text == "keyboard hidden"
+        assert not result.is_error and result.content[0].text.splitlines()[0] == "keyboard hidden"
         result = await client.call_tool("clipboard", {"text": "hi"})
-        assert not result.is_error and result.content[0].text == "clipboard set (2 characters)"
+        assert not result.is_error and result.content[0].text.splitlines()[0] == "clipboard set (2 characters)"
         result = await client.call_tool("app", {"action": "open-link", "package": "com.example", "argument": "example://x"})
         assert not result.is_error and result.content[0].text.startswith("opened example://x")
         result = await client.call_tool("history", {})
@@ -852,3 +852,25 @@ def test_a_failed_settle_after_input_is_reported_not_raised(fake, agent):
     assert [c.WhichOneof("op") for c in fake.devices.commands].count("tap") == 1
     with pytest.raises(AgentError, match="no focused app to settle"):
         agent.settle()  # the settle command itself still fails
+
+
+def _last(fake, op):
+    """The newest command of ``op``: an MCP action settles by default, so commands follow it."""
+    return next((c for c in reversed(fake.devices.commands) if c.WhichOneof("op") == op), None)
+
+
+@pytest.mark.anyio
+async def test_mcp_actions_settle_by_default_and_reads_do_not(fake, server):
+    async with Client(server, mode="legacy") as client:
+        await client.call_tool("attach", {"serial": "emulator-5554"})
+        fake.devices.responder = lambda c: pb.CommandResult(device_info=pb.DeviceInfo(current_package="com.example")) if c.WhichOneof("op") == "device_info" else None
+        before = len(fake.devices.commands)
+        result = await client.call_tool("tap", {"target": "text=OK"})
+        ops = [c.WhichOneof("op") for c in fake.devices.commands[before:]]
+        assert not result.is_error and ops[0] == "tap" and "wait_screen_stable" in ops
+        before = len(fake.devices.commands)
+        result = await client.call_tool("tap", {"target": "text=OK", "settle": False})
+        assert result.content[0].text == "tapped text=OK"
+        assert "wait_screen_stable" not in [c.WhichOneof("op") for c in fake.devices.commands[before:]]
+        for read in ("keyboard", "screen"):
+            assert not (await client.call_tool(read, {})).is_error
