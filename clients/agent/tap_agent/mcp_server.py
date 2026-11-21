@@ -40,7 +40,7 @@ snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pa
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen; an
 action with settle=true waits for the screen to settle and returns what changed (+ added,
 - removed), so a fresh snapshot is rarely needed. An action needs exactly one matching node.
-elements reads all current selector matches as a JSON array (or texts=true for raw text),
+elements reads all current selector matches, one line each (or texts=true for raw text),
 including checkbox state, in one bulk read without a diagnostic snapshot. It accepts written
 selectors with pkg and relations, not refs or first/index. It returns values, not refs.
 Only exposed nodes are read, not an entire virtualized dataset. For collection across viewports,
@@ -118,6 +118,7 @@ EventTimeout = Annotated[float | None, Field(ge=0.001, le=120, description="How 
 Direction = Literal["up", "down", "left", "right"]
 Session = Annotated[str, Field(description="Session name; omit for the server's default session.")]
 
+AsJson = Annotated[bool, Field(description="Structured JSON instead of text.")]
 Budget = Annotated[float | None, Field(ge=0.001, le=120, description="SDK command budget in seconds, 1ms..120s.")]
 Percent = Annotated[StrictInt, Field(ge=1, le=100, description="Gesture distance across the node.")]
 
@@ -246,20 +247,20 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call(session, lambda a: a.detach(device or None))
 
     @mcp.tool(name="server_info", annotations=READ_ONLY)
-    async def server_info() -> CallToolResult:
-        """Daemon version, compatibility and configuration as SDK JSON; never starts it."""
-        return await call("", report=False, step=lambda a: a.server_info())
+    async def server_info(as_json: AsJson = False) -> CallToolResult:
+        """Daemon version, compatibility and configuration, one line each; never starts it."""
+        return await call("", report=False, step=lambda a: a.server_info(as_json=as_json))
 
     @mcp.tool(name="device_info", annotations=READ_ONLY)
-    async def device_info(session: Session = "", device: Device = "") -> CallToolResult:
-        """Complete current device state as SDK JSON."""
-        return await call(session, lambda a: a.device_info(device or None))
+    async def device_info(as_json: AsJson = False, session: Session = "", device: Device = "") -> CallToolResult:
+        """Complete current device state, one line each."""
+        return await call(session, lambda a: a.device_info(device or None, as_json=as_json))
 
     @mcp.tool(name="capabilities", annotations=READ_ONLY)
-    async def capabilities(session: Session = "", device: Device = "") -> CallToolResult:
-        """Read SDK operation support, blockers and prerequisites as JSON. Never starts an
+    async def capabilities(as_json: AsJson = False, session: Session = "", device: Device = "") -> CallToolResult:
+        """Read SDK operation support, blockers and prerequisites, one line each. Never starts an
         operation, grants permission or changes settings. Support does not guarantee success."""
-        return await call(session, lambda a: a.capabilities(device or None, as_json=True))
+        return await call(session, lambda a: a.capabilities(device or None, as_json=as_json))
 
     @mcp.tool(name="deaths", annotations=READ_ONLY)
     async def deaths(
@@ -311,7 +312,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["default", "interactive", "all"],
             Field(description="interactive: controls with descendant context and labeled groups; all: layout containers too."),
         ] = "default",
-        candidates: Annotated[bool, Field(description="Complete structured SDK snapshot with selector candidates; use default view without filters.")] = False,
+        as_json: Annotated[bool, Field(description="The complete structured SDK snapshot with selector candidates; use the default view without filters.")] = False,
         package: Annotated[str, Field(description="Only windows rooted in this package.")] = "",
         window: Annotated[StrictInt | None, Field(ge=1, description="One-based window ordinal from the snapshot header, not a persistent ID.")] = None,
         hide_keyboard: Annotated[bool, Field(description="Hide input-method windows. Unknown window types remain visible.")] = False,
@@ -322,10 +323,10 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """The current screen with refs and grouping. context= is descriptive descendant text,
         not a selector: act on the container's @ref. Filters affect output only, never refs.
         Unknown window types remain visible. Also delivers and acknowledges unread historical
-        toasts in a separate section; filters do not apply to them. Candidates returns complete
-        structured SDK data plus toast_events metadata."""
+        toasts in a separate section; filters do not apply to them. as_json returns the complete
+        structured SDK snapshot plus toast_events metadata."""
         level = {"default": render.DEFAULT, "interactive": render.INTERACTIVE, "all": render.ALL}[view]
-        return await call(session, lambda a: a.snapshot(device or None, level, candidates=candidates,
+        return await call(session, lambda a: a.snapshot(device or None, level, as_json=as_json,
                                                        package=package or None, window=window,
                                                        hide_keyboard=hide_keyboard, hide_system_chrome=hide_system_chrome))
 
@@ -333,31 +334,35 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def inspect(
         target: Target,
         timeout_seconds: Budget = None,
+        as_json: AsJson = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """The exact selector's current SDK element state as JSON; ambiguity remains an error."""
-        return await call(session, lambda a: a.inspect(target, device or None, timeout_seconds))
+        """One node's state: its snapshot line, package, bounds, state, offered actions and range
+        (as_json: the complete SDK element snapshot). Ambiguity remains an error."""
+        return await call(session, lambda a: a.inspect(target, device or None, timeout_seconds, as_json=as_json))
 
     @mcp.tool(name="exists", annotations=READ_ONLY)
     async def exists(
         target: Target,
         timeout_seconds: Budget = None,
+        as_json: AsJson = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """Whether any node matches now, without waiting or input."""
-        return await call(session, lambda a: a.exists(target, device or None, timeout_seconds))
+        """Whether any node matches now (yes / no), without waiting or input."""
+        return await call(session, lambda a: a.exists(target, device or None, timeout_seconds, as_json=as_json))
 
     @mcp.tool(name="count", annotations=READ_ONLY)
     async def count(
         target: Target,
         timeout_seconds: Budget = None,
+        as_json: AsJson = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Count matching nodes now, using SDK count semantics."""
-        return await call(session, lambda a: a.count(target, device or None, timeout_seconds))
+        return await call(session, lambda a: a.count(target, device or None, timeout_seconds, as_json=as_json))
 
     @mcp.tool(name="elements", annotations=READ_ONLY)
     async def elements(
@@ -368,14 +373,15 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ))],
         texts: Annotated[bool, Field(description="Project raw text values; preserve duplicates, empty strings and nulls. Otherwise return full SDK element state, including checkable/checked/enabled/selected.")] = False,
         timeout_seconds: Budget = None,
+        as_json: Annotated[bool, Field(description="The SDK snapshots (or texts) as a JSON array, [] if none.")] = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
-        """All currently exposed matches as a JSON array in one fresh bulk device read, [] if
-        none. Accessibility order, not necessarily visual order; no refs, dump, auto-scroll,
+        """All currently exposed matches in one fresh bulk device read, one snapshot-style line
+        each ("no match" if none). Accessibility order, not necessarily visual order; no refs, dump, auto-scroll,
         implicit wait or atomic-UI guarantee. Staleness/overflow (1000 matches / 1 MiB) fails
         the whole read, never partial results. Text may be a hint, as in SDK element reads."""
-        return await call(session, lambda a: a.elements(target, device or None, timeout_seconds, texts=texts))
+        return await call(session, lambda a: a.elements(target, device or None, timeout_seconds, texts=texts, as_json=as_json))
 
     @mcp.tool(name="tap")
     async def tap(
@@ -930,6 +936,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         ] = "",
         any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
         timeout_seconds: Budget = None,
+        as_json: Annotated[bool, Field(description="Reads (granted, running, locale, installed, process): the value as JSON.")] = False,
         extras: Annotated[
             list[str] | None,
             Field(
@@ -951,7 +958,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release)."""
         return await call(
-            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras or (), timeout=timeout_seconds)
+            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras or (), timeout=timeout_seconds, as_json=as_json)
         )
 
     @mcp.tool(name="record")

@@ -73,11 +73,15 @@ def test_queries_and_property_waits_use_sdk_operations(fake, agent):
         return None
 
     fake.devices.responder = respond
-    assert agent.exists("text=Saved") == "true"
+    assert agent.exists("text=Saved") == "yes"
+    assert agent.exists("text=Saved", as_json=True) == "true"
     assert agent.count("text=Saved") == "3"
-    state = json.loads(agent.inspect("text=Saved", timeout=4))
+    state = json.loads(agent.inspect("text=Saved", timeout=4, as_json=True))
     assert state["text"] == "Saved" and state["enabled"] and state["checked"]
     assert fake.devices.commands[-1].timeout_ms == 4000
+    text = agent.inspect("text=Saved")
+    assert text.splitlines()[0] == '"Saved"  focused  checked'
+    assert "state     enabled checked focused" in text
     for condition in ("enabled", "checked", "focused"):
         assert condition in agent.wait("text=Saved", state=condition)
     agent.wait("text=Saved", state="text", value="Saved")
@@ -169,7 +173,7 @@ async def test_mcp_queries_and_budget_schema_match_core(fake, agent):
         assert set(tools["wait_for"].input_schema["properties"]["state"]["enum"]) == set(WAIT_STATES)
         result = await client.call_tool("exists", {"target": "enabled=true"})
         assert not result.is_error
-        assert any(isinstance(part, TextContent) and part.text == "true" for part in result.content)
+        assert any(isinstance(part, TextContent) and part.text == "yes" for part in result.content)
         # Runtime propagation is covered separately from schema presence.
         settled = await client.call_tool("settle", {"timeout_seconds": 3})
         assert not settled.is_error

@@ -123,8 +123,8 @@ header, valid only for that dump (not a persistent Android window ID). The MCP t
 Suppression uses Android accessibility window types, not package-name guesses: application
 windows such as Settings and permission dialogs remain visible. System-type windows (including
 system panels) are hidden only when requested. Unknown types, including older drivers' dumps,
-remain visible. Defaults still show all windows. `--candidates` returns complete structured data
-and cannot be combined with view filters.
+remain visible. Defaults still show all windows. `--json` returns the complete structured snapshot
+with selector candidates and cannot be combined with view filters.
 
 Settle/action diffs use the same contextual rendering. A changed descendant also surfaces its
 containing control with `=` when its ref is unchanged. Removed labels conservatively repeat
@@ -136,8 +136,8 @@ as a typed value. App validation state prints `invalid` and `error="Cannot be bl
 ## Read a collection
 
 For an app exposing product titles, prices or checkboxes, `elements` reads every match in one
-bulk device command. It returns a JSON array of SDK element snapshots, not diagnostic tree
-nodes or refs. Use `--texts` to project raw text:
+bulk device command. It prints one snapshot-style line per match; `--json` returns the array of
+SDK element snapshots. Neither carries diagnostic tree nodes or refs. Use `--texts` to project raw text:
 
 ```sh
 tap-agent elements id=title,pkg=com.shop --texts
@@ -146,8 +146,8 @@ tap-agent elements checkable=true,pkg=com.shop --timeout 3s
 ```
 
 Full state includes `checkable`, `checked`, `enabled` and `selected`; read it once to compare
-several properties together. The read-only MCP tool is `elements`, with `target`, `texts`
-(default false), `timeout_seconds`, `session` and `device`. A target is a written selector,
+several properties together (`--json`). The read-only MCP tool is `elements`, with `target`,
+`texts` (default false), `as_json`, `timeout_seconds`, `session` and `device`. A target is a written selector,
 including existing package/relational predicates; snapshot refs, `first` and `index` are
 rejected. Without `pkg` it searches the whole screen, as other selector tools do.
 
@@ -223,10 +223,11 @@ text=Dark theme is visible
 `wait` polls on the device until the target is visible (`--gone`, `--one`), up to `--timeout`
 (10 s by default, 1ms..120s). Use it instead of a sleep, and to confirm what an action was supposed to do.
 
-`inspect <target>` returns the exact node's SDK state as JSON (text, bounds, flags, actions and
-range); no match or ambiguity remains an error. This explicitly reads accessibility text,
+`inspect <target>` prints the exact node's snapshot line, then its package, bounds, state, the
+actions it offers and its range; `--json` returns the complete SDK state. No match or ambiguity
+remains an error. This explicitly reads accessibility text,
 which may contain sensitive data: do not copy it to shared logs. `exists` and `count` are
-immediate read-only queries. To wait for a node's state use:
+immediate read-only queries (`exists` prints `yes` or `no`). To wait for a node's state use:
 
 ```sh
 tap-agent wait id=save --state enabled
@@ -366,7 +367,8 @@ and unknown outcomes.
 ## SDK workflows and diagnostics
 
 `devices` includes API level, model/manufacturer and emulator/physical properties when available.
-`server-info` and `device-info` return the SDK's complete metadata as JSON. With several devices,
+`server-info` and `device-info` print the SDK's complete metadata as `name  value` lines (`--json`
+for the object). With several devices,
 pass `--device SERIAL`; `detach --device SERIAL` releases only that device (including its temporary
 settings/files), leaving the session and other attachments alive. `release` still ends them all.
 
@@ -397,8 +399,8 @@ and `tree`, `pixels` or `all` signals. The package must be the focused window; n
 or changes focus implicitly. As before, a changing-screen timeout returns a note, not a successful
 assertion about app state. These are ordinary SDK waits, **not** synchronization/`awaitIdle`.
 
-`snapshot --candidates` returns structured SDK screen data with selector candidates instead of
-rendered lines; use the default view.
+Every read prints text by default and takes `--json` (MCP `as_json`) for its complete structured
+form: `snapshot --json` returns the SDK screen data with selector candidates; use the default view.
 
 ### One history reader
 

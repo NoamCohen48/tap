@@ -117,6 +117,9 @@ Do:
 
 ## Output: text by default everywhere, `--json` on every read
 
+Status: done (`inspect`, `elements`, `server-info`, `device-info`, `exists`, the `app` reads,
+`snapshot --json`, MCP `capabilities`).
+
 Today the output form depends on the command. `inspect`, `elements` (also with `--texts`),
 `device-info`, `server-info`, `app process` and `snapshot --candidates` print JSON with no text
 form. `history`, `deaths`, `capabilities`, `toast --history` and `watch` print text and take

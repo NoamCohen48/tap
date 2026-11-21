@@ -43,7 +43,7 @@ def test_bulk_state_and_text_reads_are_fresh_scoped_and_value_only(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = _reply
     before = len(fake.devices.commands)
-    values = json.loads(agent.elements("id=option,pkg=com.shop", timeout=2.5))
+    values = json.loads(agent.elements("id=option,pkg=com.shop", timeout=2.5, as_json=True))
     assert len(fake.devices.commands) == before + 1
     assert [(item["text"], item["checkable"], item["checked"], item["enabled"], item["selected"]) for item in values[:2]] == [
         ("Email", True, True, True, True), ("SMS", True, False, False, False),
@@ -54,14 +54,15 @@ def test_bulk_state_and_text_reads_are_fresh_scoped_and_value_only(fake, agent):
     assert command.timeout_ms == 2500
     assert command.snapshots.selector == res("option")._in_package("com.shop").to_proto()
 
-    assert json.loads(agent.elements("id=option", texts=True)) == ["Email", "SMS", "", None, "Email", "Name"]
-    assert len(fake.devices.commands) == before + 2
+    assert json.loads(agent.elements("id=option", texts=True, as_json=True)) == ["Email", "SMS", "", None, "Email", "Name"]
+    assert agent.elements("id=option", texts=True).splitlines() == ['"Email"', '"SMS"', '""', "null", '"Email"', '"Name"']
+    assert len(fake.devices.commands) == before + 3
     assert fake.devices.commands[-1].snapshots.selector == res("option").to_proto()
 
     fake.devices.responder = lambda _: pb.CommandResult(snapshots=pb.ElementSnapshotList())
-    assert json.loads(agent.elements("id=option")) == []
-    assert json.loads(agent.elements("id=option", texts=True)) == []
-    assert len(fake.devices.commands) == before + 4
+    assert json.loads(agent.elements("id=option", as_json=True)) == []
+    assert agent.elements("id=option", texts=True) == "no match"
+    assert len(fake.devices.commands) == before + 5
     assert not fake.devices.snapshot_requests
     assert not agent.records.list()  # Reads must not acquire refs or start a step history.
 
@@ -110,9 +111,9 @@ def test_cli_routes_state_text_projection_device_and_budget(fake, agent):
     fake.devices.responder = _reply
     parser = cli.parser()
     default = cli.run(parser.parse_args(["elements", "id=option"]), agent)
-    assert json.loads(default)[0]["checked"] is True
+    assert default.splitlines()[0].startswith('"Email"') and "checked" in default.splitlines()[0]
     projected = cli.run(parser.parse_args([
-        "elements", "id=option,pkg=com.shop", "--texts", "--device", "emulator-5554", "--timeout", "3s",
+        "elements", "id=option,pkg=com.shop", "--texts", "--json", "--device", "emulator-5554", "--timeout", "3s",
     ]), agent)
     assert json.loads(projected) == ["Email", "SMS", "", None, "Email", "Name"]
     assert len(fake.devices.commands) == 2
@@ -135,12 +136,12 @@ async def test_mcp_tool_has_read_only_schema_and_forwards_the_same_options(fake,
         budget = next(branch for branch in fields["timeout_seconds"]["anyOf"] if branch.get("type") == "number")
         assert budget["maximum"] == 120 and budget["minimum"] == .001
         assert "not refs" in tool.description or "no refs" in tool.description
-        values = _mcp_json(await client.call_tool("elements", {"target": "id=option"}))
+        values = _mcp_json(await client.call_tool("elements", {"target": "id=option", "as_json": True}))
         assert values[0]["checked"] is True
         assert all("ref" not in item for item in values)
         before = len(fake.devices.commands)
         values = _mcp_json(await client.call_tool("elements", {
-            "target": "id=option,pkg=com.shop", "texts": True,
+            "target": "id=option,pkg=com.shop", "texts": True, "as_json": True,
             "timeout_seconds": 4, "device": "emulator-5554", "session": "agent",
         }))
         assert values == ["Email", "SMS", "", None, "Email", "Name"]

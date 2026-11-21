@@ -127,8 +127,10 @@ def parser() -> argparse.ArgumentParser:
     p = verb("unquarantine", "put a checked quarantined device back in service (retries its cleanup first)", common)
     p.add_argument("serial")
     verb("detach", "detach one device without ending its session", on_device)
-    verb("server-info", "daemon version, compatibility and configuration as JSON", common)
-    verb("device-info", "complete current device information as JSON", on_device)
+    p = verb("server-info", "daemon version, compatibility and configuration", common)
+    p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
+    p = verb("device-info", "complete current device information", on_device)
+    p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
     p = verb("capabilities", "read SDK operation support and prerequisites; no device changes", on_device)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured capability entries")
 
@@ -155,18 +157,20 @@ def parser() -> argparse.ArgumentParser:
     level = p.add_mutually_exclusive_group()
     level.add_argument("-i", "--interactive", dest="level", action="store_const", const=render.INTERACTIVE, help="interactive controls with descendant context and labeled groups")
     level.add_argument("--all", dest="level", action="store_const", const=render.ALL, help="every node, layout containers too")
-    p.add_argument("--candidates", action="store_true", help="complete structured SDK snapshot; incompatible with view filters")
+    p.add_argument("--json", dest="as_json", action="store_true", help="the complete structured snapshot with selector candidates; no view level or filter")
     p.add_argument("--package", help="only windows rooted in this package")
     p.add_argument("--window", type=int, help="only this one-based window ordinal from the snapshot header")
     p.add_argument("--hide-keyboard", action="store_true", help="hide input-method windows; unknown types remain visible")
     p.add_argument("--hide-system-chrome", action="store_true", help="hide Android system-type windows, not system-owned apps")
 
-    for name, help in (("inspect", "read one node's complete SDK state as JSON"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
+    for name, help in (("inspect", "read one node's complete state"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
         p = verb(name, help, on_device)
         p.add_argument("target", help=TARGET_HELP)
         p.add_argument("--timeout", type=_command_duration, help="read budget, at most 120s")
+        p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
 
-    p = verb("elements", "read all matching nodes as a JSON array in one bulk read", on_device, budget)
+    p = verb("elements", "read all matching nodes in one bulk read, one line each", on_device, budget)
+    p.add_argument("--json", dest="as_json", action="store_true", help="the SDK snapshots (or texts) as a JSON array")
     p.add_argument("target", help="written selector with optional pkg and relations; no refs, first or index")
     p.add_argument("--texts", action="store_true", help="return raw text values instead of element state; preserve nulls and empty strings")
 
@@ -350,6 +354,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
     p.add_argument("--any-app", action="store_true", help="open-link: let any app handle the link, not only this one")
+    p.add_argument("--json", dest="as_json", action="store_true", help="reads (granted, running, locale, installed, process): the value as JSON")
     p.add_argument("--timeout", type=_command_duration, help="supported lifecycle/visibility/process actions: at most 120s")
     p.add_argument(
         "--extra",
@@ -427,9 +432,9 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "detach":
         return agent.detach(device)
     if v == "server-info":
-        return agent.server_info()
+        return agent.server_info(as_json=args.as_json)
     if v == "device-info":
-        return agent.device_info(device)
+        return agent.device_info(device, as_json=args.as_json)
     if v == "capabilities":
         return agent.capabilities(device, as_json=args.as_json)
     if v == "deaths":
@@ -443,13 +448,13 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "media-record":
         return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max_seconds, out=args.out)
     if v == "snapshot":
-        return agent.snapshot(device, args.level or render.DEFAULT, candidates=args.candidates,
+        return agent.snapshot(device, args.level or render.DEFAULT, as_json=args.as_json,
                               package=args.package, window=args.window, hide_keyboard=args.hide_keyboard,
                               hide_system_chrome=args.hide_system_chrome)
     if v in ("inspect", "exists", "count"):
-        return getattr(agent, v)(args.target, device, args.timeout)
+        return getattr(agent, v)(args.target, device, args.timeout, as_json=args.as_json)
     if v == "elements":
-        return agent.elements(args.target, device, args.timeout, texts=args.texts)
+        return agent.elements(args.target, device, args.timeout, texts=args.texts, as_json=args.as_json)
     if v == "tap":
         return agent.tap(args.target, device, long=args.long, settle=settle, double=args.double,
                          outside_panel=args.outside_panel, allow_reach_below=args.allow_reach_below,
@@ -533,7 +538,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
-        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra, timeout=args.timeout)
+        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra, timeout=args.timeout, as_json=args.as_json)
     raise AssertionError(v)
 
 

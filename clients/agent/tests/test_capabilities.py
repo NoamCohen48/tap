@@ -46,8 +46,10 @@ async def test_mcp_reports_identical_json_and_is_read_only(fake, agent):
         capability = next(tool for tool in tools.tools if tool.name == "capabilities")
         assert capability.annotations is not None
         assert capability.annotations.read_only_hint is True
-        result = await client.call_tool("capabilities", {})
+        result = await client.call_tool("capabilities", {"as_json": True})
         assert not result.is_error
         assert isinstance(result.content[0], TextContent)
         assert json.loads(result.content[0].text) == expected
+        text = await client.call_tool("capabilities", {})
+        assert text.content[0].text == agent.capabilities()
     assert fake.devices.commands == commands

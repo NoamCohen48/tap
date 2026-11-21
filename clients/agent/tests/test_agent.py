@@ -79,8 +79,8 @@ async def test_mcp_snapshot_context_and_filters(fake, server):
                                                     "window": 1, "hide_keyboard": True, "hide_system_chrome": True})
         assert not result.is_error
         assert result.content[0].text == '# com.android.settings · window 1\n@e1  context="Network & internet"'
-        result = await client.call_tool("snapshot", {"candidates": True, "hide_keyboard": True})
-        assert result.is_error and "without filters" in result.content[0].text
+        result = await client.call_tool("snapshot", {"as_json": True, "hide_keyboard": True})
+        assert result.is_error and "no view level or filter" in result.content[0].text
 
 
 def test_cold_start_policy_is_forwarded_and_never_replaces_an_active_attachment(fake, agent):
