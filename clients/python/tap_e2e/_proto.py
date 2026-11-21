@@ -336,6 +336,7 @@ def device_info(info: pb.DeviceInfo) -> DeviceInfo:
         high_contrast_text=_optional(info, "high_contrast_text"),
         color_inversion=_optional(info, "color_inversion"),
         bold_text=info.bold_text,
+        soft_keyboard=_optional(info, "soft_keyboard"),
     )
 
 

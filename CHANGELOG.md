@@ -8,6 +8,12 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- A soft-keyboard condition: `DeviceService.SetSoftKeyboard` sets Android's "show the on-screen
+  keyboard with a hardware keyboard" (`show_ime_with_hard_keyboard`) until detach, and
+  `DeviceInfo.soft_keyboard` reads it back. Kotlin `setSoftKeyboard`, Python `set_soft_keyboard`,
+  tap-agent `condition soft-keyboard on|off` (also in `condition` and `device-info`). Input methods
+  that follow it hide the soft keyboard while a hardware keyboard is connected unless it is on;
+  Gboard on an API 34 emulator showed the keyboard either way.
 - Key presses can be long, held, double or counted: `PressKey` gains `long_press`, `hold_ms`,
   `presses` and `interval_ms`, which the driver injects in real time with the key repeats a held
   key sends (`FLAG_LONG_PRESS` at the device's long-press timeout). Kotlin `pressKey(code, presses,

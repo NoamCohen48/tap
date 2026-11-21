@@ -1340,6 +1340,21 @@ class DeviceSessionTest {
         }
 
     @Test
+    fun `the soft keyboard setting is read back and restored`() =
+        runBlocking {
+            val state = FakeDeviceState(mapOf(StateKey.SOFT_KEYBOARD to "0"))
+            openWithState("session-soft-keyboard", state) { session, _ ->
+                session.conditions.setSoftKeyboard(true)
+                assertEquals("1", state.values[StateKey.SOFT_KEYBOARD])
+                state.stuck += StateKey.SOFT_KEYBOARD
+                assertFailsWith<DeviceSettingException> { session.conditions.setSoftKeyboard(false) }
+                state.stuck.clear()
+                session.close(timeoutMs = 5_000)
+                assertEquals("0", state.values[StateKey.SOFT_KEYBOARD])
+            }
+        }
+
+    @Test
     fun `stay awake and the accessibility display settings are read back and restored`() =
         runBlocking {
             val state = FakeDeviceState(mapOf(StateKey.STAY_AWAKE to "3"))

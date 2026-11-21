@@ -431,3 +431,21 @@ def test_stay_awake_and_accessibility_display_hold_until_detach_then_are_restore
             )
     finally:
         connection.close()
+
+
+def test_soft_keyboard_holds_until_detach_then_is_restored(tap_client, tap_config):
+    """The soft-keyboard-with-hardware-keyboard setting reads back in ``info()`` while attached
+    and comes back on detach."""
+    connection = tap_client.connect("soft-keyboard")
+    try:
+        serial = (tap_config.serials or connection.available_serials())[0]
+        with connection.attach_device(serial) as device:
+            before = device.info().soft_keyboard
+            if before is None:
+                pytest.skip(f"{serial} does not let the driver read show_ime_with_hard_keyboard")
+            device.set_soft_keyboard(not before)
+            assert device.info().soft_keyboard is (not before)
+        with connection.attach_device(serial) as device:
+            assert device.info().soft_keyboard is before
+    finally:
+        connection.close()

@@ -156,6 +156,11 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetStayAwakeRequest.SerializeToString,
                 response_deserializer=device__pb2.SetStayAwakeResponse.FromString,
                 _registered_method=True)
+        self.SetSoftKeyboard = channel.unary_unary(
+                '/tap.v1.DeviceService/SetSoftKeyboard',
+                request_serializer=device__pb2.SetSoftKeyboardRequest.SerializeToString,
+                response_deserializer=device__pb2.SetSoftKeyboardResponse.FromString,
+                _registered_method=True)
         self.SetAccessibilityDisplay = channel.unary_unary(
                 '/tap.v1.DeviceService/SetAccessibilityDisplay',
                 request_serializer=device__pb2.SetAccessibilityDisplayRequest.SerializeToString,
@@ -379,6 +384,16 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SetSoftKeyboard(self, request, context):
+        """Shows the soft keyboard while a hardware keyboard is connected (Settings › Physical keyboard
+        › Show on-screen keyboard): Settings.Secure `show_ime_with_hard_keyboard` 1, or 0. Input
+        methods that follow it hide the soft keyboard while a hardware keyboard is connected unless it
+        is 1; whether one does is up to the input method. Captured and restored on detach.
+        """
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def SetAccessibilityDisplay(self, request, context):
         """The accessibility display settings: high-contrast text, color inversion and bold text (API
         31+, else FAILED_PRECONDITION / UNSUPPORTED_API before anything changes), as Settings ›
@@ -547,6 +562,11 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     servicer.SetStayAwake,
                     request_deserializer=device__pb2.SetStayAwakeRequest.FromString,
                     response_serializer=device__pb2.SetStayAwakeResponse.SerializeToString,
+            ),
+            'SetSoftKeyboard': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetSoftKeyboard,
+                    request_deserializer=device__pb2.SetSoftKeyboardRequest.FromString,
+                    response_serializer=device__pb2.SetSoftKeyboardResponse.SerializeToString,
             ),
             'SetAccessibilityDisplay': grpc.unary_unary_rpc_method_handler(
                     servicer.SetAccessibilityDisplay,
@@ -1222,6 +1242,33 @@ class DeviceService:
             '/tap.v1.DeviceService/SetStayAwake',
             device__pb2.SetStayAwakeRequest.SerializeToString,
             device__pb2.SetStayAwakeResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SetSoftKeyboard(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/tap.v1.DeviceService/SetSoftKeyboard',
+            device__pb2.SetSoftKeyboardRequest.SerializeToString,
+            device__pb2.SetSoftKeyboardResponse.FromString,
             options,
             channel_credentials,
             insecure,

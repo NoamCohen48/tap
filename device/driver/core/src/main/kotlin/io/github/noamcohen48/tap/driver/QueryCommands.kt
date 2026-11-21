@@ -125,6 +125,7 @@ internal class QueryCommands(
             .apply {
                 conditions.highContrastText?.let(::setHighContrastText)
                 conditions.colorInversion?.let(::setColorInversion)
+                conditions.softKeyboard?.let(::setSoftKeyboard)
             }.setBoldText(conditions.boldText)
             .setDriverUid(Process.myUid())
             .build()

@@ -5,7 +5,7 @@ import io.github.noamcohen48.tap.protocol.Commands
 /**
  * Device-wide conditions a test may change for its session: animations, dark mode, font scale,
  * display density, the device locale, the network switches, a mock location, stay-awake, the
- * accessibility display settings, and the driver's notification access. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
+ * soft keyboard with a hardware keyboard, the accessibility display settings, and the driver's notification access. Each change captures the value it replaces first ([DeviceSession.captureBeforeChange]),
  * so detach restores the device as its owner left it, and is read back afterwards: a value the
  * device did not take is a [DeviceSettingException]. Apps see the new configuration as Android
  * delivers it (activities may be recreated); waiting for that is the test's business.
@@ -115,6 +115,16 @@ class DeviceConditions internal constructor(
      */
     suspend fun setStayAwake(enabled: Boolean) {
         change(mapOf(StateKey.STAY_AWAKE to if (enabled) STAY_ON_ALL else "0"))
+    }
+
+    /**
+     * Shows the soft keyboard while a hardware keyboard is connected (Settings › Physical keyboard
+     * › Show on-screen keyboard, `show_ime_with_hard_keyboard`), or not. Input methods that follow
+     * it hide the soft keyboard while a hardware keyboard is connected unless it is on; Gboard on an
+     * API 34 emulator showed the keyboard either way. With no hardware keyboard it changes nothing.
+     */
+    suspend fun setSoftKeyboard(enabled: Boolean) {
+        change(mapOf(StateKey.SOFT_KEYBOARD to if (enabled) "1" else "0"))
     }
 
     /**

@@ -898,14 +898,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         name: Annotated[
             Literal[
                 "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
-                "stay-awake", "high-contrast-text", "color-inversion", "bold-text",
+                "stay-awake", "soft-keyboard", "high-contrast-text", "color-inversion", "bold-text",
             ]
             | None,
             Field(description="The condition to read or change; omit to read them all."),
         ] = None,
         value: Annotated[
             str,
-            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/high-contrast-text/color-inversion/bold-text: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
+            Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/soft-keyboard (the soft keyboard shows with a hardware keyboard)/high-contrast-text/color-inversion/bold-text: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
         ] = "",
         session: Session = "",
         device: Device = "",

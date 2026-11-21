@@ -55,6 +55,8 @@ import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationResponse
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
+import io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest
+import io.github.noamcohen48.tap.api.v1.SetSoftKeyboardResponse
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
@@ -685,6 +687,14 @@ class DeviceService(
                 it.setStayAwake(request.enabled)
             }
             SetStayAwakeResponse.getDefaultInstance()
+        }
+
+    override suspend fun setSoftKeyboard(request: SetSoftKeyboardRequest): SetSoftKeyboardResponse =
+        reply {
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_soft_keyboard", { enabled = request.enabled }) {
+                it.setSoftKeyboard(request.enabled)
+            }
+            SetSoftKeyboardResponse.getDefaultInstance()
         }
 
     override suspend fun setAccessibilityDisplay(request: SetAccessibilityDisplayRequest): SetAccessibilityDisplayResponse =
