@@ -1,4 +1,4 @@
-"""`history` and `record`: the server's kept activity, with the agent's own steps merged in.
+"""`history` and `history keep`: the server's kept activity, with the agent's own steps merged in.
 
 The server (``client.history``) keeps every call, crash, ANR and device-log line; the agent adds
 only what the server cannot know: its steps (the commands it was asked to run, with their
@@ -108,7 +108,7 @@ def _named(agent: Agent, name: str) -> HistoryRecording:
             mine = None
         found = [r for r in found if r.connection_id == mine] or found
     if not found:
-        _usage(f"no recording named {name!r}; `record list` shows them")
+        _usage(f"no recording named {name!r}; `history keep list` shows them")
     if len(found) > 1:
         _usage(f"several connections have a recording named {name!r}: give its id ({', '.join(r.id for r in found)})")
     return found[0]
@@ -118,21 +118,22 @@ def _issues(recording: HistoryRecording) -> str:
     return "".join(f"\nWARNING: {issue}" for issue in recording.issues)
 
 
-def record(agent: Agent, action: str, name: str | None, *, long: bool = False) -> str:
-    """Start, stop, list or clean a named recording: a range of the session's history the server
-    keeps past its retention policy. Read one with ``history --recording NAME``."""
+KEEP_ACTIONS = ("start", "stop", "list", "clean")
+
+
+def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = False) -> str:
+    """``history keep start|stop|list|clean``: a named recording, a range of the session's history
+    the server keeps past its retention policy. Read one with ``history --kept NAME``."""
     _flags(long=long)
-    if action == "export":
-        _usage("record export is now `history --recording NAME` (add --logs, --json, --details as needed)")
-    if action not in ("start", "stop", "list", "clean"):
-        _usage("record action must be start, stop, list or clean")
+    if action not in KEEP_ACTIONS:
+        _usage(f"history keep takes {', '.join(KEEP_ACTIONS)}")
     if action == "list":
         if name is not None:
-            _usage("record list takes no name")
+            _usage("history keep list takes no name")
     elif not isinstance(name, str) or not name:
-        _usage(f"record {action} needs NAME")
+        _usage(f"history keep {action} needs NAME")
     if long and action != "list":
-        _usage("-L is only for record list")
+        _usage("-L is only for history keep list")
 
     def run() -> str:
         if action == "list":
@@ -155,7 +156,7 @@ def record(agent: Agent, action: str, name: str | None, *, long: bool = False) -
                 agent.records.start(name, agent.session, connection.id, {}, log_status={"recording_id": saved.id})
             except RecordError as error:
                 raise RecordError(f"the server is recording {name!r}, but the agent could not save its steps for it; "
-                    "`record stop`/`record clean` still work") from error
+                    "`history keep stop`/`history keep clean` still work") from error
             return f"recording {name!r} (devices attached later join it)"
         saved = _named(agent, name)
         if action == "stop":
@@ -188,23 +189,32 @@ def history(agent: Agent, action: str = "read", value: str | None = None, *, sta
             as_json: bool = False, details: bool = False, devices=(), packages=(), priority: str | None = None,
             tags=(), grep: str | None = None, actions: bool = True, driver_lines: bool = False,
             since_marker: str | None = None, until_marker: str | None = None, step: str | int | None = None,
-            last_action: bool = False, recording: str | None = None, after: str | None = None) -> str:
+            last_action: bool = False, kept: str | None = None, after: str | None = None,
+            name: str | None = None, long: bool = False) -> str:
     """Read what happened: the server's calls, crashes, ANRs and gaps (plus device logs with
-    ``logs`` or any log filter), merged with the agent's steps and capture bundles. ``mark NAME``
-    / ``redact REGEX`` act on this session's held devices instead."""
+    ``logs`` or any log filter), merged with the agent's steps and capture bundles; ``kept``
+    reads a kept range. ``mark NAME`` / ``redact REGEX`` act on this session's held devices
+    instead, and ``keep`` with ``value`` start|stop|list|clean and ``name`` manages kept ranges."""
     from . import history_selection as selection
+    recording = kept
     _flags(logs=logs, json=as_json, details=details, actions=actions, driver_lines=driver_lines, last_action=last_action)
     try:
         devices = selection.serials(devices)
     except RecordError as error:
         _usage(str(error))
-    if action not in ("read", "mark", "redact"):
-        _usage("history action must be read, mark or redact")
+    if action not in ("read", "mark", "redact", "keep"):
+        _usage("history action must be read, mark, redact or keep")
     starts = {"--from": start, "--last": last, "--since-marker": since_marker, "--step": step,
         "--last-action": last_action or None, "--after": after}
     given = [flag for flag, bound in starts.items() if bound is not None]
     ends = [flag for flag, bound in {"--until": until, "--until-marker": until_marker}.items() if bound is not None]
     filters = bool(packages or priority or tags or grep is not None or not actions or driver_lines)
+    if action == "keep":
+        if given or ends or recording or devices or logs or details or filters or as_json or limit != 200:
+            _usage("history keep takes only start|stop|list|clean, NAME and -L")
+        return keep(agent, value, name, long=long)
+    if name is not None or long:
+        _usage("NAME and -L go with history keep")
     if action != "read":
         if given or ends or recording or logs or details or filters or limit != 200:
             _usage(f"history {action} takes only {'NAME' if action == 'mark' else 'REGEX'}, --device and --json")
@@ -500,6 +510,6 @@ def release(agent: Agent) -> str:
                 before_stop=(lambda: {"recording_id": recording_id, "stopped": agent.client.history.stop_recording(recording_id).id})
                 if recording_id else None)
         except (RecordError, TapError, OSError, ValueError):
-            text += "\nWARNING: released, but the session's recording could not be stopped; `record stop NAME` stops it"
+            text += "\nWARNING: released, but the session's recording could not be stopped; `history keep stop NAME` stops it"
         return text
     return agent._run(run)

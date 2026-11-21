@@ -67,32 +67,32 @@ followers and failed catch-up reads leave explicit evidence gaps.
 ## Recordings
 
 ```sh
-tap-agent record start checkout
+tap-agent history keep start checkout
 tap-agent tap text=Pay,pkg=com.shop
 tap-agent wait text=Receipt,pkg=com.shop
-tap-agent record stop checkout
+tap-agent history keep stop checkout
 tap-agent release
-tap-agent history --recording checkout
-tap-agent history --recording checkout --details
-tap-agent history --recording checkout --logs --json > checkout.json
+tap-agent history --kept checkout
+tap-agent history --kept checkout --details
+tap-agent history --kept checkout --logs --json > checkout.json
 ```
 
-`record start NAME` keeps the session's history from now on: its calls, crashes and the device
-logs of every device attached to it, including devices attached after the start. `record stop
+`history keep start NAME` keeps the session's history from now on: its calls, crashes and the device
+logs of every device attached to it, including devices attached after the start. `history keep stop
 NAME` ends the range; it does not release devices, and `release` stops an open recording.
-Reading a live recording is allowed and shows what it has so far. `history --recording NAME`
+Reading a live recording is allowed and shows what it has so far. `history --kept NAME`
 takes every other flag, including bounds inside the range.
 
 ```sh
-tap-agent record list
-tap-agent record list -L
-tap-agent record clean checkout
+tap-agent history keep list
+tap-agent history keep list -L
+tap-agent history keep clean checkout
 ```
 
 Names are per session: another session may use the same name. Outside the session that made it,
-`--recording` needs the recording's id (printed by `record list -L`) when the name is not unique.
+`--kept` needs the recording's id (printed by `history keep list -L`) when the name is not unique.
 `-L` adds state, times, the id and retained disk bytes; ranges can share stored segments, so the
-bytes are not what cleaning one will reclaim. `record clean NAME` deletes a stopped recording;
+bytes are not what cleaning one will reclaim. `history keep clean NAME` deletes a stopped recording;
 its range then expires like the rest. Recordings bypass rolling eviction, not hard storage or
 free-space limits. `media-record` is separate video/audio capture.
 
@@ -105,7 +105,7 @@ inspected after release or a server restart while their history is kept.
 Agent steps are stored privately in `$TAP_AGENT_DIR/records` (default
 `.tap/agent/records`); CLI and MCP processes must share it. Missing agent steps are never
 reconstructed from calls. When the server cannot be reached, `history` still shows the local
-steps with an `unavailable` warning. `record` needs the server.
+steps with an `unavailable` warning. `history keep` needs the server.
 
 ## Read the evidence honestly
 

@@ -103,10 +103,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
     (
         "Turning a session into a test",
         "The server keeps every call, crash, ANR and device-log line after release; `history` shows "
-        "them with this agent's own steps, page by page, as text or JSON on stdout. `record start` / "
-        "`record stop` keep a named range past the server's retention; read it with "
-        "`history --recording NAME`. See [History and recordings](export.md).",
-        ["record", "history"],
+        "them with this agent's own steps, page by page, as text or JSON on stdout. `history keep start` / "
+        "`history keep stop` keep a named range past the server's retention; read it with "
+        "`history --kept NAME`. See [History and recordings](export.md).",
+        ["history"],
     ),
     (
         "Device events",

@@ -25,10 +25,10 @@ tap-agent release
   the window, including idle periods and sessions with no local steps. Crashes/ANRs are
   explicit in text and JSON regardless of `--logs`; redacted stacks with `--details` (always in
   JSON). Missing evidence is a `GAP:` entry or a `WARNING:` issue, never silently dropped.
-- `record start NAME` keeps a named range of this session's history (every device attached to
-  it, also later ones) past rolling eviction; `record stop NAME` ends it, as does `release`.
-  `history --recording NAME` reads it, also after release/restart. `record list` prints names,
-  `-L` adds state, times, id and bytes. `record clean NAME` deletes a stopped recording.
+- `history keep start NAME` keeps a named range of this session's history (every device attached to
+  it, also later ones) past rolling eviction; `history keep stop NAME` ends it, as does `release`.
+  `history --kept NAME` reads it, also after release/restart. `history keep list` prints names,
+  `-L` adds state, times, id and bytes. `history keep clean NAME` deletes a stopped recording.
 - Local steps are private under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share
   it between CLI/MCP processes. SDKs read history directly through `client.history`, never
   through the CLI. Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space

@@ -37,7 +37,7 @@ if TYPE_CHECKING:
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
 WAITS = frozenset({"wait", "settle", "toast", "watch_first"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
-EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "recording", "pull", "activity", "record", "history"})
+EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "recording", "pull", "activity", "history"})
 
 
 def _word(value: Any) -> Any:
