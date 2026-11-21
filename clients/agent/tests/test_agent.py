@@ -718,7 +718,7 @@ EXPECTED_TOOLS = {
     "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count", "elements",
-    "detach", "server_info", "device_info", "capabilities", "log", "media_record", "scroll_until", "record", "history",
+    "detach", "server_info", "device_info", "capabilities", "media_record", "scroll_until", "record", "history",
     "unquarantine", "deaths", "wait_event", "watch",
 }
 

@@ -8,6 +8,12 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- `tap-agent history` replaces the separate `log` command/tool, with repeated device selection,
+  log filters, explicit marker/step/action/opaque-cursor bounds and omission-reporting log tails.
+  `history mark/redact` control only held attachments and report partial acknowledgements.
+  Driver diagnostics move to `tap logs driver --serial SERIAL`. Explicit `capture` creates
+  new private bundles and indexes external references in history/protected exports; historical
+  reads never collect fresh device state or embed file contents.
 - Incident history now supports `tap-agent history --last 30s` and full timestamp windows,
   including background logs/calls with no agent steps or live connection. Independent crashes
   and ANRs survive release/restart and appear in every history/recording text and JSON mode.

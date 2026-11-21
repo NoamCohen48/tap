@@ -18,6 +18,7 @@ tap sessions [--state-dir DIR] [--json] [--watch] [--interval SECONDS]
 tap sessions show SESSION_ID [--state-dir DIR] [--json]
 tap sessions close SESSION_ID --force [--reason TEXT] [--state-dir DIR] [--json]
 tap logs [--state-dir DIR] [--tail N] [--follow]
+tap logs driver --serial SERIAL [--state-dir DIR] [--json]
 tap config show [startup options] [--json]
 tap diagnostics --out PATH [--state-dir DIR]
 tap completion bash|zsh|fish
@@ -122,9 +123,16 @@ milliseconds; in-flight calls keep a session's reported idle time at zero.
 
 ### Configuration, logs and diagnostics
 
+`tap logs` reads daemon.log. `tap logs driver --serial SERIAL` instead reads the original
+currently attached driver's bounded instrumentation buffer through the authenticated daemon.
+It requires a unique existing attachment and never creates a session, attaches a device or
+runs `tap-agent`. This buffer is not a durable post-detach archive. For retained device logcat
+and activity use `tap-agent history --logs`; for an explicit current-state bundle use `capture`.
+
 ```bash
 tap config show --json
 tap logs --tail 200 --follow
+tap logs driver --serial SERIAL
 tap diagnostics --out tap-diagnostics.zip
 ```
 

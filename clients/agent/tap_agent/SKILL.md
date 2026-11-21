@@ -268,24 +268,33 @@ not an app-state assertion. None of this uses synchronization/awaitIdle.
 ## Evidence
 
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
-`capture` saves screenshot, hierarchy, device info and driver log together. Files go under
-`.tap/agent/` unless `-o` says otherwise.
+`capture` saves screenshot, hierarchy, device info, driver diagnostics and device logs/crashes,
+including **current** activity/task/window state. It creates a new private directory (0700)
+and files (0600), refusing existing destinations. Files go under `.tap/agent/` unless `-o`
+says otherwise. History/record exports retain timestamped references to the external files,
+not their contents. Clean never deletes those files. Index failure preserves saved files and
+warns; do not repeat capture to recover them. A history read never collects current state.
 
-`log` prints the device log since the attach: the app's logcat lines with Tap's own actions
-(`── tap  text="Pay"`) and markers between them, secrets redacted, times on the host's clock.
-- At most 200 entries (`--limit` up to 5000). From a start: the first ones, ending with
-  `(N more entries …; read on with: log --after C …)`; run that for the next page. No start: the newest.
-- A phone logs hundreds of lines a second: add `--package PKG`. The driver's own lines are hidden (`--driver-lines` shows them).
-- What an action caused: `log --last-action --package PKG --priority warn`.
-- A flow: `log mark NAME` before it, then `log --since NAME [--until OTHER]`. A name means its
-  newest marker; `mark` prints the cursor, and `@CURSOR` (`--since @1840`) names exactly that marker.
-- Your steps are named in it (`── step 3 fill  [id]`); `log --step 3` prints one step's part.
-- `--json` returns the entries as data (`kind`: line / action / marker / gap) to filter or compute on.
- `log driver` and `log evidence` save the Tap driver's log and the
-device's failure evidence (log, crashes/ANRs, activity and window state) to
-new private files (0600), never inline or overwritten. Treat accessibility data and logs as
-potentially sensitive. `snapshot --candidates` returns structured SDK data instead of rendered
-lines, including selector candidates; use the default view.
+Use `history` for logs and activity, not a separate `log` tool:
+- Merge devices by default; repeat `--device SERIAL` to filter before step pagination.
+- `history --last-action --priority warn` reads from each selected device's latest action.
+- `history mark NAME` bookmarks selected held attachments; `--since-marker NAME` and
+  `--until-marker OTHER` resolve the latest acknowledged batch, with original receipt identity.
+- `history redact REGEX` adds attachment-scoped Java regex redaction, including retained lines.
+  Controls require this held session, never attach devices, and report partial acknowledgements.
+- `--step CURSOR|STEP_ID` selects one global step. `--after ARCHIVE_UUID:CURSOR` uses a retained
+  log/RPC receipt, not a bare integer; same-time observations on other devices remain visible.
+- `--package`, `--priority`, `--tag`, `--grep`, `--no-actions`, `--driver-lines` imply logs.
+  Line filters never remove crashes/ANRs, RPC outcomes or capture gaps. Package filtering needs
+  original live ownership; use tag/priority/regex for closed archives. Unknown driver ownership
+  is not inferred from a replacement attachment.
+- `--limit` limits intent steps, not window logs. `--tail N` explicitly limits displayed log
+  entries and reports omissions, keeping gaps. `--json` is the common `tap-history/1` snapshot.
+- Infrastructure: **daemon CLI** `tap logs driver --serial SERIAL` reads the current attachment's
+  bounded driver buffer; `tap logs` reads daemon.log. No agent `log driver` or `log evidence`.
+
+Treat accessibility data and logs as potentially sensitive. `snapshot --candidates` returns
+structured SDK data with selector candidates instead of rendered lines; use the default view.
 
 `media-record start --max-seconds 10` explicitly starts silent video through the daemon's scrcpy;
 `media-record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,

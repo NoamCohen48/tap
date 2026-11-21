@@ -135,6 +135,12 @@ internal val COMMAND_HELP =
                 STATE + setOf("--tail", "--follow"),
                 example = "tap logs --tail 200 --follow",
             ),
+        "logs driver" to
+            CommandHelp(
+                "Read the currently attached device driver's bounded diagnostics; never attach a device.",
+                STATE + setOf("--serial", "--json"),
+                example = "tap logs driver --serial SERIAL",
+            ),
         "config show" to
             CommandHelp(
                 "Show effective running configuration and local startup defaults with their sources; no credentials.",
@@ -256,6 +262,7 @@ internal fun parseCommandLine(args: List<String>): CommandLine {
         if (it.toDoubleOrNull()?.takeIf { n -> n.isFinite() && n in 0.1..3600.0 } == null) invalid("--interval must be 0.1..3600 seconds")
     }
     if (("--driver-apk" in options) != ("--driver-test-apk" in options)) invalid("--driver-apk and --driver-test-apk go together")
+    if (command == "logs driver" && "--serial" !in options) invalid("`tap logs driver` needs --serial SERIAL")
     if (command == "unquarantine" && "--serial" !in options) invalid("`tap unquarantine` needs --serial SERIAL")
     if (command == "sessions close" && "--force" !in options) invalid("closing a session interrupts its client; pass --force to confirm")
     options["--reason"]?.let {

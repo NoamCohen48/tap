@@ -90,13 +90,24 @@ class HistoryExport:
                     detail = f"marker {entry['marker']}"
                 else:
                     detail = json.dumps(entry.get("action", {}), ensure_ascii=False, separators=(',', ':'))
-                rows.append((at, f"{at}  {serial}  {detail}"))
+                identity = entry.get("entry_id") or f"{capture.get('attached_device_id', '?')}:{entry.get('cursor', '?')}"
+                rows.append((at, f"{at}  {serial}  [{identity}]  {detail}"))
+        for artifact in self.data.get("artifacts", []):
+            at = artifact.get("at", "")
+            failures = artifact.get("failures", {})
+            detail = f"; unavailable parts: {', '.join(sorted(failures))}" if failures else ""
+            rows.append((at, (
+                f"{at}  {artifact.get('serial', '?')}  CAPTURE reference: {artifact.get('directory', '')} "
+                f"(current state requested {artifact.get('started_at', at)}; external local files{detail})"
+            )))
         rows.extend(death_rows(self.data, details=details))
         lines = [line for _, line in sorted(rows, key=lambda row: row[0])]
         if self.data.get("recording"):
             lines.insert(0, f"{self.data['recording']} ({self.data.get('state', 'snapshot')})")
         if self.data.get("steps_truncated"):
             lines.append("WARNING: agent intent is paginated; the time-window evidence is not restricted to this step page")
+        if self.data.get("log_omitted"):
+            lines.append(f"WARNING: --tail omitted {self.data['log_omitted']} matching log entries; capture gaps remain visible")
         if self.data.get("dropped_steps"):
             lines.append(f"WARNING: {self.data['dropped_steps']} step cursors in this range are no longer retained")
         for capture in list(self.data.get("event_capture", [])) + list(self.data.get("log", {}).values()):

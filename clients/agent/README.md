@@ -35,9 +35,19 @@ tap-agent release
   unknown outcomes and unavailable daemon evidence stay explicit, never reconstructed.
   Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve;
   configure with `tap config logging-policy`. Protection cannot override hard limits.
-- `log` prints the device log with the session's steps, `log --step N` one step's part.
-  `media-record start|stop` is video/audio capture.
-  Converting an export into a test remains the user's job.
+- `history` is the only reader: repeated `--device` filters precede pagination; log filters
+  (`--package`, `--priority`, `--tag`, `--grep`) imply logs, never filter crashes or capture gaps.
+  `--step CURSOR|ID`, `--last-action`, marker bounds and opaque `--after ARCHIVE_UUID:CURSOR`
+  select original evidence. `--tail N` explicitly limits log rows and reports omissions.
+  Package filters need original live ownership; tag/priority/regex work on closed archives.
+- `history mark NAME` and `history redact REGEX` control this session's held attachments only
+  (all by default, or repeated `--device`). Bookmarks do not protect data. Partial acknowledgement
+  is explicit. No standalone `log` command/tool remains.
+- `capture -o NEW_DIRECTORY` collects current state into private files and indexes timestamped
+  external references in history/record exports; reads never capture fresh state. Cleaning
+  history does not delete the separately saved files. Driver diagnostics are daemon administration:
+  `tap logs driver --serial SERIAL`; `tap logs` still reads daemon.log.
+  `media-record start|stop` is separate video/audio capture. Converting exports into tests remains the user's job.
 - Every step ends with the crashes and ANRs of watched apps that no earlier step reported (top
   frames inline, the full trace in a private file under `deaths/`); such a step exits 4.
   `--expect-death` makes a step require one, `deaths` lists the server's record, and
