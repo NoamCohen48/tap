@@ -489,6 +489,15 @@ class Agent:
         output = note + render.diff_text(device.screen_snapshot(), level, full)
         return self._with_toasts(device, output)
 
+    def _settled_after_input(self, device: Device) -> str:
+        """The settle that follows a step's input: evidence of what changed, never the step's
+        outcome. The input was already sent, so a failed settle is reported in the output, not
+        raised: raising would make a step that ran look failed, inviting a repeat."""
+        try:
+            return self._settled(device)
+        except (AgentError, TapError) as error:
+            return f"! not settled ({error}); the input was sent: use snapshot, do not repeat the step"
+
     def _act(self, device_serial: str | None, target: str, verb: str, action: Callable, settle: bool) -> str:
         def step() -> str:
             device = self._device(device_serial)
@@ -496,7 +505,7 @@ class Agent:
             with sending():
                 action(element)
             text = f"{verb} {described}"
-            return f"{text}\n{self._settled(device)}" if settle else text
+            return f"{text}\n{self._settled_after_input(device)}" if settle else text
 
         return self._run(step)
 
@@ -1044,7 +1053,7 @@ class Agent:
             with sending():
                 source.drag_to(onto.selector, timeout)
             text = f"dragged {described} onto {onto_described}"
-            return f"{text}\n{self._settled(d)}" if settle else text
+            return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)
 
@@ -1068,7 +1077,7 @@ class Agent:
                 element, _ = self._element(d, target)
                 with sending(compound=True):  # tap, focus wait, then type
                     element.type_text(text, await_focus, timeout, sensitive=sensitive)
-            return f"typed {len(text)} characters\n{self._settled(d)}" if settle else f"typed {len(text)} characters"
+            return f"typed {len(text)} characters\n{self._settled_after_input(d)}" if settle else f"typed {len(text)} characters"
 
         return self._run(step)
 
@@ -1080,7 +1089,7 @@ class Agent:
             d = self._device(device)
             with sending():
                 d.press_key(code)
-            return f"pressed {name}\n{self._settled(d)}" if settle else f"pressed {name}"
+            return f"pressed {name}\n{self._settled_after_input(d)}" if settle else f"pressed {name}"
 
         return self._run(step)
 
@@ -1098,7 +1107,7 @@ class Agent:
                     d.open_quick_settings()
                 else:
                     d.open_notifications()
-            return f"opened {panel}\n{self._settled(d)}" if settle else f"opened {panel}"
+            return f"opened {panel}\n{self._settled_after_input(d)}" if settle else f"opened {panel}"
 
         return self._run(step)
 
@@ -1124,7 +1133,7 @@ class Agent:
                 f"rotated {how}: display {info.orientation.name.lower()}, "
                 f"{info.display_rotation.name.lower().replace('_', '-')} ({info.display_width}x{info.display_height})"
             )
-            return f"{text}\n{self._settled(d)}" if settle else text
+            return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)
 
@@ -1151,7 +1160,7 @@ class Agent:
             if info.keyguard_locked:
                 keyguard = "showing (secure: needs the PIN, pattern or password)" if info.keyguard_secure else "showing"
             text = f"screen {'on' if info.screen_on else 'off'}, keyguard {keyguard}"
-            return f"{text}\n{self._settled(d)}" if settle else text
+            return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)
 
@@ -1166,7 +1175,7 @@ class Agent:
                 with sending():
                     d.hide_keyboard()
             text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
-            return f"{text}\n{self._settled(d)}" if settle else text
+            return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)
 
@@ -1519,7 +1528,7 @@ class Agent:
                 with sending():
                     d.dismiss_notification(title, text, mode, package_name=package, timeout=timeout)
                 done = "dismissed the notification"
-            return f"{done}\n{self._settled(d)}" if settle else done
+            return f"{done}\n{self._settled_after_input(d)}" if settle else done
 
         return self._run(step)
 
@@ -1561,7 +1570,7 @@ class Agent:
             with sending():
                 d.choose_permission(chosen, picked, timeout=timeout)
             text = f"pressed {choice}" + (f" ({picked.name.lower()})" if picked else "")
-            return f"{text}\n{self._settled(d)}" if settle else text
+            return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)
 

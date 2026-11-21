@@ -841,3 +841,14 @@ def test_scroll_and_swipe_say_which_way_the_finger_moved(fake, agent):
     assert cli.run(parser.parse_args(["swipe", "id=list", "--finger", "left"]), agent) == "swiped finger left id=list"
     with pytest.raises(SystemExit):
         parser.parse_args(["swipe", "id=list", "left"])
+
+
+def test_a_failed_settle_after_input_is_reported_not_raised(fake, agent):
+    agent.attach("emulator-5554")
+    # The fake reports no focused package, so the settle after the tap cannot run.
+    output = agent.tap("text=OK", settle=True)
+    assert output.splitlines()[0] == "tapped text=OK"
+    assert "! not settled (no focused app to settle" in output and "do not repeat the step" in output
+    assert [c.WhichOneof("op") for c in fake.devices.commands].count("tap") == 1
+    with pytest.raises(AgentError, match="no focused app to settle"):
+        agent.settle()  # the settle command itself still fails
