@@ -1086,44 +1086,46 @@ class Agent:
         return self._run(step)
 
     def key(self, name: str | None = None, device: str | None = None, settle: bool = False, *, list_keys: bool = False,
-            long: bool = False, hold: float | None = None, times: int = 1, interval: float | None = None) -> str:
+            long: bool = False, duration: float | None = None, count: int = 1, interval: float | None = None) -> str:
         """Presses a key: any Android key name (back, home, enter, volume-up, media-play-pause, ...)
-        or ``code:N`` for an Android key code. ``long`` holds each press for the device's long-press timeout (the
-        repeat Android reports as a long press); ``hold`` seconds holds it that long, repeating as a
-        held key does. ``times`` presses it that often, ``interval`` seconds (default 0.1) from each
-        release to the next press. ``list_keys`` prints every name with its code instead, without a
-        device; whether a key does anything is up to the device and the app in front."""
-        modes = long or hold is not None or times != 1 or interval is not None
+        or ``code:N`` for an Android key code, with ``tap``'s names for the press: ``long`` holds
+        each press for the device's long-press timeout (the repeat Android reports as a long
+        press); ``duration`` seconds holds it that long, repeating as a held key does (implies
+        ``long``). ``count`` presses it that often, ``interval`` seconds (default 0.1) from each
+        release to the next press. ``list_keys`` prints every name with its code instead, without
+        a device; whether a key does anything is up to the device and the app in front."""
+        modes = long or duration is not None or count != 1 or interval is not None
         if list_keys:
             if name is not None or settle or modes:
                 raise AgentError("key --list takes no key, press option or --settle", EXIT_USAGE)
             return key_listing()
         if name is None:
-            raise AgentError("key needs a key name or code (`key --list` prints the names)", EXIT_USAGE)
-        if long and hold is not None:
-            raise AgentError("--long holds for the device's long-press timeout; --hold for a given time: choose one", EXIT_USAGE)
-        if isinstance(times, bool) or not isinstance(times, int) or not 1 <= times <= 100:
-            raise AgentError("--times must be in 1..100", EXIT_USAGE)
-        if interval is not None and times == 1:
-            raise AgentError("--interval is the gap between presses: give --times N or --double too", EXIT_USAGE)
-        if hold is not None and not 0.001 <= hold <= 30:
-            raise AgentError("--hold must be in 1ms..30s", EXIT_USAGE)
+            raise AgentError("key needs a key name or code:N (`key --list` prints the names)", EXIT_USAGE)
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 100:
+            raise AgentError("--count must be in 1..100", EXIT_USAGE)
+        if interval is not None and count == 1:
+            raise AgentError("--interval is the gap between presses: give --count N too", EXIT_USAGE)
+        if duration is not None and not 0.001 <= duration <= 30:
+            raise AgentError("--duration must be in 1ms..30s", EXIT_USAGE)
         if interval is not None and not 0.04 <= interval <= 1:
             raise AgentError("--interval must be in 40ms..1s", EXIT_USAGE)
-        if hold is not None and hold * times + (interval or 0.1) * (times - 1) > 30:
-            raise AgentError("the key sequence must not exceed 30s", EXIT_USAGE)
-        verb = "long-pressed" if long else "held" if hold is not None else "pressed"
-        done = f"{verb} {name}" + (f" for {format_duration(hold)}" if hold is not None else "") + (f" x{times}" if times != 1 else "")
+        held = duration is not None or long
+        # As the server counts it: a long press at its worst case, 1.5 s.
+        press = duration if duration is not None else 1.5 if long else 0.0
+        if press * count + (interval or 0.1) * (count - 1) > 30:
+            raise AgentError("the key sequence must not exceed 30s (a long press counts 1.5s)", EXIT_USAGE)
+        done = (f"{'long-pressed' if held else 'pressed'} {name}" + (f" for {format_duration(duration)}" if duration is not None else "")
+                + (f" x{count}" if count != 1 else ""))
 
         def step() -> str:
             code = parse_key(name)
             d = self._device(device)
             gap = 0.1 if interval is None else interval
             with sending():
-                if long:
-                    d.long_press_key(code, presses=times, interval=gap)
+                if held:
+                    d.long_press_key(code, duration=duration, count=count, interval=gap)
                 else:
-                    d.press_key(code, presses=times, interval=gap, hold=hold)
+                    d.press_key(code, count=count, interval=gap)
             return f"{done}\n{self._settled_after_input(d)}" if settle else done
 
         return self._run(step)

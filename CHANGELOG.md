@@ -28,12 +28,15 @@ name the components affected. Earlier releases used independent version lines. T
   tap-agent `condition soft-keyboard on|off` (also in `condition` and `device-info`). Input methods
   that follow it hide the soft keyboard while a hardware keyboard is connected unless it is on;
   Gboard on an API 34 emulator showed the keyboard either way.
-- Key presses can be long, held, double or counted: `PressKey` gains `long_press`, `hold_ms`,
-  `presses` and `interval_ms`, which the driver injects in real time with the key repeats a held
-  key sends (`FLAG_LONG_PRESS` at the device's long-press timeout). Kotlin `pressKey(code, presses,
-  interval, hold)` / `longPressKey`, Python `press_key(code, presses=, interval=, hold=)` /
-  `long_press_key`, and tap-agent `key NAME --long | --hold 2s | --double | --times N [--interval]`
-  (MCP `press_key` `long`, `hold_seconds`, `presses`, `interval_seconds`).
+- Key presses can be long, held or counted, with `tap`'s names: `PressKey` gains a `hold` oneof
+  (`long_press`, or `duration_ms` 1..30000), `count` and `interval_ms`, which the driver injects in
+  real time with the key repeats a held key sends (`FLAG_LONG_PRESS` at the device's long-press
+  timeout). The whole sequence must fit in 30 s, a long press counted at 1500 ms, the longest
+  long-press timeout Android offers. Kotlin `pressKey(code, count, interval)` /
+  `longPressKey(code, duration, count, interval)`, Python `press_key(code, count=, interval=)` /
+  `long_press_key(code, duration=, count=, interval=)`, and tap-agent `key NAME --long |
+  --duration 2s [--count N] [--interval 300ms]` (MCP `press_key` `long`, `duration`, `count`,
+  `interval`).
 - tap-agent `capture` also saves `<serial>.snapshot.txt`, the hierarchy as the snapshot outline
   with refs; a failed snapshot is listed like any other part.
 - tap-agent `key` accepts every Android key name (`volume-up`, `media-play-pause`, `camera`, …,

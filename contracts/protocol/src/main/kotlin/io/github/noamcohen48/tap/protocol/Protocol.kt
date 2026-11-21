@@ -114,20 +114,23 @@ const val DEFAULT_TAP_INTERVAL_MS = 100L
 const val MAX_TOUCH_SEQUENCE_MS = 30_000L
 const val MAX_TAP_COUNT = 100
 
+/** The longest long-press timeout Android offers (Settings › Accessibility › Touch & hold delay, long). */
+const val LONG_PRESS_WORST_CASE_MS = 1_500L
+
 /** Duration of all presses and release-to-press gaps; validate count/interval before calling. */
 fun multiTapDurationMs(
     count: Int,
     intervalMs: Long,
 ): Long = count * TAP_DURATION_MS + (count - 1L) * intervalMs
 
-/** How long each press of a [PressKey] stays down: the device's [longPressMs] for `long_press`, `hold_ms`, else none. */
+/** How long each press of a [PressKey] stays down: the device's [longPressMs] for `long_press`, `duration_ms`, else none. */
 fun keyHoldMs(
     key: io.github.noamcohen48.tap.api.v1.PressKey,
     longPressMs: Long,
 ): Long =
-    when {
-        key.longPress -> longPressMs
-        key.hasHoldMs() -> key.holdMs
+    when (key.holdCase) {
+        io.github.noamcohen48.tap.api.v1.PressKey.HoldCase.LONG_PRESS -> if (key.longPress) longPressMs else 0
+        io.github.noamcohen48.tap.api.v1.PressKey.HoldCase.DURATION_MS -> key.durationMs
         else -> 0
     }
 
@@ -136,7 +139,7 @@ fun keyPressesDurationMs(
     key: io.github.noamcohen48.tap.api.v1.PressKey,
     longPressMs: Long,
 ): Long {
-    val presses = if (key.hasPresses()) key.presses else 1
+    val presses = if (key.hasCount()) key.count else 1
     val interval = if (key.hasIntervalMs()) key.intervalMs else DEFAULT_TAP_INTERVAL_MS
     return presses * keyHoldMs(key, longPressMs) + (presses - 1L) * interval
 }
@@ -161,7 +164,7 @@ fun keyPressPlan(
     repeatDelayMs: Long,
 ): List<KeyStep> {
     require(longPressMs > 0 && repeatDelayMs > 0) { "Key timeouts must be positive" }
-    val presses = if (key.hasPresses()) key.presses else 1
+    val presses = if (key.hasCount()) key.count else 1
     val interval = if (key.hasIntervalMs()) key.intervalMs else DEFAULT_TAP_INTERVAL_MS
     val hold = keyHoldMs(key, longPressMs)
     val steps = mutableListOf<KeyStep>()

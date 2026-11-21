@@ -83,13 +83,13 @@ object ActionLog {
         return null
     }
 
-    /** `key=VOLUME_DOWN`, then `long`, `hold=2000ms` and `x3` when the press has them. */
+    /** `key=VOLUME_DOWN`, then `long`, `duration=2000ms` and `x3` when the press has them. */
     private fun keyTarget(key: io.github.noamcohen48.tap.api.v1.PressKey): String =
         buildList {
             add("key=" + (KEYS[key.keyCode] ?: key.keyCode.toString()))
             if (key.longPress) add("long")
-            if (key.hasHoldMs()) add("hold=${key.holdMs}ms")
-            if (key.hasPresses() && key.presses != 1) add("x${key.presses}")
+            if (key.hasDurationMs()) add("duration=${key.durationMs}ms")
+            if (key.hasCount() && key.count != 1) add("x${key.count}")
         }.joinToString(" ")
 
     /** One line, no control characters (logcat splits a message at each newline), bounded. */

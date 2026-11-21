@@ -1734,19 +1734,21 @@ class TapClientTest {
                         assertFailsWith<IllegalArgumentException> { element.longTap(duration = 31.seconds) }
                         assertEquals(before, fakeDevices.executeRequests.size)
                         device.pressKey(25)
-                        device.pressKey(25, presses = 2, interval = 300.milliseconds)
-                        device.pressKey(25, hold = 2.seconds)
+                        device.pressKey(Keys.VOLUME_DOWN, count = 2, interval = 300.milliseconds)
+                        device.longPressKey(25, duration = 2.seconds)
                         device.longPressKey(26)
                         val keys = fakeDevices.executeRequests.map { it.command }.filter { it.opCase == Command.OpCase.PRESS_KEY }
                         assertEquals(listOf(false, false, false, true), keys.map { it.pressKey.longPress })
-                        assertFalse(keys[0].pressKey.hasPresses() || keys[0].pressKey.hasHoldMs())
-                        assertEquals(2 to 300L, keys[1].pressKey.presses to keys[1].pressKey.intervalMs)
-                        assertEquals(2000L, keys[2].pressKey.holdMs)
+                        assertFalse(keys[0].pressKey.hasCount() || keys[0].pressKey.hasDurationMs())
+                        assertEquals(2 to 300L, keys[1].pressKey.count to keys[1].pressKey.intervalMs)
+                        assertEquals(2000L, keys[2].pressKey.durationMs)
                         assertTrue(keys[2].timeoutMs > 2000L, "the default timeout covers the hold")
                         val sent = fakeDevices.executeRequests.size
-                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, presses = 0) }
-                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, hold = 31.seconds) }
-                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, presses = 100, hold = 1.seconds) }
+                        assertFailsWith<IllegalArgumentException> { device.pressKey(25, count = 0) }
+                        assertFailsWith<IllegalArgumentException> { device.longPressKey(25, duration = 31.seconds) }
+                        assertFailsWith<IllegalArgumentException> { device.longPressKey(25, duration = 1.seconds, count = 100) }
+                        // A long press counts at its worst case (1500 ms): twenty do not fit in 30 s.
+                        assertFailsWith<IllegalArgumentException> { device.longPressKey(25, count = 20) }
                         assertEquals(sent, fakeDevices.executeRequests.size)
                     } finally {
                         device.detach()

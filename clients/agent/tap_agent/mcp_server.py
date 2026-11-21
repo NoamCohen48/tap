@@ -721,10 +721,10 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     async def press_key(
         key: Annotated[str, Field(description="Any Android key name (back, home, enter, volume-up, media-play-pause, ...; 0 .. 9 are the digit keys) or code:N for an Android key code.")] = "",
         list_keys: Annotated[bool, Field(description="Return every key name with its code instead of pressing one.")] = False,
-        long: Annotated[bool, Field(description="Hold each press for the device's long-press timeout (Android's long press). Not with hold_seconds.")] = False,
-        hold_seconds: Annotated[float | None, Field(description="Hold each press this long (up to 30), repeating as a held key does.", gt=0, le=30)] = None,
-        presses: Annotated[int, Field(description="How many times to press (2 = a double press).", ge=1, le=100)] = 1,
-        interval_seconds: Annotated[float | None, Field(description="Release to next press when presses > 1 (0.04..1, default 0.1).", ge=0.04, le=1)] = None,
+        long: Annotated[bool, Field(description="Hold each press for the device's long-press timeout (Android's long press).")] = False,
+        duration: Annotated[float | None, Field(ge=0.001, le=30, description="Hold each press this many seconds, repeating as a held key does; implies long.")] = None,
+        count: Annotated[int, Field(ge=1, le=100, description="Number of presses.")] = 1,
+        interval: Annotated[float | None, Field(ge=0.04, le=1, description="Release-to-press gap in seconds for counted presses (default 0.1).")] = None,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -737,7 +737,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         and the app in front."""
         if list_keys:
             return await call(session, report=False, step=lambda a: a.key(key or None, list_keys=True))
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.key(key or None, device or None, settle=settle, long=long, hold=hold_seconds, times=presses, interval=interval_seconds))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.key(key or None, device or None, settle=settle, long=long, duration=duration, count=count, interval=interval))
 
     @mcp.tool(name="open_panel")
     async def open_panel(

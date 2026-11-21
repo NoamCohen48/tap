@@ -42,10 +42,10 @@ class ActionLogTest {
         assertEquals("> #4 press_key key=999", ActionLog.started(4, Commands.pressKey(999)))
         val held =
             io.github.noamcohen48.tap.api.v1.Command.newBuilder()
-                .setPressKey(io.github.noamcohen48.tap.api.v1.PressKey.newBuilder().setKeyCode(25).setHoldMs(2_000).setPresses(3))
+                .setPressKey(io.github.noamcohen48.tap.api.v1.PressKey.newBuilder().setKeyCode(25).setDurationMs(2_000).setCount(3))
                 .build()
-        assertEquals("> #5 press_key key=VOLUME_DOWN hold=2000ms x3", ActionLog.started(5, held))
-        assertEquals("key=VOLUME_DOWN hold=2000ms x3", ActionLog.parse(ActionLog.started(5, held))?.target)
+        assertEquals("> #5 press_key key=VOLUME_DOWN duration=2000ms x3", ActionLog.started(5, held))
+        assertEquals("key=VOLUME_DOWN duration=2000ms x3", ActionLog.parse(ActionLog.started(5, held))?.target)
         assertEquals(ActionLog.Line(3, "press_key", finished = false, target = "key=BACK"), ActionLog.parse("> #3 press_key key=BACK"))
     }
 

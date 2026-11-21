@@ -404,6 +404,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 4. Press modes use `tap`'s names everywhere: `count`, `interval`, `duration`; proto `PressKey`
    takes a `oneof` hold (long press or duration); validation counts a long press at its worst
    case, so the 30 s cap holds; `key --double` goes.
+   Status: done.
 5. The soft-keyboard condition takes Android's name: show IME with a hardware keyboard.
 6. The server classifies each window (application, keyboard, status bar, navigation bar,
    system, …); tap-agent stops guessing bars from their size.
