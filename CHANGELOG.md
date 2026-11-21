@@ -23,7 +23,7 @@ name the components affected. Earlier releases used independent version lines. T
   the bare `window_type` number and adds `STATUS_BAR` and `NAVIGATION_BAR` (a SystemUI window along
   one whole display edge, at most 64 dp thick), so every client sees the same bars. tap-agent prints
   the bars as one header line each (`--system-bars` shows them) and leaves them out of `--settle`
-  diffs. `--hide-system-chrome` now drops only those bars; the shade,
+  diffs; `--system-bars omit` drops them. The shade,
   quick settings, the volume panel and system dialogs always show.
 - A condition for Android's "show the on-screen keyboard with a hardware keyboard", named as
   Android names it: `DeviceService.SetShowImeWithHardKeyboard` sets `show_ime_with_hard_keyboard`
@@ -48,8 +48,10 @@ name the components affected. Earlier releases used independent version lines. T
   `press_key(list_keys=true)`) prints them with their codes. `0` .. `9` are the digit keys;
   `code:N` is a raw key code, and any other bare number is refused (`key 5` was Call).
 - tap-agent snapshots and `--settle` diffs print a keyboard window as one header line with a
-  node count; `snapshot --keyboard` (MCP `keyboard`) or `--window N` shows its keys, and
-  `--hide-keyboard` still drops the window.
+  node count (`keyboard (24 nodes, collapsed)`). `--keyboard` and `--system-bars` each take
+  `collapse` (the default), `show` or `omit` (MCP `keyboard`, `system_bars`), in place of
+  `--keyboard`/`--hide-keyboard` and `--system-bars`/`--hide-system-chrome`; `--window N` shows
+  one window in full.
 - tap-agent snapshot lines end in `accepts=` with what the node takes (`tap`, `long`, `check`,
   `edit`, `scroll`, `actions`), in every view and in `--settle` diffs; `accepts=scroll` replaces
   the `scrollable` word.

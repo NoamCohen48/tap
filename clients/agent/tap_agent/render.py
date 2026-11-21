@@ -114,28 +114,31 @@ def system_bars(snapshot: ScreenSnapshot) -> dict[int, str]:
     return {node.window_index: _BARS[node.window_kind] for node in snapshot.nodes if node.window_kind in _BARS}
 
 
+WINDOW_VIEWS = ("collapse", "show", "omit")
+"""How a snapshot prints the keyboard or the system bars."""
+
+
 @dataclass(frozen=True)
 class SnapshotFilter:
     """Presentation-only filters. Unknown window types remain visible."""
 
     package: str | None = None
     window: int | None = None
-    hide_keyboard: bool = False
-    hide_system_chrome: bool = False
-    """Drop the status and navigation bars, header included; other system windows stay."""
-    keyboard: bool = False
-    """Show an input-method window's nodes; by default it is one header line with a count."""
-    system_bars: bool = False
-    """Show the status and navigation bars' nodes; by default each is one header line."""
+    keyboard: str = "collapse"
+    """An input-method window: ``collapse`` (one header line with a count), ``show`` its nodes,
+    or ``omit`` it, header included."""
+    system_bars: str = "collapse"
+    """The status and navigation bars, as ``keyboard``; every other system window (the shade,
+    quick settings, the volume panel, system dialogs) always shows."""
 
     def collapsed(self, node: ScreenNode, window: int, bars: dict[int, str]) -> str | None:
         """What the node's window prints as instead of its nodes (``keyboard``, ``status bar``,
         ``navigation bar``), or None when it is shown in full. ``--window N`` naming it shows it."""
         if self.window is not None:
             return None
-        if node.window_kind is WindowKind.INPUT_METHOD and not self.keyboard:
+        if node.window_kind is WindowKind.INPUT_METHOD and self.keyboard == "collapse":
             return "keyboard"
-        if window in bars and not self.system_bars:
+        if window in bars and self.system_bars == "collapse":
             return bars[window]
         return None
 
@@ -143,8 +146,8 @@ class SnapshotFilter:
         return (
             (self.package is None or node.window_package == self.package)
             and (self.window is None or window == self.window)
-            and not (self.hide_keyboard and node.window_kind is WindowKind.INPUT_METHOD)
-            and not (self.hide_system_chrome and bars is not None and window in bars)
+            and not (self.keyboard == "omit" and node.window_kind is WindowKind.INPUT_METHOD)
+            and not (self.system_bars == "omit" and bars is not None and window in bars)
         )
 
 
@@ -240,13 +243,10 @@ def _header(row: _Row) -> str:
     return f"# {row.node.window_package}{suffix}"
 
 
-_SHOW = {"keyboard": "--keyboard", "status bar": "--system-bars", "navigation bar": "--system-bars"}
-
-
 def _collapsed_header(row: _Row, kind: str, count: int) -> str:
     """A collapsed window: it is there (a keyboard covers the screen's bottom), its nodes are not shown."""
     nodes = f"{count} node{'s' if count != 1 else ''}"
-    return f"{_header(row)} · {kind} ({nodes}, {_SHOW[kind]} to show)"
+    return f"{_header(row)} · {kind} ({nodes}, collapsed)"
 
 
 def _window_counts(rows: list[_Row]) -> dict[int, int]:
@@ -329,9 +329,10 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         group = "  (group)" if level == INTERACTIVE and not node.interactive else ""
         lines.append(f"{mark} " + "  " * row.indent + node_line(node, row.context) + group)
     # Removed is a partial forest: never reconstruct descendant context from it.
-    # A removed node's ordinal is the previous snapshot's; a bar's node is matched by where it was.
+    # A removed node's ordinal is the previous snapshot's; it carries its window's kind, so a bar's
+    # node is known as one even when the bar is gone.
     removed = [n for n in snapshot.removed if shown(n, level) and filters.accepts(n, n.window_index)
-               and not (filters.window is None and not filters.system_bars and _in_bar(n))]
+               and not (filters.window is None and filters.system_bars != "show" and _in_bar(n))]
     gone_keys = [n for n in removed if filters.collapsed(n, n.window_index, {}) == "keyboard"]
     removed = [n for n in removed if n not in gone_keys]
     if removed or gone_keys:

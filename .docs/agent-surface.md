@@ -124,9 +124,11 @@ limits (clipped labels, positional refs, opt-in filtering) are recorded with the
      labeled ancestor groups and indentation retain relationships. Unlabeled nested controls
      may borrow their containing control's context. Scroll containers do not absorb row labels.
    - `ScreenNode.window_index` is a one-based dump ordinal (not a persistent ID);
-     `window_type` comes from the driver's additive diagnostic `window-type` attribute,
-     inherited from each root. CLI/MCP package/window filters and optional keyboard/system-type
-     suppression are presentation-only, after full capture and ref alignment. Unknown types
+     `window_kind` is the server's classification of each window (from the driver's diagnostic
+     `window-type` attribute, inherited from each root, plus the status/navigation bar rule),
+     so every client sees the same kinds. CLI/MCP package/window filters and the
+     `--keyboard`/`--system-bars collapse|show|omit` views are presentation-only, after full
+     capture and ref alignment. Unknown types
      remain visible; package ownership never classifies Settings or permission dialogs as chrome.
      Structured candidates remains complete and rejects presentation filters.
    - Diffs repeat unchanged controls whose descendant context changed. Since `removed` is a

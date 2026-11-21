@@ -54,7 +54,7 @@ def _context_screen(fake):
 def test_context_snapshot_filters_and_ref_action_use_original_selector(fake, agent):
     agent.attach("emulator-5554")
     selector = _context_screen(fake)
-    result = agent.snapshot(level="interactive", hide_keyboard=True, hide_system_chrome=True)
+    result = agent.snapshot(level="interactive", keyboard="omit", system_bars="omit")
     assert result == '# com.android.settings · window 1\n@e1  context="Network & internet"'
     assert "Keyboard" in agent.snapshot(window=2)
     assert "Keyboard" not in agent.snapshot(package="com.android.settings")
@@ -69,7 +69,7 @@ def test_cli_snapshot_context_and_filters(fake, monkeypatch, capsys):
     capsys.readouterr()
     _context_screen(fake)
     assert cli.main(["snapshot", "-i", "-s", "context", "--package", "com.android.settings",
-                     "--window", "1", "--hide-keyboard", "--hide-system-chrome"]) == 0
+                     "--window", "1", "--keyboard", "omit", "--system-bars", "omit"]) == 0
     assert capsys.readouterr().out == '# com.android.settings · window 1\n@e1  context="Network & internet"\n'
 
 
@@ -79,10 +79,10 @@ async def test_mcp_snapshot_context_and_filters(fake, server):
         await client.call_tool("attach", {"serial": "emulator-5554"})
         _context_screen(fake)
         result = await client.call_tool("snapshot", {"view": "interactive", "package": "com.android.settings",
-                                                    "window": 1, "hide_keyboard": True, "hide_system_chrome": True})
+                                                    "window": 1, "keyboard": "omit", "system_bars": "omit"})
         assert not result.is_error
         assert result.content[0].text == '# com.android.settings · window 1\n@e1  context="Network & internet"'
-        result = await client.call_tool("snapshot", {"as_json": True, "hide_keyboard": True})
+        result = await client.call_tool("snapshot", {"as_json": True, "keyboard": "omit"})
         assert result.is_error and "no view level or filter" in result.content[0].text
 
 
