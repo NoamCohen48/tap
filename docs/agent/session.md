@@ -380,7 +380,7 @@ tap-agent app process com.example.app --timeout 3s
 tap-agent app visible com.example.app --timeout 5s
 tap-agent scroll id=list down --percent 40 --timeout 3s
 tap-agent scroll-until id=list text=Last --max-scrolls 12 --percent 50 --timeout 15s
-tap-agent type hello --target id=search --focus-timeout 2s --timeout 3s
+tap-agent type hello id=search --focus-timeout 2s --timeout 3s
 tap-agent settle --package com.example.app --signal all --stable-for 300ms --timeout 5s
 ```
 

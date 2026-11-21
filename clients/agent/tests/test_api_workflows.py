@@ -278,9 +278,11 @@ def test_cli_forwards_new_parameters(fake, agent):
     run(["scroll", "id=list", "down", "--percent", "40", "--timeout", "4s"])
     assert fake.devices.commands[-1].scroll.distance_percent == 40
     assert fake.devices.commands[-1].timeout_ms == 4000
-    run(["type", "hello", "--target", "id=input", "--no-await-focus", "--sensitive"])
+    run(["type", "hello", "id=input", "--no-await-focus", "--sensitive"])
     assert fake.devices.commands[-1].type_text.text == "hello"
     assert fake.devices.commands[-1].type_text.sensitive
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(["type", "hello", "--target", "id=input"])
     run(["settle", "--package", "com.example", "--signal", "all", "--stable-for", "100ms"])
     assert fake.devices.commands[-2].wait_screen_stable.stable_for_ms == 100
     assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_ALL

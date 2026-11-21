@@ -8,6 +8,8 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `type TEXT [TARGET]` takes its optional target as a positional, like `fill` and
+  `clear`, instead of `--target`.
 - tap-agent `record start|stop|list|clean NAME` (MCP `record`) moves under `history keep
   start|stop|list|clean NAME` (MCP `history` with `action="keep"`, `value`, `name`, `long`), and
   `history --recording NAME` is now `history --kept NAME`, so "recording" means only
