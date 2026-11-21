@@ -465,14 +465,17 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="swipe")
     async def swipe(
-        target: Target, direction: Direction, percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
+        target: Target,
+        finger: Annotated[Literal["up", "down", "left", "right"], Field(description="Where the finger moves; up reveals what is below (scroll down).")],
+        percent: Percent = 80, timeout_seconds: Budget = None, settle: Settle = False,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
         expect_events: ExpectEvents = Field(default_factory=list),
         event_timeout_seconds: EventTimeout = None, session: Session = "", device: Device = ""
     ) -> CallToolResult:
-        """One swipe across a node, the finger moving in `direction`."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.swipe(target, direction, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
+        """One swipe across a node, the finger moving towards `finger`. scroll and fling take the
+        content direction instead (scroll down = finger up)."""
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.swipe(target, finger, device or None, settle=settle, percent=percent, timeout=timeout_seconds))
 
     @mcp.tool(name="fling")
     async def fling(

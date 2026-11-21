@@ -257,6 +257,8 @@ Do, shaped like `record`:
 
 ## `scroll` / `swipe`: one meaning per direction word
 
+Status: done.
+
 `scroll X down` and `fling X down` move the content (reveal what is below: the finger moves up);
 `swipe X down` moves the finger down. The same word means opposite gestures, so an agent that
 mixes the commands scrolls the wrong way without noticing.

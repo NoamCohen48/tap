@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `swipe` takes the finger's direction as `--finger up|down|left|right` (MCP `finger`)
+  instead of a positional direction, which read like `scroll`'s opposite content direction.
+  `scroll`, `swipe` and `fling` print both, e.g. `scrolled down (finger up)`.
 - tap-agent `keyboard` and `screen` read with no word and no longer take `state`; `--settle`
   goes only with an action (`keyboard hide`, `screen on|off|unlock`).
 - tap-agent reads print text by default and take `--json` (MCP `as_json`) for the complete
