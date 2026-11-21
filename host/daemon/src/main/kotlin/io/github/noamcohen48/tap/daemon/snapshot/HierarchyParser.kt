@@ -47,10 +47,17 @@ internal class DumpNode(
         internal set
 }
 
-/** A parsed dump: the `rotation` of `<hierarchy>` and every visible node in pre-order. */
+/**
+ * A parsed dump: the `rotation` of `<hierarchy>`, its display `width`, `height` (pixels, as
+ * rotated) and `density` (dpi), each 0 when an older driver did not write it, and every visible
+ * node in pre-order.
+ */
 internal class Hierarchy(
     val rotation: Int,
     val nodes: List<DumpNode>,
+    val displayWidth: Int = 0,
+    val displayHeight: Int = 0,
+    val densityDpi: Int = 0,
 ) {
     /** Window root packages in dump order; index = [DumpNode.window]. */
     val windowPackages: List<String> = nodes.filter { it.parent < 0 }.map { it.windowPackage }
@@ -92,6 +99,9 @@ internal object HierarchyParser {
         private val open = ArrayList<OpenElement>()
         private var hiddenDepth = 0
         private var rotation = 0
+        private var displayWidth = 0
+        private var displayHeight = 0
+        private var densityDpi = 0
         private var sawHierarchy = false
         private var windowCount = 0
 
@@ -109,7 +119,7 @@ internal object HierarchyParser {
             }
             if (open.isNotEmpty()) fail("unclosed element")
             if (!sawHierarchy) fail("no <hierarchy> element")
-            return Hierarchy(rotation, nodes)
+            return Hierarchy(rotation, nodes, displayWidth, displayHeight, densityDpi)
         }
 
         private fun startElement() {
@@ -159,6 +169,9 @@ internal object HierarchyParser {
             if (name == "hierarchy") {
                 sawHierarchy = true
                 rotation = attributes["rotation"]?.toIntOrNull() ?: 0
+                displayWidth = attributes["width"]?.toIntOrNull()?.takeIf { it > 0 } ?: 0
+                displayHeight = attributes["height"]?.toIntOrNull()?.takeIf { it > 0 } ?: 0
+                densityDpi = attributes["density"]?.toIntOrNull()?.takeIf { it > 0 } ?: 0
             }
             val visible = attributes["visible-to-user"] != "false"
             if (name != "node" || hiddenDepth > 0 || !visible) {

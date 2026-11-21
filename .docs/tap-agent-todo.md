@@ -110,6 +110,29 @@ Do:
 
 ## Snapshot: hide only the status and navigation bars, not every system window
 
+Status: done, checked on the API 34 emulator and the API 29 Samsung (2026-11-21). What the
+devices reported, per system window (accessibility title, package, root bounds):
+
+- Status bar: no title on either device; `com.android.systemui`, full width at the top, 24 dp
+  (63 px at 420 dpi; 42 px at 280 dpi), portrait and landscape. 27-28 nodes (clock, icons).
+- Navigation bar: none on the emulator (gesture navigation); on the Samsung titled "Navigation
+  bar" (translated), full width at the bottom, 48 dp, and in landscape a full-height strip on
+  the right.
+- Shade and quick settings: a separate full-screen window on API 34; on API 29 the status-bar
+  window itself, grown to full screen.
+- Volume panel: `com.android.systemui`; on the emulator a panel on the right, on the Samsung a
+  27 dp strip at the top that does not span the width (54-666 of 720).
+- ANR dialog: package `android`, title "<app> isn't responding"; centred on the emulator, full
+  width above the navigation bar on the Samsung (121 dp, not touching an edge).
+- Samsung Pay handle: `com.samsung.android.spaymini`, part of the bottom edge.
+
+So titles and window identity cannot pick out the bars, but geometry can: a SystemUI system
+window that runs along one whole display edge and is at most 64 dp thick. The dump now reports
+the display size and density; the agent collapses such windows, leaves them out of diffs, and
+`--hide-system-chrome` drops only them. Checked on both devices: bars collapsed, shade, volume
+panel and ANR dialog in full, landscape navigation bar collapsed, `--settle` diffs after the clock
+changed free of bar lines.
+
 Keep showing system windows (`window_type` 3) by default: they include the notification shade
 after `panel notifications`, quick settings, volume and (to confirm on a device) system dialogs
 such as "app isn't responding". Hiding them by default would make an agent think the shade did not

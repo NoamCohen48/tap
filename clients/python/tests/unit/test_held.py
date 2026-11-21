@@ -126,6 +126,7 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
         snapshot = device.screen_snapshot(timeout=5)
         assert fake.devices.snapshot_requests[-1].timeout_ms == 5000
         assert (snapshot.snapshot_id, snapshot.rotation) == (4, 1)
+        assert (snapshot.display_width, snapshot.display_height, snapshot.density_dpi) == (0, 0, 0)
         login = snapshot.node("@e3")
         assert login is not None
         assert (login.text, login.resource_name, login.class_name) == ("Log in", "com.example:id/login", "android.widget.Button")

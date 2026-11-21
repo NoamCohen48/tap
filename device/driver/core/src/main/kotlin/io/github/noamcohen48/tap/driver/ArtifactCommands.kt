@@ -23,7 +23,7 @@ internal class ArtifactCommands(
     fun dumpHierarchy(): String =
         try {
             LimitedOutputStream(MAX_HIERARCHY_BYTES).use { output ->
-                HierarchyDump.write(device, output)
+                HierarchyDump.write(device, output, instrumentation.context.resources.displayMetrics.densityDpi)
                 output.content()
             }
         } catch (_: OutputLimitExceeded) {

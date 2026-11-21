@@ -24,14 +24,19 @@ internal object HierarchyDump {
     private val NAF_EXCLUDED_CLASSES =
         listOf("android.widget.GridView", "android.widget.GridLayout", "android.widget.ListView", "android.widget.TableLayout")
 
+    /**
+     * `<hierarchy>` carries the rotation and the display's `width`, `height` (pixels, as rotated)
+     * and `density` (dpi), so a reader can tell what a window's size means on this screen.
+     */
     fun write(
         device: UiDevice,
         out: OutputStream,
+        densityDpi: Int,
     ) {
         val width = device.displayWidth
         val height = device.displayHeight
         val xml = HierarchyXmlWriter(OutputStreamWriter(out, Charsets.UTF_8))
-        xml.startHierarchy(device.displayRotation)
+        xml.startHierarchy(device.displayRotation, width, height, densityDpi)
         for (root in device.windowRoots) {
             // Every node of a root is in the root's window: one frame for all of them.
             val frame = root.window?.let { WindowFrames.frame(Rect().also(it::getBoundsInScreen), Rect().also(root::getBoundsInScreen)) }
@@ -149,9 +154,18 @@ internal class HierarchyXmlWriter(
     /** The innermost `<node>` has been opened but its start tag not yet closed with `>`. */
     private var pending = false
 
-    fun startHierarchy(rotation: Int) {
+    fun startHierarchy(
+        rotation: Int,
+        width: Int? = null,
+        height: Int? = null,
+        densityDpi: Int? = null,
+    ) {
         out.write("<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>")
-        out.write("\n<hierarchy rotation=\"$rotation\">")
+        out.write("\n<hierarchy rotation=\"$rotation\"")
+        width?.let { out.write(" width=\"$it\"") }
+        height?.let { out.write(" height=\"$it\"") }
+        densityDpi?.let { out.write(" density=\"$it\"") }
+        out.write(">")
         depth = 1
     }
 

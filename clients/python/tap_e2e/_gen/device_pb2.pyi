@@ -393,16 +393,22 @@ class ScreenNode(_message.Message):
     def __init__(self, ref: _Optional[str] = ..., depth: _Optional[int] = ..., window_package: _Optional[str] = ..., class_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[_command_pb2.Bounds, _Mapping]] = ..., flags: _Optional[_Iterable[_Union[_selector_pb2.NodeFlag, str]]] = ..., password: _Optional[bool] = ..., interactive: _Optional[bool] = ..., selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., by_index: _Optional[bool] = ..., change: _Optional[_Union[NodeChange, str]] = ..., candidates: _Optional[_Iterable[_Union[SelectorCandidate, _Mapping]]] = ..., showing_hint: _Optional[bool] = ..., content_invalid: _Optional[bool] = ..., error: _Optional[str] = ..., window_index: _Optional[int] = ..., window_type: _Optional[int] = ..., editable: _Optional[bool] = ..., actions: _Optional[_Iterable[_Union[_command_pb2.StandardAction, str]]] = ..., custom_actions: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class ScreenSnapshotResponse(_message.Message):
-    __slots__ = ("snapshot_id", "nodes", "removed", "rotation")
+    __slots__ = ("snapshot_id", "nodes", "removed", "rotation", "display_width", "display_height", "density_dpi")
     SNAPSHOT_ID_FIELD_NUMBER: _ClassVar[int]
     NODES_FIELD_NUMBER: _ClassVar[int]
     REMOVED_FIELD_NUMBER: _ClassVar[int]
     ROTATION_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_WIDTH_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_HEIGHT_FIELD_NUMBER: _ClassVar[int]
+    DENSITY_DPI_FIELD_NUMBER: _ClassVar[int]
     snapshot_id: int
     nodes: _containers.RepeatedCompositeFieldContainer[ScreenNode]
     removed: _containers.RepeatedCompositeFieldContainer[ScreenNode]
     rotation: int
-    def __init__(self, snapshot_id: _Optional[int] = ..., nodes: _Optional[_Iterable[_Union[ScreenNode, _Mapping]]] = ..., removed: _Optional[_Iterable[_Union[ScreenNode, _Mapping]]] = ..., rotation: _Optional[int] = ...) -> None: ...
+    display_width: int
+    display_height: int
+    density_dpi: int
+    def __init__(self, snapshot_id: _Optional[int] = ..., nodes: _Optional[_Iterable[_Union[ScreenNode, _Mapping]]] = ..., removed: _Optional[_Iterable[_Union[ScreenNode, _Mapping]]] = ..., rotation: _Optional[int] = ..., display_width: _Optional[int] = ..., display_height: _Optional[int] = ..., density_dpi: _Optional[int] = ...) -> None: ...
 
 class ResolveRefRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id", "ref")

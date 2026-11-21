@@ -58,7 +58,10 @@ with `--package PACKAGE` (window-root package), `--window N`, `--hide-keyboard` 
 `--hide-system-chrome`. MCP uses `package`, `window`, `hide_keyboard`, `hide_system_chrome`.
 A keyboard window is one header line (`· keyboard (24 nodes, --keyboard to show)`) unless
 `--keyboard` (MCP `keyboard`) or `--window N` asks for its keys; it means the keyboard is up and
-covers the screen's bottom.
+covers the screen's bottom. The status and navigation bars are one header line each too
+(`· status bar (6 nodes, --system-bars to show)`; MCP `system_bars`) and never appear in
+`--settle` diffs; `--hide-system-chrome` drops even their headers. The notification shade, quick
+settings, the volume panel and system dialogs ("isn't responding") always show in full.
 Suppression uses Android window types, never package guesses; Settings and permission dialogs
 remain application windows. Unknown types remain visible. Filters affect presentation only,
 not refs, and cannot be combined with `--json`. Settle/action diffs also show context.

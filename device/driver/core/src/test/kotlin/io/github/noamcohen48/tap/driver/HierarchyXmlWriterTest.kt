@@ -9,7 +9,7 @@ class HierarchyXmlWriterTest {
     fun nestsNodesWithAttributesInOrder() {
         val out = StringWriter()
         HierarchyXmlWriter(out).apply {
-            startHierarchy(1)
+            startHierarchy(1, 1080, 2400, 420)
             startNode(listOf("index" to "0", "class" to "android.widget.FrameLayout"))
             startNode(listOf("index" to "0", "showing-hint" to "true"))
             endNode()
@@ -19,7 +19,7 @@ class HierarchyXmlWriterTest {
 
         assertEquals(
             "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>\n" +
-                "<hierarchy rotation=\"1\">\n" +
+                "<hierarchy rotation=\"1\" width=\"1080\" height=\"2400\" density=\"420\">\n" +
                 "  <node index=\"0\" class=\"android.widget.FrameLayout\">\n" +
                 "    <node index=\"0\" showing-hint=\"true\" />\n" +
                 "  </node>\n" +

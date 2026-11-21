@@ -738,6 +738,12 @@ class ScreenSnapshot:
     nodes: tuple[ScreenNode, ...]
     removed: tuple[ScreenNode, ...]
     rotation: int
+    display_width: int = 0
+    """The display's width in pixels when the snapshot was taken, as rotated; 0 when unknown."""
+    display_height: int = 0
+    """The display's height in pixels, as rotated; 0 when unknown."""
+    density_dpi: int = 0
+    """The display density in dpi (160 = 1 px per dp); 0 when unknown."""
 
     def node(self, ref: str) -> ScreenNode | None:
         """The node with ``ref`` (with or without the leading ``@``), or None."""

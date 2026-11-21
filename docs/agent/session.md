@@ -128,13 +128,24 @@ behind it is refused as covered) without listing its keys. `--keyboard` (MCP `ke
 `--window N` naming it shows its nodes; `--hide-keyboard` drops even the header. `--settle`
 diffs collapse it the same way.
 
+The status bar and the navigation bar print the same way, `# com.android.systemui · window 3 ·
+status bar (6 nodes, --system-bars to show)`, and are left out of `--settle` diffs (their clock
+and icons change on their own). `--system-bars` (MCP `system_bars`) or `--window N` shows their
+nodes; `--hide-system-chrome` drops even the headers. A bar is a SystemUI system window that runs
+along one whole edge of the display and is at most 64 dp thick. Window titles cannot tell (the
+status bar has none, the rest are translated) and neither can the window: on Android 10 the
+notification shade is the status-bar window grown to full screen. So the shade, quick settings,
+the volume panel (on Samsung a strip at the top, but not the full width) and system dialogs such
+as "isn't responding" always show in full. Older drivers do not report the display, and then
+nothing is collapsed.
+
 `--package` matches the window-root package. `--window` uses the one-based ordinal in the
 header, valid only for that dump (not a persistent Android window ID). The MCP tool exposes
-`package`, `window`, `keyboard`, `hide_keyboard` and `hide_system_chrome` with the same behavior.
+`package`, `window`, `keyboard`, `hide_keyboard`, `system_bars` and `hide_system_chrome` with the
+same behavior.
 Suppression uses Android accessibility window types, not package-name guesses: application
-windows such as Settings and permission dialogs remain visible. System-type windows (including
-system panels) are hidden only when requested. Unknown types, including older drivers' dumps,
-remain visible. Defaults still show all windows. `--json` returns the complete structured snapshot
+windows such as Settings and permission dialogs remain visible. Unknown types, including older
+drivers' dumps, remain visible. `--json` returns the complete structured snapshot
 with selector candidates and cannot be combined with view filters.
 
 Settle/action diffs use the same contextual rendering. A changed descendant also surfaces its

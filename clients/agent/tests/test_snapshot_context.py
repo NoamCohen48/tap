@@ -3,7 +3,7 @@
 from dataclasses import replace
 
 import pytest  # type: ignore[import-not-found]
-from tap_e2e import NodeChange, NodeFlag, ScreenSnapshot
+from tap_e2e import Bounds, NodeChange, NodeFlag, ScreenSnapshot
 
 from tap_agent import render
 from tap_agent.core import AgentError
@@ -11,8 +11,11 @@ from tap_agent.core import AgentError
 from .test_targets_render import _node
 
 
-def screen(*nodes, removed=()):
-    return ScreenSnapshot(1, tuple(nodes), tuple(removed), 0)
+def screen(*nodes, removed=(), display=(0, 0, 0)):
+    return ScreenSnapshot(1, tuple(nodes), tuple(removed), 0, *display)
+
+
+PHONE = (1080, 2400, 420)  # the API 34 emulator: its status bar is 63 px = 24 dp
 
 
 def settings():
@@ -90,15 +93,18 @@ def test_same_package_windows_and_filters_do_not_cross_roots():
         _node("e1", depth=0, window_index=1, window_type=1, interactive=True),
         _node("e2", depth=1, window_index=1, window_type=1, text="Settings"),
         _node("e3", depth=0, window_index=2, window_type=2, interactive=True, text="Keyboard"),
-        _node("e4", depth=0, window_index=3, window_type=3, interactive=True, text="Status bar"),
+        _node("e4", depth=0, window_index=3, window_type=3, interactive=True, text="Status bar",
+              window_package="com.android.systemui", bounds=Bounds(0, 0, 1080, 63)),
         _node("e5", depth=0, window_index=4, window_type=0, interactive=True, text="Unknown"),
         _node("e6", depth=0, window_index=5, window_type=1, interactive=True,
               window_package="com.android.permissioncontroller", text="Allow"),
+        _node("e7", depth=0, window_index=6, window_type=3, interactive=True, text="Shade",
+              window_package="com.android.systemui", bounds=Bounds(0, 0, 1080, 2400)),
     )
-    result = render.snapshot_text(screen(*nodes), render.INTERACTIVE,
+    result = render.snapshot_text(screen(*nodes, display=PHONE), render.INTERACTIVE,
                                   filters=render.SnapshotFilter(hide_keyboard=True, hide_system_chrome=True))
-    assert "Keyboard" not in result and "Status bar" not in result
-    assert "Settings" in result and "Unknown" in result and "Allow" in result
+    assert "Keyboard" not in result and "Status bar" not in result and "window 3" not in result
+    assert "Settings" in result and "Unknown" in result and "Allow" in result and "Shade" in result
     assert 'context="Settings"' in result.splitlines()[1]
     one = render.snapshot_text(screen(*nodes), filters=render.SnapshotFilter(window=2))
     assert one.splitlines() == ['# com.example · window 2', '@e3  "Keyboard"']
@@ -162,3 +168,66 @@ def test_the_keyboard_window_collapses_to_its_header_unless_asked():
 def test_keyboard_and_hide_keyboard_together_are_refused(agent):
     with pytest.raises(AgentError, match="choose one"):
         agent.snapshot(keyboard=True, hide_keyboard=True)
+
+
+SYSTEM_UI = "com.android.systemui"
+
+
+def _window(ref, index, bounds, *, package=SYSTEM_UI, kind=3, text=None, change=NodeChange.NONE):
+    return _node(ref, change, depth=0, window_index=index, window_type=kind, window_package=package,
+                 bounds=Bounds(*bounds), interactive=True, text=text or ref)
+
+
+def test_system_bars_are_found_by_geometry_as_measured_on_both_devices():
+    # API 34 emulator, portrait: status bar only (gesture navigation has no bar window).
+    assert render.system_bars(screen(_window("app", 1, (0, 0, 1080, 2400), package="p", kind=1),
+                                     _window("bar", 2, (0, 0, 1080, 63)), display=PHONE)) == {2: "status bar"}
+    # API 29 Samsung, 720x1480 at 280 dpi: nav bar 84 px = 48 dp at the bottom, the Samsung Pay
+    # handle (another package, not full width) and the volume panel (a 27 dp top strip, not full
+    # width) are not bars.
+    samsung = (720, 1480, 280)
+    portrait = screen(
+        _window("app", 1, (0, 0, 720, 1480), package="p", kind=1),
+        _window("pay", 2, (186, 1438, 534, 1480), package="com.samsung.android.spaymini"),
+        _window("nav", 3, (0, 1396, 720, 1480)),
+        _window("volume", 4, (54, 0, 666, 77)),
+        _window("status", 5, (0, 0, 720, 42)),
+        display=samsung,
+    )
+    assert render.system_bars(portrait) == {3: "navigation bar", 5: "status bar"}
+    # Landscape: the nav bar is a full-height strip on the right.
+    landscape = screen(_window("nav", 1, (1396, 0, 1480, 720)), _window("status", 2, (0, 0, 1480, 42)),
+                       display=(1480, 720, 280))
+    assert render.system_bars(landscape) == {1: "navigation bar", 2: "status bar"}
+    # The expanded shade (API 29: the status-bar window itself), and the ANR dialog (package
+    # android, full width above the nav bar, 121 dp) are not bars.
+    assert render.system_bars(screen(_window("shade", 1, (0, 0, 720, 1480)),
+                                     _window("anr", 2, (0, 1057, 719, 1396), package="android"),
+                                     display=samsung)) == {}
+    # Without the display (an older driver), nothing is a bar.
+    assert render.system_bars(screen(_window("bar", 1, (0, 0, 1080, 63)))) == {}
+
+
+def test_bars_collapse_to_a_header_and_stay_out_of_diffs():
+    nodes = (
+        _window("e1", 1, (0, 0, 1080, 2400), package="com.example", kind=1, text="Pay"),
+        _window("e2", 2, (0, 0, 1080, 63), text="12:01"),
+        _node("e3", depth=1, window_index=2, window_type=3, window_package=SYSTEM_UI, text="Wi-Fi",
+              bounds=Bounds(900, 0, 960, 63)),
+    )
+    shot = screen(*nodes, display=PHONE)
+    text = render.snapshot_text(shot, render.ALL)
+    assert "# com.android.systemui · window 2 · status bar (2 nodes, --system-bars to show)" in text
+    assert "12:01" not in text and '"Pay"' in text
+    assert "12:01" in render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(system_bars=True))
+    assert "12:01" in render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(window=2))
+    # The clock ticked and an icon went: neither is worth a diff line.
+    ticked = screen(replace(nodes[0], change=NodeChange.UNCHANGED), replace(nodes[1], change=NodeChange.ADDED, text="12:02"),
+                    removed=(replace(nodes[2], change=NodeChange.REMOVED),), display=PHONE)
+    assert render.diff_text(ticked, render.ALL) == "(no change)"
+    assert "12:02" in render.diff_text(ticked, render.ALL, filters=render.SnapshotFilter(system_bars=True))
+
+
+def test_system_bars_and_hide_system_chrome_together_are_refused(agent):
+    with pytest.raises(AgentError, match="choose one"):
+        agent.snapshot(system_bars=True, hide_system_chrome=True)

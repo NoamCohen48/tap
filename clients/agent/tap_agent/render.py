@@ -105,6 +105,46 @@ def node_line(node: ScreenNode, context: str = "") -> str:
     return "  ".join(parts)
 
 
+BAR_MAX_DP = 64
+"""The thickest a system bar is: status bars are 24 dp (taller around a camera cutout), navigation
+bars 48 dp. A shade, heads-up notification or system dialog is always thicker."""
+
+SYSTEM_UI = "com.android.systemui"
+
+
+def system_bars(snapshot: ScreenSnapshot) -> dict[int, str]:
+    """The windows of ``snapshot`` that are the status bar or the navigation bar, by window
+    ordinal: a SystemUI system window that runs along one whole edge of the display and is at
+    most ``BAR_MAX_DP`` thick. Nothing else matches: on API 29 the shade is the status-bar
+    window grown to full screen, a volume panel does not span the edge, and a dialog is thicker.
+    Window titles are not used: the status bar has none and the others are translated. Empty when
+    the snapshot does not report the display."""
+    width, height, density = snapshot.display_width, snapshot.display_height, snapshot.density_dpi
+    if width <= 0 or height <= 0 or density <= 0:
+        return {}
+    bars: dict[int, str] = {}
+    window, first = 0, True
+    for node in snapshot.nodes:
+        if node.depth != 0 and not first:
+            continue
+        first = False
+        window = node.window_index or window + 1
+        if node.window_type != 3 or node.window_package != SYSTEM_UI or node.bounds is None:
+            continue
+        b = node.bounds
+        across = b.left <= 1 and b.right >= width - 1
+        down = b.top <= 1 and b.bottom >= height - 1
+        if across and (b.top <= 0 or b.bottom >= height):
+            thickness, name = b.bottom - b.top, "status bar" if b.top <= 0 else "navigation bar"
+        elif down and (b.left <= 0 or b.right >= width):
+            thickness, name = b.right - b.left, "navigation bar"
+        else:
+            continue
+        if 0 < thickness * 160 <= BAR_MAX_DP * density:
+            bars[window] = name
+    return bars
+
+
 @dataclass(frozen=True)
 class SnapshotFilter:
     """Presentation-only filters. Unknown window types remain visible."""
@@ -113,20 +153,29 @@ class SnapshotFilter:
     window: int | None = None
     hide_keyboard: bool = False
     hide_system_chrome: bool = False
+    """Drop the status and navigation bars, header included; other system windows stay."""
     keyboard: bool = False
     """Show an input-method window's nodes; by default it is one header line with a count."""
+    system_bars: bool = False
+    """Show the status and navigation bars' nodes; by default each is one header line."""
 
-    def collapsed(self, node: ScreenNode) -> bool:
-        """The node is in a keyboard window that prints as its header only (``--window N``
-        naming it shows it in full)."""
-        return node.window_type == 2 and not self.keyboard and self.window is None
+    def collapsed(self, node: ScreenNode, window: int, bars: dict[int, str]) -> str | None:
+        """What the node's window prints as instead of its nodes (``keyboard``, ``status bar``,
+        ``navigation bar``), or None when it is shown in full. ``--window N`` naming it shows it."""
+        if self.window is not None:
+            return None
+        if node.window_type == 2 and not self.keyboard:
+            return "keyboard"
+        if window in bars and not self.system_bars:
+            return bars[window]
+        return None
 
-    def accepts(self, node: ScreenNode, window: int) -> bool:
+    def accepts(self, node: ScreenNode, window: int, bars: dict[int, str] | None = None) -> bool:
         return (
             (self.package is None or node.window_package == self.package)
             and (self.window is None or window == self.window)
             and not (self.hide_keyboard and node.window_type == 2)
-            and not (self.hide_system_chrome and node.window_type == 3)
+            and not (self.hide_system_chrome and bars is not None and window in bars)
         )
 
 
@@ -151,7 +200,7 @@ class _Row:
     changed: bool = False
 
 
-def _rows(nodes: tuple[ScreenNode, ...], level: str, filters: SnapshotFilter) -> list[_Row]:
+def _rows(nodes: tuple[ScreenNode, ...], level: str, filters: SnapshotFilter, bars: dict[int, str] | None = None) -> list[_Row]:
     rows: list[_Row] = []
     stack: list[int] = []
     window = 0
@@ -193,7 +242,7 @@ def _rows(nodes: tuple[ScreenNode, ...], level: str, filters: SnapshotFilter) ->
                     break
                 ancestor = parent.parent
         row.context = " · ".join(borrowed)
-        row.visible = filters.accepts(node, row.window) and shown(node, level)
+        row.visible = filters.accepts(node, row.window, bars) and shown(node, level)
 
     # Keep labeled ancestors as non-actionable grouping in interactive mode.
     for row in rows:
@@ -202,7 +251,7 @@ def _rows(nodes: tuple[ScreenNode, ...], level: str, filters: SnapshotFilter) ->
         ancestor = row.parent
         while ancestor is not None:
             parent = rows[ancestor]
-            if _labels(parent.node) and filters.accepts(parent.node, parent.window):
+            if _labels(parent.node) and filters.accepts(parent.node, parent.window, bars):
                 parent.visible = True
             ancestor = parent.parent
     for row in rows:
@@ -222,16 +271,19 @@ def _header(row: _Row) -> str:
     return f"# {row.node.window_package}{suffix}"
 
 
-def _keyboard_header(row: _Row, count: int) -> str:
-    """A collapsed keyboard window: it is up (it covers the screen's bottom), its keys are not shown."""
+_SHOW = {"keyboard": "--keyboard", "status bar": "--system-bars", "navigation bar": "--system-bars"}
+
+
+def _collapsed_header(row: _Row, kind: str, count: int) -> str:
+    """A collapsed window: it is there (a keyboard covers the screen's bottom), its nodes are not shown."""
     nodes = f"{count} node{'s' if count != 1 else ''}"
-    return f"{_header(row)} · keyboard ({nodes}, --keyboard to show)"
+    return f"{_header(row)} · {kind} ({nodes}, {_SHOW[kind]} to show)"
 
 
-def _keyboard_counts(rows: list[_Row]) -> dict[int, int]:
+def _window_counts(rows: list[_Row]) -> dict[int, int]:
     counts: dict[int, int] = {}
     for row in rows:
-        if row.visible and row.node.window_type == 2:
+        if row.visible:
             counts[row.window] = counts.get(row.window, 0) + 1
     return counts
 
@@ -240,15 +292,17 @@ def snapshot_text(snapshot: ScreenSnapshot, level: str = DEFAULT, *, filters: Sn
     """Ref-addressed outline. ``context`` describes a control, never its selector."""
     lines: list[str] = []
     window = None
-    rows = _rows(snapshot.nodes, level, filters)
-    keys = _keyboard_counts(rows)
+    bars = system_bars(snapshot)
+    rows = _rows(snapshot.nodes, level, filters, bars)
+    counts = _window_counts(rows)
     for row in rows:
         if not row.visible:
             continue
+        kind = filters.collapsed(row.node, row.window, bars)
         if row.window != window:
             window = row.window
-            lines.append(_keyboard_header(row, keys[row.window]) if filters.collapsed(row.node) else _header(row))
-        if filters.collapsed(row.node):
+            lines.append(_collapsed_header(row, kind, counts[row.window]) if kind else _header(row))
+        if kind:
             continue
         group = "  (group)" if level == INTERACTIVE and not row.node.interactive else ""
         lines.append("  " * row.indent + node_line(row.node, row.context) + group)
@@ -259,15 +313,18 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
     """Contextual diff: changed descendants also surface their containing control.
 
     Removed labels cannot be reparented from the partial removed list; contextual controls
-    in the affected window are conservatively repeated with ``=`` instead.
+    in the affected window are conservatively repeated with ``=`` instead. A collapsed keyboard
+    prints its header when it changed; collapsed system bars are left out (their clock and
+    icons change on their own).
     """
     if all(n.change is NodeChange.NONE for n in snapshot.nodes) and not snapshot.removed:
         return snapshot_text(snapshot, level, filters=filters)
     removed_labels = {(n.window_index, n.window_package) for n in snapshot.removed if _labels(n)}
     lines: list[str] = []
     window = None
-    rows = _rows(snapshot.nodes, level, filters)
-    keys = _keyboard_counts(rows)
+    bars = system_bars(snapshot)
+    rows = _rows(snapshot.nodes, level, filters, bars)
+    counts = _window_counts(rows)
     selected: set[int] = set()
     for i, row in enumerate(rows):
         node = row.node
@@ -288,10 +345,13 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         if i not in selected:
             continue
         node = row.node
-        if filters.collapsed(node):
+        kind = filters.collapsed(node, row.window, bars)
+        if kind == "keyboard":
             if row.window != window:  # the keyboard changed: say it is up, not each key
                 window = row.window
-                lines.append(_keyboard_header(row, keys[row.window]))
+                lines.append(_collapsed_header(row, kind, counts[row.window]))
+            continue
+        if kind:
             continue
         if row.window != window:
             window = row.window
@@ -300,9 +360,11 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         group = "  (group)" if level == INTERACTIVE and not node.interactive else ""
         lines.append(f"{mark} " + "  " * row.indent + node_line(node, row.context) + group)
     # Removed is a partial forest: never reconstruct descendant context from it.
-    removed = [n for n in snapshot.removed if shown(n, level) and filters.accepts(n, n.window_index)]
-    gone_keys = [n for n in removed if filters.collapsed(n)]
-    removed = [n for n in removed if not filters.collapsed(n)]
+    # A removed node's ordinal is the previous snapshot's; a bar's node is matched by where it was.
+    removed = [n for n in snapshot.removed if shown(n, level) and filters.accepts(n, n.window_index)
+               and not (filters.window is None and not filters.system_bars and _in_bar(n, snapshot, bars))]
+    gone_keys = [n for n in removed if filters.collapsed(n, n.window_index, {}) == "keyboard"]
+    removed = [n for n in removed if n not in gone_keys]
     if removed or gone_keys:
         lines.append("# removed")
         listed = removed if full else removed[:MAX_REMOVED]
@@ -312,6 +374,19 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         if len(listed) < len(removed):
             lines.append(f"- … and {len(removed) - len(listed)} more")
     return "\n".join(lines) if lines else "(no change)"
+
+
+def _in_bar(node: ScreenNode, snapshot: ScreenSnapshot, bars: dict[int, str]) -> bool:
+    """A SystemUI node that lay inside one of the bars this snapshot has."""
+    if node.window_type != 3 or node.window_package != SYSTEM_UI or node.bounds is None:
+        return False
+    b = node.bounds
+    for root in snapshot.nodes:
+        if root.depth == 0 and root.window_index in bars and root.bounds is not None:
+            r = root.bounds
+            if r.left <= b.left and b.right <= r.right and r.top <= b.top and b.bottom <= r.bottom:
+                return True
+    return False
 
 
 def local_time(iso: str | None) -> str:
