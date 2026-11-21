@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tap_e2e import NodeChange, NodeFlag, ScreenNode, ScreenSnapshot
+from tap_e2e import ElementSnapshot, NodeChange, NodeFlag, ScreenNode, ScreenSnapshot
 
 # What `snapshot` shows. INTERACTIVE: nodes an action can target; DEFAULT: those plus nodes with
 # text or a description (what a person reads); ALL: every node, layout containers included.
@@ -331,3 +331,64 @@ def log(entries, steps: dict | None = None, *, dropped: int = 0, omitted: int = 
     else:
         lines.append(f"cursor {entries[-1].cursor}")
     return "\n".join(lines)
+
+
+def element_line(element: ElementSnapshot) -> str:
+    """One element as a snapshot-style line: ``[Button]  "Pay"  hint="…"  id=pay  focused``."""
+    parts = []
+    if element.class_name:
+        parts.append(f"[{element.class_name.rsplit('.', 1)[-1]}]")
+    if element.showing_hint:
+        parts.append("empty")
+    elif element.text:
+        parts.append(_quote(element.text))
+    if element.content_description and element.content_description != element.text:
+        parts.append(f"desc={_quote(element.content_description)}")
+    if element.hint and (element.showing_hint or element.hint != element.text):
+        parts.append(f"hint={_quote(element.hint)}")
+    name = element.resource_name
+    if name:
+        package, sep, entry = name.partition(":id/")
+        parts.append(f"id={entry if sep and package == element.package_name else name}")
+    for flag, word in ((element.focused, "focused"), (element.checked, "checked"), (element.selected, "selected"),
+                       (element.scrollable, "scrollable"), (not element.enabled, "disabled")):
+        if flag:
+            parts.append(word)
+    return "  ".join(parts) or "(a node with no class, text or id)"
+
+
+def element_text(element: ElementSnapshot) -> str:
+    """``inspect`` as text: the element's line, then only what is set."""
+    b = element.bounds
+    rows = [element_line(element), f"package   {element.package_name or '-'}", f"bounds    [{b.left},{b.top}][{b.right},{b.bottom}]"]
+    state = [word for flag, word in (
+        (element.enabled, "enabled"), (element.clickable, "clickable"), (element.long_clickable, "long-clickable"),
+        (element.checkable, "checkable"), (element.checked, "checked"), (element.focusable, "focusable"),
+        (element.focused, "focused"), (element.scrollable, "scrollable"), (element.selected, "selected")) if flag]
+    rows.append(f"state     {' '.join(state) or 'none'}")
+    offered = [a.name.lower().replace("_", "-") for a in element.actions] + [repr(label) for label in element.custom_actions]
+    if offered:
+        rows.append(f"actions   {', '.join(offered)}")
+    if element.range is not None:
+        r = element.range
+        rows.append(f"range     {r.min:g}..{r.max:g}, now {r.current:g} ({r.type.name.lower()})")
+    if element.child_count:
+        rows.append(f"children  {element.child_count}")
+    return "\n".join(rows)
+
+
+def fields_text(values: dict) -> str:
+    """A JSON-ready object as ``key  value`` lines, unset values left out, nested objects on one line."""
+    def shown(value) -> str:
+        if isinstance(value, bool):
+            return "yes" if value else "no"
+        if isinstance(value, dict):
+            return ", ".join(f"{k} {shown(v)}" for k, v in value.items() if v not in (None, "", [], {}))
+        if isinstance(value, (list, tuple)):
+            return ", ".join(shown(v) for v in value)
+        if isinstance(value, float) and value.is_integer():
+            return str(int(value))
+        return str(value)
+    rows = [(key.replace("_", " "), shown(value)) for key, value in values.items() if value not in (None, "", [], {})]
+    width = max((len(key) for key, _ in rows), default=0)
+    return "\n".join(f"{key.ljust(width)}  {value}" for key, value in rows)

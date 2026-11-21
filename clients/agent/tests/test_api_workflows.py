@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import hashlib
 import json
+import re
 import pathlib
 import stat
 
@@ -37,11 +38,13 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     fake.devices.listed = [pb.DeviceEntry(serial="first", state=pb.DEVICE_FREE,
         properties=pb.DeviceProperties(api_level=34, manufacturer="Google", model="Phone", emulator=True))]
     assert "API 34  Google Phone  emulator" in agent.devices()
-    assert isinstance(json.loads(agent.server_info()), dict)
+    assert isinstance(json.loads(agent.server_info(as_json=True)), dict)
+    assert "api compatibility  2" in agent.server_info()
     agent.attach("first")
     fake.devices.responder = lambda c: pb.CommandResult(device_info=pb.DeviceInfo(current_package="com.example")) if c.WhichOneof("op") == "device_info" else None
-    assert json.loads(agent.device_info())["current_package"] == "com.example"
-    agent.snapshot(candidates=True)
+    assert json.loads(agent.device_info(as_json=True))["current_package"] == "com.example"
+    assert re.search(r"^current package +com\.example$", agent.device_info(), re.M)
+    agent.snapshot(as_json=True)
     assert fake.devices.snapshot_requests[-1].selector_candidates
     agent.tap("id=save")
     agent.history("mark", "second")
@@ -59,13 +62,17 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
 
 def test_app_queries_and_visibility_reuse_sdk(fake, agent, client, monkeypatch):
     agent.attach("first")
-    assert agent.app("installed", "com.example") == "true"
+    assert agent.app("installed", "com.example") == "com.example is installed"
+    assert agent.app("installed", "com.example", as_json=True) == "true"
+    with pytest.raises(AgentError, match="--json goes with the reads"):
+        agent.app("stop", "com.example", as_json=True)
     calls = []
     def process(request, timeout):
         calls.append(request)
         return pb.ProcessResponse(process=pb.ProcessIdentity(pid=42, start_token="identity"))
     monkeypatch.setattr(client.apps, "Process", process)
-    identity = json.loads(agent.app("process", "com.example", timeout=4))
+    identity = json.loads(agent.app("process", "com.example", timeout=4, as_json=True))
+    assert agent.app("process", "com.example") == "com.example pid 42 (start identity)"
     assert identity == {"pid": 42, "start_token": "identity"}
     assert calls[0].timeout_ms == 4000
     assert calls[0].app.client_connection_id in fake.connections.live
@@ -246,7 +253,7 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
     ("fill", {"target": "id=input", "text": "x", "timeout": .0001}),
     ("settle", {"stable_for": 31}), ("settle", {"stable_for": .0001}),
     ("settle", {"stable_for": 2, "timeout": 1}), ("settle", {"signal": "unknown"}),
-    ("snapshot", {"candidates": True, "level": "all"}),
+    ("snapshot", {"as_json": True, "level": "all"}),
     ("history", {"start": "invalid"}), ("history", {"limit": 0}), ("history", {"as_json": 1}),
     ("record", {"action": "stop"}), ("record", {"action": "export", "name": "x"}), ("history", {"action": "driver"}), ("history", {"value": "x"}),
     ("history", {"step": "1", "last_action": True}),
@@ -278,7 +285,7 @@ def test_cli_forwards_new_parameters(fake, agent):
     assert fake.devices.commands[-2].wait_screen_stable.stable_for_ms == 100
     assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_ALL
     assert fake.devices.commands[-1].WhichOneof("op") == "read_toast_history"
-    assert json.loads(run(["app", "installed", "com.example"])) is True
+    assert json.loads(run(["app", "installed", "com.example", "--json"])) is True
     events = [e["call"] for e in json.loads(run(["history", "--json"]))["entries"] if e["kind"] == "call"]
     assert any("wait_screen_stable" in event.get("command", {}) for event in events)
     assert events[-1]["command"].get("read_toast_history") == {}

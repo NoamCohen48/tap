@@ -35,7 +35,7 @@ def test_snapshot_delivers_once_across_instances_and_history_does_not_consume(fa
     resumed = Agent("agent", client=agent.client, out_dir=agent.out_dir)
     assert "Saved" not in resumed.snapshot()
     assert "Saved 1" in resumed.toast(history=True)
-    assert json.loads(resumed.snapshot(candidates=True))["toast_events"]["events"] == []
+    assert json.loads(resumed.snapshot(as_json=True))["toast_events"]["events"] == []
 
 
 def test_events_command_is_not_exposed():
@@ -49,10 +49,10 @@ def test_explicit_cursor_does_not_consume_and_candidates_stays_json(fake, agent)
     agent.attach("emulator-5554")
     fake.devices.responder = responder
     assert "Saved 2" in agent.toast(history=True, after_seq=1, stream="one")
-    data = json.loads(agent.snapshot(candidates=True))
+    data = json.loads(agent.snapshot(as_json=True))
     assert [e["sequence"] for e in data["toast_events"]["events"]] == [1, 2]
     assert "nodes" in data
-    assert json.loads(agent.snapshot(candidates=True))["toast_events"]["events"] == []
+    assert json.loads(agent.snapshot(as_json=True))["toast_events"]["events"] == []
 
 
 def test_settle_acknowledges_but_cli_toast_history_does_not(fake, agent):
@@ -93,7 +93,7 @@ def test_inbox_failure_is_explicit_and_preserves_successful_snapshot(fake, agent
     agent.attach("emulator-5554")
     fake.devices.responder = lambda _: pb.CommandResult(error=pb.Error(code=pb.ERR_UNSUPPORTED))
     assert "inbox unavailable (cursor not advanced)" in agent.snapshot()
-    data = json.loads(agent.snapshot(candidates=True))
+    data = json.loads(agent.snapshot(as_json=True))
     assert "toast_events_error" in data and "nodes" in data
     fake.devices.responder = responder
     assert "Saved 1" in agent.snapshot()
@@ -108,7 +108,7 @@ async def test_mcp_snapshot_and_cli_snapshot_share_delivery(fake, agent):
         assert "events" not in tools
         assert tools["snapshot"].annotations.read_only_hint is False
         assert tools["settle"].annotations.read_only_hint is False
-        result = await client.call_tool("snapshot", {"candidates": True})
+        result = await client.call_tool("snapshot", {"as_json": True})
         assert not result.is_error
         assert len(json.loads(result.content[0].text)["toast_events"]["events"]) == 2
     assert "Saved" not in agent.snapshot()

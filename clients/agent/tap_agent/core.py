@@ -19,7 +19,7 @@ import time
 import uuid
 from collections.abc import Callable, Iterator, Sequence
 from dataclasses import replace
-from typing import Literal, TypeVar
+from typing import Any, Literal, TypeVar
 
 from tap_e2e import (  # pyright: ignore[reportMissingImports]
     AppDeath,
@@ -182,6 +182,7 @@ NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
 
 APP_DATA_ACTIONS = ("capabilities", "list", "read", "write", "delete", "export-db", "import-db")
 
+APP_READS = ("granted", "running", "locale", "installed", "process")
 APP_ACTIONS = (
     "launch", "cold-launch", "foreground", "background", "open-link",
     "stop", "clear", "install", "uninstall", "grant", "revoke", "granted", "running", "locale", "installed", "process", "visible",
@@ -499,22 +500,26 @@ class Agent:
 
         return self._run(step)
 
-    def inspect(self, target: str, device: str | None = None, timeout: float | None = None) -> str:
-        """The exact selector's current SDK element snapshot as JSON; ambiguity remains an error."""
-        return self._query(target, device, "snapshot", timeout)
+    def inspect(self, target: str, device: str | None = None, timeout: float | None = None, *, as_json: bool = False) -> str:
+        """One node's current state: its snapshot line, then package, bounds, state, the actions
+        it offers and its range; ``as_json`` gives the complete SDK element snapshot. Ambiguity
+        remains an error."""
+        return self._query(target, device, "snapshot", timeout, as_json, render.element_text)
 
-    def exists(self, target: str, device: str | None = None, timeout: float | None = None) -> str:
-        """Whether at least one node matches now; this is a read, not a wait."""
-        return self._query(target, device, "exists", timeout)
+    def exists(self, target: str, device: str | None = None, timeout: float | None = None, *, as_json: bool = False) -> str:
+        """Whether at least one node matches now (``yes`` / ``no``); a read, not a wait."""
+        return self._query(target, device, "exists", timeout, as_json, lambda found: "yes" if found else "no")
 
-    def count(self, target: str, device: str | None = None, timeout: float | None = None) -> str:
+    def count(self, target: str, device: str | None = None, timeout: float | None = None, *, as_json: bool = False) -> str:
         """The number of matches now, using the SDK's count semantics."""
-        return self._query(target, device, "count", timeout)
+        return self._query(target, device, "count", timeout, as_json, str)
 
     def elements(
         self, target: str, device: str | None = None, timeout: float | None = None, *, texts: bool = False,
+        as_json: bool = False,
     ) -> str:
-        """All matching SDK snapshots as a JSON array; ``texts`` projects raw text instead.
+        """All matching nodes, one snapshot-style line each (``as_json``: the SDK snapshots as a
+        JSON array); ``texts`` projects raw text instead (one quoted value a line, ``null`` for none).
 
         One fresh bulk device read, no diagnostic dump, scroll, wait or persistent handles.
         Accepts written selectors (including pkg and relations), not refs or first/index.
@@ -534,16 +539,24 @@ class Agent:
             element, _ = self._element(self._device(device), parsed)
             collection = element.device.screen.elements(element.selector)
             values = collection.texts(timeout) if texts else collection.snapshots(timeout)
-            return json_text(values)
+            if as_json:
+                return json_text(values)
+            if not values:
+                return "no match"
+            if texts:
+                return "\n".join("null" if value is None else json.dumps(value, ensure_ascii=False) for value in values)
+            return "\n".join(render.element_line(value) for value in values)
 
         return self._run(step)
 
-    def _query(self, target: str, device: str | None, operation: str, timeout: float | None) -> str:
+    def _query(self, target: str, device: str | None, operation: str, timeout: float | None,
+               as_json: bool, text: Callable[[Any], str]) -> str:
         timeout = command_timeout(timeout)
 
         def step() -> str:
             element, _ = self._element(self._device(device), target)
-            return json_text(getattr(element, operation)(timeout=timeout))
+            value = getattr(element, operation)(timeout=timeout)
+            return json_text(value) if as_json else text(value)
 
         return self._run(step)
 
@@ -647,13 +660,18 @@ class Agent:
             return f"detached {selected.serial} from session {self.session!r}"
         return self._run(step)
 
-    def server_info(self) -> str:
-        """Daemon version, compatibility and configuration as SDK JSON; no daemon startup."""
-        return self._run(lambda: json_text(self.client.info()))
+    def server_info(self, *, as_json: bool = False) -> str:
+        """Daemon version, compatibility and configuration, one ``name  value`` line each
+        (``as_json``: the SDK object); no daemon startup."""
+        return self._run(lambda: json_text(self.client.info()) if as_json else render.fields_text(json_value(self.client.info())))
 
-    def device_info(self, device: str | None = None) -> str:
-        """Complete current SDK device information as JSON."""
-        return self._run(lambda: json_text(self._device(device).info()))
+    def device_info(self, device: str | None = None, *, as_json: bool = False) -> str:
+        """Complete current device information, one ``name  value`` line each (``as_json``: the
+        SDK object)."""
+        def step() -> str:
+            info = self._device(device).info()
+            return json_text(info) if as_json else render.fields_text(json_value(info))
+        return self._run(step)
 
     def capabilities(self, device: str | None = None, *, as_json: bool = False) -> str:
         """Read SDK operation eligibility without input or implicit setup; not guaranteed success."""
@@ -694,23 +712,23 @@ class Agent:
 
     # --- the screen -----------------------------------------------------------------------------
 
-    def snapshot(self, device: str | None = None, level: str = render.DEFAULT, *, candidates: bool = False,
+    def snapshot(self, device: str | None = None, level: str = render.DEFAULT, *, as_json: bool = False,
                  package: str | None = None, window: int | None = None,
                  hide_keyboard: bool = False, hide_system_chrome: bool = False) -> str:
         """Contextual ref-addressed outline, optionally filtered by window-root package or
         one-based window ordinal. Hiding keyboard/system windows uses Android window types;
         unknown types stay visible. Filters never change refs or selectors. ``context`` is
-        descriptive, not a target predicate. Candidates returns unfiltered structured SDK data."""
+        descriptive, not a target predicate. ``as_json`` returns the unfiltered structured SDK snapshot with selector candidates."""
         filters = render.SnapshotFilter(package, window, hide_keyboard, hide_system_chrome)
         if window is not None and (isinstance(window, bool) or not isinstance(window, int) or window < 1):
             raise AgentError("window must be a positive one-based ordinal", EXIT_USAGE)
-        if candidates and (level != render.DEFAULT or filters != render.SnapshotFilter()):
-            raise AgentError("candidates returns complete structured data; use the default view without filters", EXIT_USAGE)
+        if as_json and (level != render.DEFAULT or filters != render.SnapshotFilter()):
+            raise AgentError("--json returns the complete structured snapshot; it takes no view level or filter", EXIT_USAGE)
         def step() -> str:
             selected = self._device(device)
-            snapshot = selected.screen_snapshot(selector_candidates=candidates)
-            output = json_text(snapshot) if candidates else render.snapshot_text(snapshot, level, filters=filters)
-            return self._with_toasts(selected, output, structured=json_value(snapshot) if candidates else None)
+            snapshot = selected.screen_snapshot(selector_candidates=as_json)
+            output = json_text(snapshot) if as_json else render.snapshot_text(snapshot, level, filters=filters)
+            return self._with_toasts(selected, output, structured=json_value(snapshot) if as_json else None)
         return self._run(step)
 
     def _with_toasts(self, device: Device, output: str, *, structured: dict | None = None) -> str:
@@ -1674,13 +1692,14 @@ class Agent:
         device: str | None = None,
         any_app: bool = False,
         extras: Sequence[str] = (),
-        *, timeout: float | None = None,
+        *, timeout: float | None = None, as_json: bool = False,
     ) -> str:
         """App lifecycle for ``package``: launch [activity], cold-launch
         [activity] (both with ``extras`` on the intent, ``KEY[:TYPE]=VALUE``), foreground, background, open-link URI (``any_app``: any app may handle it),
         stop, clear, install APK, uninstall, grant PERMISSION, revoke PERMISSION, granted PERMISSION, running,
         locale [TAGS] (prints the app's languages; comma-separated BCP-47 tags set them, ``system``
-        makes the app follow the system again; API 33+, restored on release)."""
+        makes the app follow the system again; API 33+, restored on release), installed, process.
+        The reads print a sentence; ``as_json`` prints the value instead."""
         if action not in APP_ACTIONS:
             raise AgentError(f"unknown app action {action!r} (known: {', '.join(APP_ACTIONS)})", EXIT_USAGE)
         needs = {"install": "APK path", "grant": "permission", "revoke": "permission", "granted": "permission", "open-link": "URI"}
@@ -1694,6 +1713,8 @@ class Agent:
             raise AgentError(f"app {action} uses the SDK's fixed/default budget, not --timeout", EXIT_USAGE)
         if any_app and action != "open-link":
             raise AgentError("--any-app is only for open-link", EXIT_USAGE)
+        if as_json and action not in APP_READS:
+            raise AgentError(f"--json goes with the reads ({', '.join(APP_READS)}), not {action}", EXIT_USAGE)
         if action in ("installed", "process", "visible") and argument is not None:
             raise AgentError(f"app {action} takes no argument", EXIT_USAGE)
         intent = parse_extras(extras)
@@ -1702,9 +1723,11 @@ class Agent:
             app = self._device(device).app(package)
             name = app.package_name
             if action == "installed":
-                return json_text(app.is_installed())
+                installed = app.is_installed()
+                return json_text(installed) if as_json else f"{name} is {'installed' if installed else 'not installed'}"
             if action == "process":
-                return json_text(app.process(timeout))
+                process = app.process(timeout)
+                return json_text(process) if as_json else f"{name} pid {process.pid} (start {process.start_token})"
             if action == "visible":
                 app.await_visible(timeout)
                 return f"{name} is visible"
@@ -1759,6 +1782,8 @@ class Agent:
             if action == "granted":
                 assert argument is not None
                 granted = app.is_permission_granted(argument)
+                if as_json:
+                    return json_text(granted)
                 return f"{argument} is {'granted' if granted else 'not granted'} to {name}"
             if action == "locale":
                 if argument is not None:
@@ -1766,8 +1791,11 @@ class Agent:
                     with sending():
                         app.set_locales(tags)
                 locales = app.locales()
+                if as_json:
+                    return json_text(list(locales))
                 return f"{name} languages: {', '.join(locales)}" if locales else f"{name} follows the system language"
-            return f"{name} is {'running' if app.is_running() else 'not running'}"
+            running = app.is_running()
+            return json_text(running) if as_json else f"{name} is {'running' if running else 'not running'}"
 
         return self._run(step)
 

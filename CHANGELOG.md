@@ -8,6 +8,13 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent reads print text by default and take `--json` (MCP `as_json`) for the complete
+  structured form. `inspect` prints the node's snapshot line, package, bounds, state, offered
+  actions and range; `elements` one line per match (`--texts`: one quoted value a line);
+  `server-info` and `device-info` `name  value` lines; `exists` `yes` / `no`; `app installed` /
+  `process` / `granted` / `running` / `locale` a sentence. `snapshot --candidates` is now
+  `snapshot --json`, and MCP `capabilities` prints text unless `as_json`. Scripts that parsed
+  the old JSON output add `--json`.
 - `tap-agent history` replaces the separate `log` command/tool, with repeated device selection,
   log filters, explicit marker/step/action/opaque-cursor bounds and omission-reporting log tails.
   `history mark/redact` control only held attachments and report partial acknowledgements.

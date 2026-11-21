@@ -54,12 +54,12 @@ with `--package PACKAGE` (window-root package), `--window N`, `--hide-keyboard` 
 `--hide-system-chrome`. MCP uses `package`, `window`, `hide_keyboard`, `hide_system_chrome`.
 Suppression uses Android window types, never package guesses; Settings and permission dialogs
 remain application windows. Unknown types remain visible. Filters affect presentation only,
-not refs, and cannot be combined with `--candidates`. Settle/action diffs also show context.
+not refs, and cannot be combined with `--json`. Settle/action diffs also show context.
 
 ## Reading collections
 
-Use `elements TARGET` to read all currently exposed matches as a JSON array in one fresh bulk
-read, rather than parsing a diagnostic snapshot or looping over count/index:
+Use `elements TARGET` to read all currently exposed matches, one line each (`--json` for the
+array of SDK snapshots), in one fresh bulk read, rather than parsing a diagnostic snapshot or looping over count/index:
 
 ```sh
 tap-agent elements id=title,pkg=com.shop --texts
@@ -67,9 +67,11 @@ tap-agent elements '{"id":"price","ancestor":{"id":"products"},"pkg":"com.shop"}
 tap-agent elements checkable=true,pkg=com.shop --timeout 3s
 ```
 
-Default output is full SDK element state, including `checkable`, `checked`, `enabled` and
-`selected`; `--texts` projects raw text, preserving duplicates, empty strings and nulls. An
-empty field may report its hint as text; inspect `showing_hint` in the full state. MCP:
+Default output is one snapshot-style line per match (`checked`, `selected`, `disabled` as
+words); `--json` gives the full SDK element state, including `checkable`, `checked`, `enabled`
+and `selected`. `--texts` projects raw text, one quoted value a line (`null` for none),
+preserving duplicates and empty strings. An empty field may report its hint as text; check
+`showing_hint` in the `--json` state. MCP:
 `elements(target=..., texts=true, timeout_seconds=3)` for text, omit `texts` for state.
 
 Use written selectors with optional pkg/relations, not snapshot refs or first/index. Results
@@ -105,8 +107,9 @@ Nested JSON selector strings support all/any groups and parent/ancestor/child/de
 e.g. `'{"text":"Save","enabled":true,"ancestor":{"id":"dialog"}}'`. Only the outer selector may
 pick index or first. Bounded at 64 KiB / 32 levels / 256 nodes; no XPath.
 
-`inspect TARGET` reads full SDK element state as JSON (may include sensitive text); `exists`
-and `count` read immediate matches. `wait TARGET --state enabled|disabled|checked|unchecked|focused`
+`inspect TARGET` reads one node's state: its snapshot line, then package, bounds, state words,
+the actions it offers and its range (`--json`: the full SDK element state; may include
+sensitive text). `exists` (`yes` / `no`) and `count` read immediate matches. `wait TARGET --state enabled|disabled|checked|unchecked|focused`
 waits on state, `--state text|text-contains --value TEXT` on text, `--state count --value N` on count,
 and `--until enabled=true,text=Pay` (target grammar, no ref/index/pkg) until the node satisfies all parts at once.
 All command/wait budgets are 1ms..120s; MCP settle now also accepts
@@ -297,8 +300,9 @@ Use `history` for logs and activity, not a separate `log` tool:
 - Infrastructure: **daemon CLI** `tap logs driver --serial SERIAL` reads the current attachment's
   bounded driver buffer; `tap logs` reads daemon.log. No agent `log driver` or `log evidence`.
 
-Treat accessibility data and logs as potentially sensitive. `snapshot --candidates` returns
-structured SDK data with selector candidates instead of rendered lines; use the default view.
+Treat accessibility data and logs as potentially sensitive. Every read prints text by
+default and takes `--json` (MCP `as_json`) for its complete structured form: `snapshot --json`
+is the SDK snapshot with selector candidates; use the default view.
 
 `media-record start --max-seconds 10` explicitly starts silent video through the daemon's scrcpy;
 `media-record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,

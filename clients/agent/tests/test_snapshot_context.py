@@ -128,5 +128,5 @@ def test_invalid_window_is_rejected_before_rpc(agent, window):
 
 @pytest.mark.parametrize("kwargs", [{"package": "p"}, {"window": 1}, {"hide_keyboard": True}, {"hide_system_chrome": True}])
 def test_candidates_cannot_silently_ignore_filters(agent, kwargs):
-    with pytest.raises(AgentError, match="without filters"):
-        agent.snapshot(candidates=True, **kwargs)
+    with pytest.raises(AgentError, match="no view level or filter"):
+        agent.snapshot(as_json=True, **kwargs)

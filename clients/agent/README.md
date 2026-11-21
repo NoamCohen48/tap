@@ -56,8 +56,9 @@ tap-agent release
 
 ## Collection reads
 
-`elements TARGET` returns a JSON array of current SDK element snapshots, including checkbox
-state (`checkable`, `checked`), `enabled` and `selected`. `--texts` returns just raw text:
+`elements TARGET` prints one snapshot-style line per current match; `--json` returns the array
+of SDK element snapshots, including checkbox state (`checkable`, `checked`), `enabled` and
+`selected`. `--texts` returns just raw text:
 
 ```sh
 tap-agent elements id=title,pkg=com.shop --texts
@@ -65,7 +66,7 @@ tap-agent elements '{"id":"price","ancestor":{"id":"products"},"pkg":"com.shop"}
 tap-agent elements checkable=true,pkg=com.shop --timeout 3s
 ```
 
-The read-only MCP `elements` tool takes the same target, `texts` (default false),
+The read-only MCP `elements` tool takes the same target, `texts` (default false), `as_json`,
 `timeout_seconds`, session and device. Each call uses one fresh bulk read, without a diagnostic
 snapshot or persistent handles. Use written selectors, not snapshot refs, `first` or `index`.
 Results follow accessibility window order, then post-order inside each window—not necessarily
