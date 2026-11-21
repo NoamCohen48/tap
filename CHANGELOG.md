@@ -8,6 +8,8 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `media-record start --max DURATION` (whole seconds, e.g. `20s`) replaces
+  `--max-seconds N`, like every other time option.
 - tap-agent `device-info` also reports the foreground activity (`foreground_activity` in
   `--json`), so one read shows the whole device state.
 - tap-agent `type TEXT [TARGET]` takes its optional target as a positional, like `fill` and

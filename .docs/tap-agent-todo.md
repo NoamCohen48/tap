@@ -318,6 +318,8 @@ by default and `--json` (see the output item above).
 
 ## `media-record --max-seconds`: a duration
 
+Status: done.
+
 It is the only time option that takes a bare number of seconds; every other one takes a duration.
 
 Do: `--max DURATION` (`--max 20s`), same limits (30 s with video, 60 s audio only).

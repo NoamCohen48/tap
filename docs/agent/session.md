@@ -472,7 +472,7 @@ See [Device logs](../guide/logs.md).
 ## Record an owned device
 
 ```sh
-tap-agent media-record start --max-seconds 10
+tap-agent media-record start --max 10s
 # Perform explicit app actions.
 tap-agent media-record stop -o evidence.mp4
 ```
@@ -481,7 +481,7 @@ Recording uses the daemon's configured scrcpy, never a watcher or an implicit ap
 Default: silent video, up to 30 seconds/16 MiB. Add `--audio-source output` (API 30+, **mutes
 speakers**), `playback` (API 33+, retains sound but apps can opt out) or `mic` (**captures the
 microphone**). `--no-video --audio-source mic` records audio only, up to 60 seconds/3 MiB.
-`--max-seconds` is an integer within the track limit. Options for tracks/duration belong to start;
+`--max` is a whole number of seconds within the track limit. Options for tracks/duration belong to start;
 `-o` belongs to stop. Video-only is MP4, video+audio MKV, audio-only Opus.
 
 Start acknowledges spawning, not first-frame readiness; refusal can surface on stop. Stop before
