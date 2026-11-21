@@ -215,7 +215,9 @@ import, inspect/repair or explicitly clear fixture data before launching; do not
 
 Add `--settle` to an action to wait until the screen stops changing and print the difference:
 `+` added nodes, `-` removed ones. That is usually enough to decide the next step without a
-new `snapshot`. `settle` alone does the same without acting.
+new `snapshot`. `settle` alone does the same without acting. When the settle after an action
+fails, the action still succeeded: the output says `! not settled (...)`; take a `snapshot`
+instead of repeating the action.
 
 `wait <target>` waits for a node (`--gone`: until it disappears; `--timeout 30s`).
 

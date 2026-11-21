@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent no longer fails a step whose input was sent when the `--settle` after it fails (for
+  example with no focused app): the output reports `! not settled (...)` instead, so the step
+  is not mistaken for one that did not run.
 - tap-agent `media-record start --max DURATION` (whole seconds, e.g. `20s`) replaces
   `--max-seconds N`, like every other time option.
 - tap-agent `device-info` also reports the foreground activity (`foreground_activity` in
