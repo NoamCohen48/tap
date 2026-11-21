@@ -31,7 +31,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "CLI and the MCP server, and ends on `release` or after 15 idle minutes. `--session NAME` "
         "(or `TAP_AGENT_SESSION`) keeps several apart. A device is held by one session at a time, "
         "exactly as a test holds it.",
-        ["devices", "attach", "sessions", "detach", "release", "unquarantine", "server-info", "device-info", "capabilities"],
+        ["devices", "attach", "sessions", "detach", "release", "server-info", "device-info", "capabilities"],
     ),
     (
         "Reading the screen",
@@ -164,6 +164,11 @@ def mcp_tools() -> dict[str, Tool]:
     return {tool.name: tool for tool in anyio.run(server.list_tools)}
 
 
+# MCP tools documented under a verb whose CLI form they cover: `devices unquarantine SERIAL` is
+# the MCP `unquarantine` tool, so MCP `devices` stays a read-only tool.
+ALSO: dict[str, str] = {"unquarantine": "devices"}
+
+
 def mcp_name(verb: str) -> str | None:
     return MCP_NAMES.get(verb, verb)
 
@@ -178,7 +183,7 @@ def check(verbs: dict[str, argparse.ArgumentParser], tools: dict[str, Tool]) -> 
     for verb in grouped:
         if verb not in verbs:
             problems.append(f"group lists {verb!r}, which is not a tap-agent verb")
-    mapped = {mcp_name(verb) for verb in verbs} - {None}
+    mapped = ({mcp_name(verb) for verb in verbs} | set(ALSO)) - {None}
     for name in tools:
         if name not in mapped:
             problems.append(f"MCP tool {name!r} has no CLI verb in MCP_NAMES")
@@ -251,6 +256,9 @@ def verb_section(verb: str, parser: argparse.ArgumentParser, tools: dict[str, To
         signature = f"`{name}({', '.join(params)})`"
         summary = cell((tool.description or "").strip().split("\n\n")[0])
         lines += [f"MCP: {signature}: {summary}", ""]
+        for extra in (t for t, under in ALSO.items() if under == verb):
+            params = [p for p in (tools[extra].input_schema or {}).get("properties", {}) if p not in ("session",)]
+            lines += [f"MCP: `{extra}({', '.join(params)})`: {cell((tools[extra].description or '').strip().split(chr(10) * 2)[0])}", ""]
     return lines
 
 

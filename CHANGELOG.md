@@ -8,6 +8,8 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `unquarantine SERIAL` is now `devices unquarantine SERIAL`, next to the listing that
+  shows quarantined devices. MCP keeps its `unquarantine` tool, so `devices` stays read-only.
 - tap-agent MCP action tools settle by default (`settle=true`) and return what changed, so an
   agent rarely needs a `snapshot` after an action; `settle=false` skips it. The CLI keeps
   `--settle` opt-in. Read forms (`keyboard`, `screen`, `notification` with no action) never

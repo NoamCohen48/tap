@@ -41,10 +41,10 @@ reason. An agent can look at it and fix it before it goes back into service:
 ```console
 $ tap-agent attach 85e49002 --quarantined
 attached 85e49002 to session 'agent', idle timeout 15m
-85e49002 is quarantined (BOOT_CHANGED: the device rebooted during a session): inspect and fix it; it stays quarantined after detach until `unquarantine 85e49002`
+85e49002 is quarantined (BOOT_CHANGED: the device rebooted during a session): inspect and fix it; it stays quarantined after detach until `devices unquarantine 85e49002`
 $ tap-agent screenshot          # snapshot, act, as usual
 $ tap-agent detach
-$ tap-agent unquarantine 85e49002
+$ tap-agent devices unquarantine 85e49002
 85e49002 is back in service (it was quarantined: BOOT_CHANGED: the device rebooted during a session)
   - stopped the driver
 ```

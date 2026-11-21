@@ -334,6 +334,9 @@ default (`--settle` opt in). Document it in the MCP instructions; MCP tests for 
 
 ## `unquarantine` under `devices`
 
+Status: done on the CLI; MCP keeps a separate `unquarantine` tool so `devices` keeps its
+read-only hint.
+
 It is the only device-lifecycle command outside a group. Make it `devices unquarantine SERIAL`,
 next to the listing that shows quarantined devices; remove the top-level verb. Update MCP, docs
 and tests.

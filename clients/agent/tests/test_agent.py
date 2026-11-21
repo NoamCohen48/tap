@@ -10,6 +10,7 @@ from tap_e2e import TapClient, res, text
 from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
+from tap_agent.targets import UsageError
 from tap_agent.core import EXIT_FAILED, EXIT_NO_DAEMON, EXIT_USAGE
 from tap_agent.mcp_server import create_server
 
@@ -129,7 +130,7 @@ def test_a_quarantined_device_is_inspected_then_unquarantined(fake, agent):
         agent.attach("85e49002")
     out = agent.attach("85e49002", inspect_quarantined=True)
     assert "85e49002 is quarantined (BOOT_CHANGED: rebooted)" in out
-    assert "until `unquarantine 85e49002`" in out
+    assert "until `devices unquarantine 85e49002`" in out
     agent.detach()
     assert agent.unquarantine("85e49002") == (
         "85e49002 is back in service (it was quarantined: BOOT_CHANGED: rebooted)\n"
@@ -874,3 +875,14 @@ async def test_mcp_actions_settle_by_default_and_reads_do_not(fake, server):
         assert "wait_screen_stable" not in [c.WhichOneof("op") for c in fake.devices.commands[before:]]
         for read in ("keyboard", "screen"):
             assert not (await client.call_tool(read, {})).is_error
+
+
+def test_devices_unquarantine_is_the_cli_form_and_the_verb_is_gone(fake, agent):
+    parser = cli.parser()
+    with pytest.raises(SystemExit):
+        parser.parse_args(["unquarantine", "85e49002"])
+    assert "not quarantined" in cli.run(parser.parse_args(["devices", "unquarantine", "85e49002"]), agent)
+    with pytest.raises(UsageError):
+        cli.run(parser.parse_args(["devices", "unquarantine"]), agent)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["devices", "85e49002"])
