@@ -57,8 +57,9 @@ last_action, since_marker/until_marker, or a recording.
 history(action="mark", value="NAME") bookmarks held attachments; action="redact" adds Java
 regex redaction. Controls never attach devices; partial acknowledgements are explicit.
 Log filters imply logs but never erase deaths, calls or capture gaps. Package filters require the
-original live attachment's UID mapping. capture explicitly collects current state into new
-private files and indexes external references in history; reads never take a fresh capture.
+original live attachment's UID mapping. capture explicitly collects current state and the
+device's history (history.txt, history.json) into new private files and indexes them in history;
+reads never take a fresh capture. When the screen matters, capture first: it does not wait.
 Driver infrastructure diagnostics belong to daemon `tap logs driver --serial SERIAL`, not an
 agent log tool. Every action and wait is
 recorded as a step without being asked. history(action="keep", value="start"|"stop", name=...)
@@ -907,10 +908,16 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call(session, lambda a: a.condition(name, value or None, device or None))
 
     @mcp.tool(name="capture", annotations=WRITES_FILES)
-    async def capture(session: Session = "", device: Device = "", path: str = "") -> CallToolResult:
-        """Save current screenshot, hierarchy, device/driver logs and activity/window state to a new
-        private directory; return paths and index external history references. Never a past screen."""
-        return await call(session, lambda a: a.capture(device or None, path or None))
+    async def capture(
+        session: Session = "", device: Device = "", path: str = "",
+        last: Annotated[str, Field(description="History: only the last duration, e.g. 5m (default: all of it that is kept).")] = "",
+        start: Annotated[str, Field(description="History: from this ISO time with a time zone.")] = "",
+    ) -> CallToolResult:
+        """Save one evidence bundle to a new private directory: the screenshot, hierarchy,
+        device/driver logs and activity/window state now, and the device's history (steps, calls,
+        crashes, ANRs, device log) as history.txt and history.json. Returns the paths; a part that
+        fails is listed and the rest are saved. Never a past screen."""
+        return await call(session, lambda a: a.capture(device or None, path or None, last=last or None, start=start or None))
 
     @mcp.tool(name="app_data")
     async def app_data(

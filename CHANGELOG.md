@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `capture` also saves the device's history as `history.txt` and `history.json`
+  (`tap-history/2`): the session's steps, calls, crashes, ANRs, gaps and device log, all that is
+  kept or `--last` / `--from`, so one bundle holds the screen and what led up to it.
 - tap-agent `unquarantine SERIAL` is now `devices unquarantine SERIAL`, next to the listing that
   shows quarantined devices. MCP keeps its `unquarantine` tool, so `devices` stays read-only.
 - tap-agent MCP action tools settle by default (`settle=true`) and return what changed, so an

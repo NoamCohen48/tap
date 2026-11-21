@@ -171,6 +171,22 @@ and `since_marker=` / `until_marker=` marker names. SDK history has calls but no
 Keep history-read failures separate from the script's own result, and never retry a mutation
 to repair a recording.
 
+## One bundle: capture
+
+`capture` saves the device's state now (screenshot, full hierarchy, device info, driver log,
+logcat, crashes, activity stack, windows) and its history, in one new private directory:
+
+```sh
+tap-agent capture                 # all the history that is kept
+tap-agent capture --last 10m -o evidence/checkout-failure
+```
+
+`<serial>.history.txt` is what `history --logs --details` prints for this session on the
+device, every page in one file; `<serial>.history.json` is the same as one `tap-history/2`
+document. A part that cannot be read (the history too) is listed as failed and the others are
+still saved. The current screen is perishable, so when it matters take a `capture` first;
+history stays readable afterward.
+
 ## What cannot be recovered afterward
 
 History is not an unrestricted transcript. Successful query return values and generic human

@@ -356,8 +356,11 @@ def parser() -> argparse.ArgumentParser:
     p = verb("screenshot", "save a PNG and print its path", on_device)
     p.add_argument("-o", "--out", help="file (default .tap/agent/<serial>-<time>.png)")
 
-    p = verb("capture", "save current screen, hierarchy, device/driver logs and activity/window state; index external history references", on_device)
+    p = verb("capture", "save one evidence bundle: the screen, hierarchy, device/driver logs and activity/window state now, and the device's history as text and JSON", on_device)
     p.add_argument("-o", "--out", help="new private directory, never overwrite (default .tap/agent/capture-<serial>-<time>)")
+    since = p.add_mutually_exclusive_group()
+    since.add_argument("--last", metavar="DURATION", help="history: only the last DURATION (default: all of it that is kept)")
+    since.add_argument("--from", dest="start", metavar="TIME", help="history: from this ISO time with a time zone")
 
     p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS) + " (visible waits until the app owns the focused window)", on_device, expect)
     p.add_argument("action", choices=APP_ACTIONS)
@@ -538,7 +541,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "screenshot":
         return str(agent.screenshot(device, args.out))
     if v == "capture":
-        return agent.capture(device, args.out)
+        return agent.capture(device, args.out, last=args.last, start=args.start)
     if v == "history":
         return agent.history(args.action, args.value, start=args.start, until=args.until, last=args.last, limit=args.limit,
             logs=args.logs, as_json=args.as_json, details=args.details, devices=args.history_devices, packages=args.packages,
