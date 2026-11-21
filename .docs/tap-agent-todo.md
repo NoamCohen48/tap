@@ -297,6 +297,8 @@ rename). Remove `record`. `media-record` keeps its name for now. Update the MCP 
 
 ## `type`: target as a positional
 
+Status: done.
+
 `fill TARGET TEXT` and `clear TARGET` take the target first; `type TEXT --target T` takes it as a
 flag, because `type` usually goes to the focused field.
 
