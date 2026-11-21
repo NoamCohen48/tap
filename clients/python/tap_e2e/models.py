@@ -928,8 +928,8 @@ class DeviceInfo(Artifact):
     """Colour inversion is on; ``None`` when the driver cannot read it."""
     bold_text: bool = False
     """The system font is bold (API 31+; always ``False`` below)."""
-    soft_keyboard: bool | None = None
-    """The soft keyboard shows while a hardware keyboard is connected (``Device.set_soft_keyboard``);
+    show_ime_with_hard_keyboard: bool | None = None
+    """The soft keyboard shows while a hardware keyboard is connected (``Device.set_show_ime_with_hard_keyboard``);
     ``None`` when the driver cannot read it."""
 
     media_type = "application/json"

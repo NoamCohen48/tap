@@ -22,10 +22,11 @@ name the components affected. Earlier releases used independent version lines. T
   print the status and navigation bars as one header line each (`--system-bars` shows them) and to
   leave them out of `--settle` diffs. `--hide-system-chrome` now drops only those bars; the shade,
   quick settings, the volume panel and system dialogs always show.
-- A soft-keyboard condition: `DeviceService.SetSoftKeyboard` sets Android's "show the on-screen
-  keyboard with a hardware keyboard" (`show_ime_with_hard_keyboard`) until detach, and
-  `DeviceInfo.soft_keyboard` reads it back. Kotlin `setSoftKeyboard`, Python `set_soft_keyboard`,
-  tap-agent `condition soft-keyboard on|off` (also in `condition` and `device-info`). Input methods
+- A condition for Android's "show the on-screen keyboard with a hardware keyboard", named as
+  Android names it: `DeviceService.SetShowImeWithHardKeyboard` sets `show_ime_with_hard_keyboard`
+  until detach, and `DeviceInfo.show_ime_with_hard_keyboard` reads it back. Kotlin
+  `setShowImeWithHardKeyboard`, Python `set_show_ime_with_hard_keyboard`, tap-agent `condition
+  ime-with-hard-keyboard on|off` (also in `condition` and `device-info`). Input methods
   that follow it hide the soft keyboard while a hardware keyboard is connected unless it is on;
   Gboard on an API 34 emulator showed the keyboard either way.
 - Key presses can be long, held or counted, with `tap`'s names: `PressKey` gains a `hold` oneof

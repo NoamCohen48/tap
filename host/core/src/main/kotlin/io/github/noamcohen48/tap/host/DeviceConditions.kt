@@ -123,8 +123,8 @@ class DeviceConditions internal constructor(
      * it hide the soft keyboard while a hardware keyboard is connected unless it is on; Gboard on an
      * API 34 emulator showed the keyboard either way. With no hardware keyboard it changes nothing.
      */
-    suspend fun setSoftKeyboard(enabled: Boolean) {
-        change(mapOf(StateKey.SOFT_KEYBOARD to if (enabled) "1" else "0"))
+    suspend fun setShowImeWithHardKeyboard(enabled: Boolean) {
+        change(mapOf(StateKey.SHOW_IME_WITH_HARD_KEYBOARD to if (enabled) "1" else "0"))
     }
 
     /**

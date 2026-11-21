@@ -138,7 +138,7 @@ sealed interface StateKey {
         val STAY_AWAKE = Setting("global", "stay_on_while_plugged_in").id
 
         /** The soft keyboard shows while a hardware keyboard is connected: 1/0. */
-        val SOFT_KEYBOARD = Setting("secure", "show_ime_with_hard_keyboard").id
+        val SHOW_IME_WITH_HARD_KEYBOARD = Setting("secure", "show_ime_with_hard_keyboard").id
 
         /** The accessibility display settings: 1/0, and bold text's font weight adjustment (0 = off). */
         val HIGH_CONTRAST_TEXT = Setting("secure", "high_text_contrast_enabled").id

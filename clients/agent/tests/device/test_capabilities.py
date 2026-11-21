@@ -40,7 +40,7 @@ pytestmark = pytest.mark.skipif(not SERIAL, reason="set TAP_AGENT_DEVICE_SERIAL 
 SETTINGS = (
     "auto_rotate", "animations_enabled", "dark_mode", "font_scale", "density_dpi",
     "airplane_mode", "wifi_enabled", "mobile_data_enabled", "system_locales",
-    "stay_awake", "soft_keyboard", "high_contrast_text", "color_inversion", "bold_text",
+    "stay_awake", "show_ime_with_hard_keyboard", "high_contrast_text", "color_inversion", "bold_text",
 )
 
 

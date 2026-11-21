@@ -169,7 +169,7 @@ fr-FR,en` sets the device languages. `location <lat> <lon> [--accuracy M] [--alt
 location (call again to move it). `app locale <package>`
 prints the app's own languages, `app locale <package> fr-FR,en` sets them and `app locale
 <package> system` makes the app follow the system again (Android 13+). `condition stay-awake
-on` keeps the screen on while plugged in; `condition soft-keyboard on` sets Android's "show the
+on` keeps the screen on while plugged in; `condition ime-with-hard-keyboard on` sets Android's "show the
 on-screen keyboard while a hardware keyboard is connected" (input methods that follow it hide the
 soft keyboard on an emulator with a hardware keyboard unless it is on); `condition high-contrast-text|color-inversion|bold-text
 on|off` set the accessibility display settings (bold text Android 12+). All of these, like
@@ -185,7 +185,7 @@ swipes it away (an ongoing one is refused). Open and dismiss need exactly one ma
 
 Keyboard and clipboard: `keyboard` prints whether a soft keyboard shows (there is no `keyboard
 open`: Android shows it for a focused field at the app's request, so tap the field; if a tapped
-field brings up no keyboard on an emulator, try `condition soft-keyboard on`), `keyboard hide`
+field brings up no keyboard on an emulator, try `condition ime-with-hard-keyboard on`), `keyboard hide`
 hides it (nothing is pressed when none shows); `submit <target>` runs the field's keyboard
 action key (Search, Go, Send, Done; Android 11+), and the field must have input focus, so tap
 it first. `clipboard` prints the device clipboard, `clipboard <text>` sets it.

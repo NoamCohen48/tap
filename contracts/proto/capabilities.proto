@@ -106,7 +106,7 @@ enum CapabilityId {
   CAPABILITY_SNAPSHOTS = 91;
   CAPABILITY_READ_TOAST_HISTORY = 92;
   CAPABILITY_DEVICE_EVENTS = 93;
-  CAPABILITY_DEVICE_SET_SOFT_KEYBOARD = 94;
+  CAPABILITY_DEVICE_SET_SHOW_IME_WITH_HARD_KEYBOARD = 94;
 }
 
 // Eligibility, not a promise of success: matching, occlusion, Android acceptance and transport

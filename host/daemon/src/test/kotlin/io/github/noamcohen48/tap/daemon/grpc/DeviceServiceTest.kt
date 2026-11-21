@@ -90,8 +90,8 @@ class DeviceServiceTest {
         assertEquals(
             Status.Code.NOT_FOUND,
             code {
-                stub.setSoftKeyboard(
-                    io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setEnabled(true).build(),
+                stub.setShowImeWithHardKeyboard(
+                    io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest.newBuilder().setClientConnectionId("c").setAttachedDeviceId("d").setEnabled(true).build(),
                 )
             },
         )
