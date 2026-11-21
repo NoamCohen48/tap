@@ -25,15 +25,6 @@ internal class FakeDeviceLogService : DeviceLogServiceGrpcKt.DeviceLogServiceCor
     val entries = CopyOnWriteArrayList<LogEntry>()
 
     @Volatile var dropped = 0L
-    var finalDropped = 0L
-    var captureError = ""
-    var clockId = ""
-    var recording: io.github.noamcohen48.tap.api.v1.LogRecording =
-        io.github.noamcohen48.tap.api.v1.LogRecording
-            .getDefaultInstance()
-    var archives = emptyList<io.github.noamcohen48.tap.api.v1.RetainedLog>()
-    val starts = CopyOnWriteArrayList<io.github.noamcohen48.tap.api.v1.StartLogRecordingRequest>()
-    val deletes = CopyOnWriteArrayList<String>()
     val reads = CopyOnWriteArrayList<ReadLogRequest>()
     val marks = CopyOnWriteArrayList<MarkLogRequest>()
     val redactions = CopyOnWriteArrayList<RedactLogRequest>()
@@ -46,23 +37,8 @@ internal class FakeDeviceLogService : DeviceLogServiceGrpcKt.DeviceLogServiceCor
             if (request.hasMarker() && entries.none { it.hasMarker() && it.marker == request.marker }) {
                 throw daemonFailure(Status.NOT_FOUND, FailureReason.FAILURE_REASON_UNKNOWN_LOG_MARKER, "no marker ${request.marker}")
             }
-            emit(
-                ReadLogResponse
-                    .newBuilder()
-                    .addAllEntries(
-                        entries.take(1),
-                    ).setDropped(dropped)
-                    .setCaptureError(captureError)
-                    .setClockId(clockId)
-                    .build(),
-            )
-            emit(
-                ReadLogResponse
-                    .newBuilder()
-                    .addAllEntries(entries.drop(1))
-                    .setDropped(finalDropped)
-                    .build(),
-            )
+            emit(ReadLogResponse.newBuilder().addAllEntries(entries.take(1)).setDropped(dropped).build())
+            emit(ReadLogResponse.newBuilder().addAllEntries(entries.drop(1)).build())
             if (!request.follow) return@flow
             try {
                 for (entry in live) emit(ReadLogResponse.newBuilder().addEntries(entry).build())
@@ -71,73 +47,9 @@ internal class FakeDeviceLogService : DeviceLogServiceGrpcKt.DeviceLogServiceCor
             }
         }
 
-    override suspend fun startLogRecording(
-        request: io.github.noamcohen48.tap.api.v1.StartLogRecordingRequest,
-    ): io.github.noamcohen48.tap.api.v1.StartLogRecordingResponse {
-        starts += request
-        return io.github.noamcohen48.tap.api.v1.StartLogRecordingResponse
-            .newBuilder()
-            .setRecording(recording)
-            .build()
-    }
-
-    override suspend fun stopLogRecording(
-        request: io.github.noamcohen48.tap.api.v1.StopLogRecordingRequest,
-    ): io.github.noamcohen48.tap.api.v1.StopLogRecordingResponse {
-        recording =
-            recording
-                .toBuilder()
-                .setStoppedAtMs(2)
-                .setComplete(captureError.isEmpty())
-                .setCaptureError(captureError)
-                .clearRanges()
-                .addAllRanges(
-                    recording.rangesList.map {
-                        it.toBuilder().setThroughCursor(entries.maxOfOrNull { e -> e.cursor } ?: it.afterCursor).build()
-                    },
-                ).build()
-        return io.github.noamcohen48.tap.api.v1.StopLogRecordingResponse
-            .newBuilder()
-            .setRecording(recording)
-            .build()
-    }
-
-    override suspend fun listLogRecordings(
-        request: io.github.noamcohen48.tap.api.v1.ListLogRecordingsRequest,
-    ): io.github.noamcohen48.tap.api.v1.ListLogRecordingsResponse =
-        io.github.noamcohen48.tap.api.v1.ListLogRecordingsResponse
-            .newBuilder()
-            .apply {
-                if (recording.name.isNotEmpty()) addRecordings(recording)
-            }.build()
-
-    override suspend fun deleteLogRecording(
-        request: io.github.noamcohen48.tap.api.v1.DeleteLogRecordingRequest,
-    ): io.github.noamcohen48.tap.api.v1.DeleteLogRecordingResponse {
-        deletes += request.name
-        recording =
-            io.github.noamcohen48.tap.api.v1.LogRecording
-                .getDefaultInstance()
-        return io.github.noamcohen48.tap.api.v1.DeleteLogRecordingResponse
-            .getDefaultInstance()
-    }
-
-    override suspend fun listRetainedLogs(
-        request: io.github.noamcohen48.tap.api.v1.ListRetainedLogsRequest,
-    ): io.github.noamcohen48.tap.api.v1.ListRetainedLogsResponse =
-        io.github.noamcohen48.tap.api.v1.ListRetainedLogsResponse
-            .newBuilder()
-            .addAllLogs(archives)
-            .build()
-
     override suspend fun markLog(request: MarkLogRequest): MarkLogResponse {
         marks += request
-        entries +=
-            LogEntry
-                .newBuilder()
-                .setCursor(entries.size + 1L)
-                .setMarker(request.name)
-                .build()
+        entries += LogEntry.newBuilder().setCursor(entries.size + 1L).setMarker(request.name).build()
         return MarkLogResponse.newBuilder().setCursor(entries.size.toLong()).build()
     }
 

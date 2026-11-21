@@ -3,17 +3,13 @@
 //
 // The daemon reads `logcat` (main, system and crash buffers) continuously while the device is
 // attached, unless the attachment turned that off (`AttachRequest.capture_logs`). Per-device
-// read/marker/redaction calls then fail FAILED_PRECONDITION. Redacted entries are persisted
-// under a configurable global rolling policy and survive detach/restart. Named recordings
-// protect their ranges from rolling eviction, not hard storage limits. A 16 MiB hot buffer
-// serves live followers. Redaction is best effort; keep retained evidence private.
+// read/marker/redaction calls then fail FAILED_PRECONDITION. This service uses a live attachment.
+// HistoryService reads durable activity and protected ranges after detach/restart. A 16 MiB hot
+// buffer serves live followers. Redaction is best effort; keep retained evidence private.
 
 syntax = "proto3";
 
 package tap.v1;
-
-import "command.proto";
-import "event_log.proto";
 
 option java_package = "io.github.noamcohen48.tap.api.v1";
 option java_multiple_files = true;
@@ -23,23 +19,13 @@ service DeviceLogService {
   // The entries from a starting point, oldest first, in batches. With `follow` the stream stays
   // open for new entries until the caller cancels it or the device is detached; a follower that
   // falls too far behind is ended with RESOURCE_EXHAUSTED and reads again after its last cursor.
-  // Non-follow reads support retained ids after release/restart; follow uses a live hot buffer.
+  // Requires the connection's current attachment; use HistoryService after detach/restart.
   rpc ReadLog(ReadLogRequest) returns (stream ReadLogResponse);
   // Writes a named marker into the log, at the time the daemon gets the call.
   rpc MarkLog(MarkLogRequest) returns (MarkLogResponse);
   // Adds patterns whose matches are replaced by `<redacted>` in everything read from now on,
   // lines already captured included.
   rpc RedactLog(RedactLogRequest) returns (RedactLogResponse);
-  // Protect the current attachment set from rolling eviction, starting at acknowledgment.
-  rpc StartLogRecording(StartLogRecordingRequest) returns (StartLogRecordingResponse);
-  // Finalize a protected range. Works after the owning connection ended.
-  rpc StopLogRecording(StopLogRecordingRequest) returns (StopLogRecordingResponse);
-  // Named protected ranges in this daemon state directory; requires the daemon token.
-  rpc ListLogRecordings(ListLogRecordingsRequest) returns (ListLogRecordingsResponse);
-  // Explicit deletion removes protection, never an active recording.
-  rpc DeleteLogRecording(DeleteLogRecordingRequest) returns (DeleteLogRecordingResponse);
-  // Discover ordinary retained history after release/restart. The daemon token authorizes access.
-  rpc ListRetainedLogs(ListRetainedLogsRequest) returns (ListRetainedLogsResponse);
 }
 
 enum LogPriority {
@@ -53,7 +39,7 @@ enum LogPriority {
 }
 
 message ReadLogRequest {
-  // The original owning connection id, not a newly created connection for archived reads.
+  // The live connection that owns attached_device_id. This is routing, not authentication.
   string client_connection_id = 1;
   string attached_device_id = 2;
   // Where to start; absent = the first entry the daemon still has.
@@ -72,8 +58,7 @@ message ReadLogRequest {
   bool follow = 7;
   // The filters below apply to log lines only: markers, actions and gaps always pass.
   // Lines of these apps only (by the uid Android gave each package). A package that is not
-  // installed is INVALID_ARGUMENT. Requires a live attachment; archived package ownership is
-  // not inferred from a later device session.
+  // installed is INVALID_ARGUMENT.
   repeated string packages = 8;
   // Lines of this priority or higher; absent = all.
   LogPriority min_priority = 9;
@@ -87,19 +72,18 @@ message ReadLogRequest {
   // Only the entries from the first action of this step to its last (`LogAction.step`), both
   // included; nothing when the log has no action of that step. Not with `follow`.
   optional string step = 13;
-  // Restrict to this protected recording's range for attached_device_id. No follow.
-  // Retained reads use the original connection and attachment ids, even after detach/restart.
-  optional string recording = 14;
 }
 
 message ReadLogResponse {
   repeated LogEntry entries = 1;
-  // Unavailable entries in the requested cursor interval, before user filtering. Sum across
-  // ALL batches: protection can leave holes, not just an evicted prefix. Zero for `tail`.
+  // How many entries of the requested range the daemon no longer has (retention removed
+  // them), counted before the filters. Add it up over all batches: a recording can keep entries
+  // on both sides of a removed stretch. 0 for `tail`.
   uint64 dropped = 2;
-  // Nonempty when durable capture was interrupted or could not preserve all evidence.
+  // Why the daemon could not keep all of this attachment's log (a storage limit or failure);
+  // empty when it kept everything.
   string capture_error = 3;
-  // Original capture daemon's clock identity; monotonic values are comparable only within it.
+  // The daemon run whose monotonic clock `LogEntry.host_monotonic_ns` is on.
   string clock_id = 4;
 }
 
@@ -116,24 +100,11 @@ message LogEntry {
     // The capture was interrupted here (the device disconnected, logcat ended) and lines may be
     // missing: why.
     string gap = 6;
-    // A redacted completed SDK call in a connection's event archive (not a device log).
-    LoggedEvent event = 8;
-    // An independently observed crash/ANR; retained even when no SDK call is running.
-    RecordedAppDeath death = 9;
   }
   // The daemon's monotonic clock when it got the entry: the clock of
   // `LoggedEvent.started_monotonic_ns` and `VideoFrame.received_monotonic_ns`, comparable only
   // with values of the same daemon (`WatchLogResponse.clock_id`).
   int64 host_monotonic_ns = 7;
-}
-
-// Original attachment identity and structured crash/ANR evidence. Known string diagnostics
-// are redacted before persistence. LogEntry.host_time_ms is the observation's host receipt time;
-// death.at_epoch_ms is the original device clock, not a cross-device ordering key.
-message RecordedAppDeath {
-  string attached_device_id = 1;
-  string serial = 2;
-  AppDeath death = 3;
 }
 
 // One logcat line. A message of several lines arrives as several entries.
@@ -147,10 +118,12 @@ message LogLine {
   LogPriority priority = 5;
   string tag = 6;
   string message = 7;
-  // The apps installed under `uid`: one for an app, several for apps that share a uid, none for
-  // a system process (uid below 10000) or an app no longer installed. Read from the device when
-  // the daemon first needs it and again when an app it does not know logs.
+  // Package names observed for this uid while the device was attached, including shared uids.
+  // Saved with the line; historical reads never substitute a later attachment's package map.
   repeated string packages = 8;
+  // When that package map was read. Absent means ownership was unavailable (also on older
+  // retained lines); the uid and device time are still preserved.
+  optional int64 packages_observed_at_ms = 9;
 }
 
 // Something Tap did on the device: one entry when it starts, one when it finishes.
@@ -211,59 +184,3 @@ message RedactLogRequest {
 
 message RedactLogResponse {}
 
-message ListRetainedLogsRequest {
-  // Absent/empty lists every retained attachment; otherwise only this original connection.
-  string client_connection_id = 1;
-}
-message ListRetainedLogsResponse { repeated RetainedLog logs = 1; }
-message RetainedLog {
-  string client_connection_id = 1;
-  string attached_device_id = 2;
-  string serial = 3;
-  uint64 last_cursor = 4;
-  bool closed = 5;
-  string capture_error = 6;
-  string clock_id = 7;
-  // True for the connection-wide durable SDK event stream, including capture_logs=false.
-  bool events = 8;
-  uint64 retained_bytes = 9;
-}
-
-message StartLogRecordingRequest {
-  string client_connection_id = 1;
-  // Unique in this daemon state directory; 1..80 ASCII letters, digits, dots, dashes, underscores.
-  string name = 2;
-  // Agent adapters commit additional high-level intent locally; recovery must not invent it.
-  bool agent_steps_expected = 3;
-}
-
-message StartLogRecordingResponse { LogRecording recording = 1; }
-message StopLogRecordingRequest { string name = 1; }
-message StopLogRecordingResponse { LogRecording recording = 1; }
-message DeleteLogRecordingRequest { string name = 1; }
-message DeleteLogRecordingResponse {}
-message ListLogRecordingsRequest {}
-message ListLogRecordingsResponse { repeated LogRecording recordings = 1; }
-
-message LogRecording {
-  string name = 1;
-  string client_connection_id = 2;
-  int64 started_at_ms = 3;
-  optional int64 stopped_at_ms = 4;
-  repeated LogRecordingRange ranges = 5;
-  // Final capture with no known interruption, not proof that any test passed.
-  bool complete = 6;
-  string capture_error = 7;
-  // Physical segment bytes needed by this range. May be shared with other ranges;
-  // this is not a promise of space reclaimed by deletion.
-  uint64 retained_bytes = 8;
-  bool agent_steps_expected = 9;
-}
-
-message LogRecordingRange {
-  string attached_device_id = 1;
-  string serial = 2;
-  uint64 after_cursor = 3;
-  optional uint64 through_cursor = 4;
-  bool events = 5;
-}

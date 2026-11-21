@@ -62,8 +62,16 @@ from .events import (
     WindowChange,
     WindowChangedEvent,
 )
-from .history import HistoryExport
-from .log_recordings import LogRecording, LogRecordingRange, LogRecordings, RetainedLog
+from .history import (
+    History,
+    HistoryEntry,
+    HistoryIssue,
+    HistoryIssueKind,
+    HistoryPage,
+    HistoryRecording,
+    HistorySource,
+    HistorySpan,
+)
 from .logs import (
     DeviceLog,
     LogAction,
@@ -240,11 +248,6 @@ __all__ = [
     "DeviceLogs",
     "LogAction",
     "LogEntries",
-    "LogRecording",
-    "LogRecordingRange",
-    "LogRecordings",
-    "HistoryExport",
-    "RetainedLog",
     "LogEntry",
     "LogFollower",
     "LogLine",
@@ -264,6 +267,14 @@ __all__ = [
     "ForegroundActivity",
     "OutsideTouch",
     "Hierarchy",
+    "History",
+    "HistoryEntry",
+    "HistoryIssue",
+    "HistoryIssueKind",
+    "HistoryPage",
+    "HistoryRecording",
+    "HistorySource",
+    "HistorySpan",
     "ImageFormat",
     "LocationAccuracy",
     "LoggedEvent",

@@ -15,39 +15,36 @@ tap-agent release
 
 - Sessions are the daemon's *held connections*: they survive between calls and end after an
   idle timeout (15 min by default) or `release`. The CLI and the MCP server share them.
-- Activity is retained automatically. `history [--logs] [--json] [--from STEP|TIME]
-  [--until STEP|TIME] [--limit N]` reads it, defaulting to the latest 200 steps. Step cursors
-  survive pruning; from is inclusive and until exclusive. Output is readable stdout text
-  or `tap-history/1` JSON; redirect it yourself to save a file.
-- For an unexpected incident, `history --last 30s --logs --details` reads the full retained
-  window, including idle periods and archives with no local steps. `--last` excludes other
-  bounds; `--limit` affects the intent page, not window evidence. Crashes/ANRs are explicit in
-  text and JSON regardless of `--logs`; redacted diagnostic stacks are available with
-  `--details` (always in JSON). Missing/inaccessible source data stays explicit.
-- `record start NAME` protects a named range of the same steps, durable RPC events and device
-  logs; `record stop NAME` freezes it. `record export NAME [--logs] [--json] [--details]` reads the range
-  without stopping it, including after release/restart. `record list` prints names, `-L`
-  adds state/times/shared backing-segment bytes. `record clean NAME` removes stopped protection.
-  No standalone `export`, `history clean` or release-time export option exists.
-- Local intent is private under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share
-  it between CLI/MCP processes. SDKs export durable evidence directly through
-  `client.log_recordings.export/history`, never through the CLI. Missing local intent, gaps,
-  unknown outcomes and unavailable daemon evidence stay explicit, never reconstructed.
-  Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve;
-  configure with `tap config logging-policy`. Protection cannot override hard limits.
-- `history` is the only reader: repeated `--device` filters precede pagination; log filters
-  (`--package`, `--priority`, `--tag`, `--grep`) imply logs, never filter crashes or capture gaps.
-  `--step CURSOR|ID`, `--last-action`, marker bounds and opaque `--after ARCHIVE_UUID:CURSOR`
-  select original evidence. `--tail N` explicitly limits log rows and reports omissions.
-  Package filters need original live ownership; tag/priority/regex work on closed archives.
+- Activity is kept automatically: the server keeps every call, crash, ANR, capture gap and
+  device-log line, and the agent its own steps. `history [--logs] [--json] [--from TIME]
+  [--until TIME] [--limit N]` reads one page of them merged, the newest first for a window that
+  ends now (no start, `--last`, `--last-action`); follow the printed `next:` / `older:` position
+  with `--after`. `--limit` counts timeline entries. Output
+  is readable stdout text or `tap-history/2` JSON; redirect it yourself to save a file.
+- For an unexpected incident, `history --last 30s --logs --details` reads everything kept in
+  the window, including idle periods and sessions with no local steps. Crashes/ANRs are
+  explicit in text and JSON regardless of `--logs`; redacted stacks with `--details` (always in
+  JSON). Missing evidence is a `GAP:` entry or a `WARNING:` issue, never silently dropped.
+- `record start NAME` keeps a named range of this session's history (every device attached to
+  it, also later ones) past rolling eviction; `record stop NAME` ends it, as does `release`.
+  `history --recording NAME` reads it, also after release/restart. `record list` prints names,
+  `-L` adds state, times, id and bytes. `record clean NAME` deletes a stopped recording.
+- Local steps are private under `TAP_AGENT_DIR/records` (default `.tap/agent/records`); share
+  it between CLI/MCP processes. SDKs read history directly through `client.history`, never
+  through the CLI. Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space
+  reserve; configure with `tap config logging-policy`. Recordings cannot override hard limits.
+- `history` is the only reader: repeated `--device` filters select devices; log filters
+  (`--package`, `--priority`, `--tag`, `--grep`) imply logs, never filter calls, crashes or gaps.
+  `--step CURSOR|ID`, `--last-action` and marker bounds (`--since-marker`, `--until-marker`)
+  select a range; the server resolves markers among this session's connections.
 - `history mark NAME` and `history redact REGEX` control this session's held attachments only
   (all by default, or repeated `--device`). Bookmarks do not protect data. Partial acknowledgement
   is explicit. No standalone `log` command/tool remains.
 - `capture -o NEW_DIRECTORY` collects current state into private files and indexes timestamped
-  external references in history/record exports; reads never capture fresh state. Cleaning
+  external references in history; reads never capture fresh state. Cleaning
   history does not delete the separately saved files. Driver diagnostics are daemon administration:
   `tap logs driver --serial SERIAL`; `tap logs` still reads daemon.log.
-  `media-record start|stop` is separate video/audio capture. Converting exports into tests remains the user's job.
+  `media-record start|stop` is separate video/audio capture. Converting history into tests remains the user's job.
 - Every step ends with the crashes and ANRs of watched apps that no earlier step reported (top
   frames inline, the full trace in a private file under `deaths/`); such a step exits 4.
   `--expect-death` makes a step require one, `deaths` lists the server's record, and

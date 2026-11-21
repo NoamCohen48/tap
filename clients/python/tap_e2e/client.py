@@ -35,6 +35,7 @@ from ._gen import (
     device_log_pb2_grpc,
     client_connection_pb2_grpc,
     device_pb2_grpc,
+    history_pb2_grpc,
 )
 from ._gen.engine_version import API_COMPATIBILITY, ENGINE_VERSION
 from .errors import (
@@ -62,7 +63,7 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
     from .device import Device, Timeouts
-    from .log_recordings import LogRecordings
+    from .history import History
 
 
 def state_dir() -> pathlib.Path:
@@ -372,6 +373,7 @@ class TapClient:
         self.apps = app_pb2_grpc.AppServiceStub(self.channel)
         self.app_data = app_data_pb2_grpc.AppDataServiceStub(self.channel)
         self.device_log = device_log_pb2_grpc.DeviceLogServiceStub(self.channel)
+        self.history_stub = history_pb2_grpc.HistoryServiceStub(self.channel)
         self._version_checked = False
 
     @classmethod
@@ -403,10 +405,11 @@ class TapClient:
         self._version_checked = True
 
     @property
-    def log_recordings(self) -> LogRecordings:
-        """Daemon-owned protected log ranges; readable after the original session ends."""
-        from .log_recordings import LogRecordings
-        return LogRecordings(self)
+    def history(self) -> History:
+        """The server's history: every connection's calls, the crashes and ANRs on its devices
+        and those devices' logs, kept after detach and restart."""
+        from .history import History
+        return History(self)
 
     def devices(self) -> list[DeviceEntry]:
         """Every device ADB lists, with its state (``FREE``, ``LEASED``, ``QUARANTINED``,

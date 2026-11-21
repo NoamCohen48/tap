@@ -12,37 +12,49 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertNotEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 class EventRetentionTest {
     @TempDir lateinit var root: Path
 
-    @Test fun `independent death diagnostics recover after restart without raw registered secrets`() = runBlocking {
-        val daemon = TapDaemon(DaemonConfig(Adb("unused-adb"), root, driver = null))
-        val connection = daemon.connectClient("incident", 60_000)
-        val archive = daemon.retainedLogs.archive(connection.id, connection.id)
-        daemon.retainedLogs.start("incident", connection.id, listOf(connection.id))
-        val redactor = LogRedactor().apply { literal("hidden-stack") }
-        val death = io.github.noamcohen48.tap.api.v1.RecordedAppDeath.newBuilder()
-            .setAttachedDeviceId("original-attachment").setSerial("original-serial")
-            .setDeath(io.github.noamcohen48.tap.api.v1.AppDeath.newBuilder().setSequence(1)
-                .setKind(io.github.noamcohen48.tap.api.v1.AppDeath.Kind.KIND_CRASH).setPackageName("com.shop")
-                .setMessage("password=hidden-message").setStackTrace("at Cart.pay hidden-stack"))
-            .build()
-        daemon.retainedLogs.appendDeath(archive, durableDeath(death, redactor))
-        daemon.retainedLogs.stop("incident")
-        daemon.close()
-        val recovered = RetainedLogs(root)
-        val receipt = recovered.entries(recovered.archive(connection.id, connection.id), "incident").single().death
-        assertEquals("original-attachment", receipt.attachedDeviceId)
-        assertEquals("password=<redacted>", receipt.death.message)
-        assertEquals("at Cart.pay <redacted>", receipt.death.stackTrace)
-        Files.walk(root.resolve("history-logs")).use { paths -> paths.filter(Files::isRegularFile).forEach {
-            val data = String(Files.readAllBytes(it))
-            assertFalse("hidden-message" in data || "hidden-stack" in data)
-        } }
-    }
+    @Test fun `independent death diagnostics recover after restart without raw registered secrets`() =
+        runBlocking {
+            val daemon = TapDaemon(DaemonConfig(Adb("unused-adb"), root, driver = null))
+            val connection = daemon.connectClient("incident", 60_000)
+            val archive = daemon.retainedLogs.archive(connection.id, connection.id)
+            val protection = daemon.retainedLogs.start("incident", connection.id, listOf(connection.id))
+            val redactor = LogRedactor().apply { literal("hidden-stack") }
+            val death =
+                io.github.noamcohen48.tap.api.v1.HistoryDeath
+                    .newBuilder()
+                    .setAttachedDeviceId("original-attachment")
+                    .setSerial("original-serial")
+                    .setDeath(
+                        io.github.noamcohen48.tap.api.v1.AppDeath
+                            .newBuilder()
+                            .setSequence(1)
+                            .setKind(io.github.noamcohen48.tap.api.v1.AppDeath.Kind.KIND_CRASH)
+                            .setPackageName("com.shop")
+                            .setMessage("password=hidden-message")
+                            .setStackTrace("at Cart.pay hidden-stack"),
+                    ).build()
+            daemon.retainedLogs.appendDeath(archive, durableDeath(death, redactor))
+            daemon.retainedLogs.stop(protection.id)
+            daemon.close()
+            val recovered = RetainedLogs(root)
+            val receipt = recovered.entries(recovered.archive(connection.id, connection.id), protection.id).single().death
+            assertEquals("original-attachment", receipt.attachedDeviceId)
+            assertEquals("password=<redacted>", receipt.death.message)
+            assertEquals("at Cart.pay <redacted>", receipt.death.stackTrace)
+            Files.walk(root.resolve("history-logs")).use { paths ->
+                paths.filter(Files::isRegularFile).forEach {
+                    val data = String(Files.readAllBytes(it))
+                    assertFalse("hidden-message" in data || "hidden-stack" in data)
+                }
+            }
+        }
 
     @Test fun `late completion keeps its original attachment redactor and identity`() =
         runBlocking {
@@ -72,15 +84,16 @@ class EventRetentionTest {
         runBlocking {
             val daemon = TapDaemon(DaemonConfig(Adb("unused-adb"), root, driver = null))
             val connection = daemon.connectClient("script", 60_000)
-            daemon.retainedLogs.start("cut", connection.id, listOf(connection.id))
+            val protection = daemon.retainedLogs.start("cut", connection.id, listOf(connection.id))
             connection.events.append(LoggedEvent.newBuilder().setSerial("device"))
             connection.inFlight = 1
-            assertFalse(daemon.stopLogRecording("cut").complete)
+            // The calls still running are a gap entry at the end of the range, not a recording error.
+            assertEquals("", daemon.stopHistoryRecording(protection.id).captureError)
             connection.inFlight = 0
             connection.events.append(LoggedEvent.newBuilder().setSerial("device"))
             val archive = daemon.retainedLogs.archive(connection.id, connection.id)
             assertEquals(listOf(1L, 2L, 3L), daemon.retainedLogs.entries(archive).map { it.cursor })
-            val frozen = daemon.retainedLogs.entries(archive, "cut")
+            val frozen = daemon.retainedLogs.entries(archive, protection.id)
             assertEquals(2, frozen.size)
             assertTrue(frozen.last().hasGap())
             assertEquals(
@@ -129,7 +142,7 @@ class EventRetentionTest {
         runBlocking {
             val daemon = TapDaemon(DaemonConfig(Adb("unused-adb"), root, driver = null))
             val connection = daemon.connectClient("script", 60_000)
-            daemon.retainedLogs.start("script", connection.id, listOf(connection.id))
+            val protection = daemon.retainedLogs.start("script", connection.id, listOf(connection.id))
             connection.events.append(
                 LoggedEvent
                     .newBuilder()
@@ -138,9 +151,9 @@ class EventRetentionTest {
                     .setCommand(Command.newBuilder().setSetText(SetText.newBuilder().setText("password=secret-value")))
                     .setError(Error.newBuilder().setCode(ErrorCode.ERR_NOT_FOUND).setMessage("private output")),
             )
-            val stopped = daemon.retainedLogs.stop("script")
-            assertTrue(stopped.complete)
-            assertTrue(stopped.rangesList.single().events)
+            val stopped = daemon.retainedLogs.stop(protection.id)
+            assertEquals("", stopped.captureError)
+            assertEquals(connection.id, stopped.spansList.single().sourceId)
             assertTrue(stopped.retainedBytes > 0)
             daemon.disconnectClient(connection.id, "released")
             daemon.close()
@@ -148,7 +161,7 @@ class EventRetentionTest {
             val archive = recovered.archive(connection.id, connection.id)
             assertTrue(archive.events)
             assertTrue(archive.closed)
-            val event = recovered.entries(archive, "script").single().event
+            val event = recovered.entries(archive, protection.id).single().event
             assertEquals("password=<redacted>", event.command.setText.text)
             assertEquals(ErrorCode.ERR_NOT_FOUND, event.error.code)
             assertEquals("", event.error.message)
@@ -187,17 +200,18 @@ class EventRetentionTest {
             val connection = daemon.connectClient("script", 60_000)
             daemon.retainedLogs.start("earlier", connection.id, listOf(connection.id))
             connection.events.append(LoggedEvent.newBuilder().setSerial("device").setIndeterminate(false))
-            daemon.retainedLogs.stop("earlier")
+            daemon.retainedLogs.stop(daemon.retainedLogs.named("earlier"))
             daemon.retainedLogs.start("interrupted", connection.id, listOf(connection.id))
             connection.inFlight = 1
             daemon.disconnectClient(connection.id, "released")
-            assertTrue(
+            assertEquals(
+                "",
                 daemon.retainedLogs
                     .list()
                     .single { it.name == "earlier" }
-                    .complete,
+                    .captureError,
             )
-            assertFalse(daemon.retainedLogs.stop("interrupted").complete)
+            assertNotEquals("", daemon.retainedLogs.errors(daemon.retainedLogs.stop(daemon.retainedLogs.named("interrupted"))))
             assertTrue(
                 daemon.retainedLogs
                     .entries(daemon.retainedLogs.archive(connection.id, connection.id))

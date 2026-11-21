@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import hashlib
 import queue
+import re
 import threading
 import time
 from collections.abc import Callable, Generator
@@ -20,6 +21,7 @@ from tap_e2e._gen import (
     client_connection_pb2_grpc,
     device_log_pb2_grpc,
     device_pb2_grpc,
+    history_pb2_grpc,
 )
 from tap_e2e._gen.engine_version import API_COMPATIBILITY
 
@@ -61,8 +63,8 @@ class FakeConnections(client_connection_pb2_grpc.ClientConnectionServiceServicer
         log.append(
             pb.LoggedEvent(
                 seq=len(log) + 1,
-                at_epoch_ms=1_790_000_000_000 + len(log),
-                duration_ms=5,
+                at_epoch_ms=int(time.time() * 1000),  # the server's clock, as the agent's steps use
+                duration_ms=0,
                 serial=serial,
                 attached_device_id=f"attached-{serial}",
                 **call,
@@ -654,17 +656,12 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
         self.live: queue.Queue[pb.LogEntry | None] = queue.Queue()
         self.capture_off = False
         self.cancelled = threading.Event()
-        self.recordings: dict[str, pb.LogRecording] = {}
-        self.archives: list[pb.RetainedLog] = []
         self.capture_error = ""
         self.clock_id = ""
-        self.connections: FakeConnections | None = None
 
     def _check(self, request, context) -> None:
         self.requests.append(request)
-        event_archive = (self.connections is not None and getattr(request, "attached_device_id", "") == request.client_connection_id
-            and request.client_connection_id in self.connections.logs)
-        if self.capture_off and not event_archive:
+        if self.capture_off:
             fail(
                 context,
                 grpc.StatusCode.FAILED_PRECONDITION,
@@ -674,9 +671,8 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
 
     def ReadLog(self, request, context):
         self._check(request, context)
-        available = self._entries_for(request.attached_device_id, request.client_connection_id)
         if request.WhichOneof("from") == "marker" and not any(
-            e.marker == request.marker for e in available if e.WhichOneof("kind") == "marker"
+            e.marker == request.marker for e in self.entries if e.WhichOneof("kind") == "marker"
         ):
             fail(
                 context,
@@ -685,11 +681,7 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
                 f"no marker {request.marker}",
             )
         # Only `after_cursor` is honoured; every other start replays all entries.
-        entries = [e for e in available if e.cursor > request.after_cursor] if request.WhichOneof("from") == "after_cursor" else available
-        if request.HasField("recording"):
-            recording = self.recordings[request.recording]
-            r = next(r for r in recording.ranges if r.attached_device_id == request.attached_device_id)
-            entries = [e for e in entries if e.cursor > r.after_cursor and (not r.HasField("through_cursor") or e.cursor <= r.through_cursor)]
+        entries = [e for e in self.entries if e.cursor > request.after_cursor] if request.WhichOneof("from") == "after_cursor" else self.entries
         yield pb.ReadLogResponse(entries=entries[:1], dropped=self.dropped, capture_error=self.capture_error, clock_id=self.clock_id)
         yield pb.ReadLogResponse(entries=entries[1:])
         if not request.follow:
@@ -706,31 +698,84 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
 
     def MarkLog(self, request, context):
         self._check(request, context)
-        self.entries.append(pb.LogEntry(cursor=len(self.entries) + 1, marker=request.name))
+        self.entries.append(pb.LogEntry(cursor=len(self.entries) + 1, marker=request.name,
+            host_time_ms=int(time.time() * 1000)))
         return pb.MarkLogResponse(cursor=len(self.entries))
 
     def RedactLog(self, request, context):
         self._check(request, context)
         return pb.RedactLogResponse()
 
-    def _archives(self):
+
+class FakeHistory(history_pb2_grpc.HistoryServiceServicer):
+    """HistoryService over the other fakes, with the server's selection, bounds, filters and
+    paging simplified. Sources: one per connection (its ``FakeConnections.logs`` calls plus
+    ``extra[cid]`` entries such as deaths and gaps) and one per attachment ever made (its
+    ``logs[attached_id]``, else ``FakeDeviceLog.entries``). Cursors are plain offsets."""
+
+    def __init__(self, connections: FakeConnections, devices: FakeDevices, device_log: FakeDeviceLog) -> None:
+        self.connections, self.devices, self.device_log = connections, devices, device_log
+        self.requests: list[object] = []
+        self.extra: dict[str, list[pb.HistoryEntry]] = {}
+        self.logs: dict[str, list[pb.LogEntry]] = {}
+        self.issues: list[pb.HistoryIssue] = []
+        self.recordings: dict[str, pb.HistoryRecording] = {}
+
+    def death(self, cid: str, serial: str, at_ms: int | None = None, **death) -> None:
+        """Adds a crash (or ``kind=pb.AppDeath.KIND_ANR``) to connection ``cid``'s source, now
+        unless ``at_ms``."""
+        entries = self.extra.setdefault(cid, [])
+        entries.append(pb.HistoryEntry(received_at_ms=int(time.time() * 1000) if at_ms is None else at_ms, death=pb.HistoryDeath(
+            attached_device_id=f"attached-{serial}", serial=serial, death=pb.AppDeath(**death))))
+
+    def _sources(self) -> list[tuple[pb.HistorySource, list[pb.HistoryEntry]]]:
         result = []
-        for archive in self.archives:
-            saved = pb.RetainedLog()
-            saved.CopyFrom(archive)
-            if self.connections is not None and archive.client_connection_id in self.connections.logs:
-                saved.closed = archive.client_connection_id not in self.connections.live
-            result.append(saved)
-        if self.connections is not None:
-            known = {a.client_connection_id for a in result if a.events}
-            for cid in set(self.connections.live) | set(self.connections.logs):
-                if cid not in known:
-                    result.append(pb.RetainedLog(client_connection_id=cid, attached_device_id=cid,
-                        events=True, closed=cid not in self.connections.live, last_cursor=len(self.connections.logs.get(cid, []))))
+        for cid in dict.fromkeys([*self.connections.logs, *self.connections.live]):
+            calls = self.connections.logs.get(cid, [])
+            secrets = [getattr(e.command, e.command.WhichOneof("op")).text for e in calls if e.HasField("command")
+                and e.command.WhichOneof("op") in ("set_text", "type_text") and getattr(e.command, e.command.WhichOneof("op")).sensitive]
+            entries = [pb.HistoryEntry(received_at_ms=e.at_epoch_ms + e.duration_ms, call=self._redact(e, secrets)) for e in calls]
+            entries += self.extra.get(cid, [])
+            for number, entry in enumerate(entries, 1):
+                entry.source_id, entry.sequence = cid, number
+            result.append((pb.HistorySource(id=cid, connection=pb.HistoryConnectionSource(connection_id=cid),
+                closed=cid not in self.connections.live, last_sequence=len(entries), clock_id="clock"), entries))
+        seen = set()
+        for request in self.devices.attach_requests:
+            aid = f"attached-{request.serial}"
+            if (request.client_connection_id, aid) in seen or (request.HasField("capture_logs") and not request.capture_logs):
+                continue
+            seen.add((request.client_connection_id, aid))
+            entries = []
+            for log in self.logs.get(aid, self.device_log.entries):
+                kind = log.WhichOneof("kind")
+                entry = pb.HistoryEntry(source_id=aid, sequence=log.cursor, received_at_ms=log.host_time_ms,
+                    received_monotonic_ns=log.host_monotonic_ns)
+                if kind == "line":
+                    entry.line.CopyFrom(log.line)
+                elif kind == "action":
+                    entry.action.CopyFrom(log.action)
+                else:
+                    setattr(entry, kind, getattr(log, kind))
+                entries.append(entry)
+            attached = any(a.serial == request.serial for a in self.devices.attached.get(request.client_connection_id, []))
+            result.append((pb.HistorySource(id=aid, device_log=pb.HistoryDeviceSource(connection_id=request.client_connection_id,
+                attached_device_id=aid, serial=request.serial), closed=not attached, last_sequence=len(entries), clock_id="clock"), entries))
         return result
 
-    @staticmethod
-    def _redact_proto(message, secrets, sensitive=False):
+    @classmethod
+    def _redact(cls, event: pb.LoggedEvent, secrets: list[str]) -> pb.LoggedEvent:
+        """As the server stores a call: sensitive text and its selectors withheld, the
+        attachment's sensitive literals replaced, error/failure messages dropped."""
+        saved = pb.LoggedEvent()
+        saved.CopyFrom(event)
+        for name in ("command", "app", "device", "error", "failure"):
+            if saved.HasField(name):
+                getattr(saved, name).CopyFrom(cls._redact_proto(getattr(saved, name), secrets))
+        return saved
+
+    @classmethod
+    def _redact_proto(cls, message, secrets, sensitive=False):
         result = type(message)()
         result.CopyFrom(message)
         if message.DESCRIPTOR.name == "Command":
@@ -755,63 +800,140 @@ class FakeDeviceLog(device_log_pb2_grpc.DeviceLogServiceServicer):
             elif field.type == field.TYPE_MESSAGE:
                 if field.is_repeated:
                     for i, child in enumerate(value):
-                        getattr(result, field.name)[i].CopyFrom(FakeDeviceLog._redact_proto(child, secrets, sensitive))
+                        getattr(result, field.name)[i].CopyFrom(cls._redact_proto(child, secrets, sensitive))
                 else:
-                    getattr(result, field.name).CopyFrom(FakeDeviceLog._redact_proto(value, secrets, sensitive))
+                    getattr(result, field.name).CopyFrom(cls._redact_proto(value, secrets, sensitive))
         return result
 
-    def _entries_for(self, archive_id, owner):
-        if self.connections is None or archive_id != owner or owner not in (set(self.connections.live) | set(self.connections.logs)):
-            return self.entries
-        events = self.connections.logs.get(owner, [])
-        secrets = []
-        for event in events:
-            if event.HasField("command"):
-                op = event.command.WhichOneof("op")
-                if op in ("set_text", "type_text") and getattr(event.command, op).sensitive:
-                    secrets.append(getattr(event.command, op).text)
-        result = []
-        for event in events:
-            saved = pb.LoggedEvent()
-            saved.CopyFrom(event)
-            for name in ("command", "app", "device", "error", "failure"):
-                if saved.HasField(name):
-                    getattr(saved, name).CopyFrom(self._redact_proto(getattr(saved, name), secrets))
-            result.append(pb.LogEntry(cursor=event.seq, host_time_ms=event.at_epoch_ms, event=saved))
-        return result
+    def _selected(self, selection: pb.HistorySelection):
+        spans = None
+        if selection.HasField("recording_id"):
+            spans = {s.source_id: s for s in self.recordings[selection.recording_id].spans}
+        for source, entries in self._sources():
+            owner = source.connection.connection_id if source.HasField("connection") else source.device_log.connection_id
+            if selection.connection_ids and owner not in selection.connection_ids:
+                continue
+            if selection.source_ids and source.id not in selection.source_ids:
+                continue
+            if selection.serials and source.HasField("device_log") and source.device_log.serial not in selection.serials:
+                continue
+            if spans is not None:
+                if source.id not in spans:
+                    continue
+                span = spans[source.id]
+                entries = [e for e in entries if e.sequence > span.after_sequence and (not span.HasField("through_sequence") or e.sequence <= span.through_sequence)]
+            yield source, entries
 
-    def StartLogRecording(self, request, context):
-        self._check(request, context)
-        recording = pb.LogRecording(
-            name=request.name,
-            client_connection_id=request.client_connection_id,
-            started_at_ms=1,
-            agent_steps_expected=request.agent_steps_expected,
-            ranges=[pb.LogRecordingRange(attached_device_id=a.attached_device_id, serial=a.serial, events=a.events,
-                after_cursor=max((e.cursor for e in self._entries_for(a.attached_device_id, request.client_connection_id)), default=0)) for a in self._archives() if a.client_connection_id == request.client_connection_id],
-        )
-        self.recordings[request.name] = recording
-        return pb.StartLogRecordingResponse(recording=recording)
+    def ReadHistory(self, request, context):
+        self.requests.append(request)
+        offset = 0
+        query = request
+        if request.HasField("cursor"):
+            encoded, number = request.cursor.rsplit(":", 1)
+            query, offset = pb.ReadHistoryRequest.FromString(bytes.fromhex(encoded)), int(number)
+        if query.HasField("log_filter") and not query.include_logs:
+            fail(context, grpc.StatusCode.INVALID_ARGUMENT, pb.FAILURE_REASON_UNSPECIFIED, "log_filter needs include_logs")
+        selected = list(self._selected(query.selection))
+        rows = []
+        for source, entries in selected:
+            for entry in entries:
+                kind = entry.WhichOneof("kind")
+                if kind in ("line", "action", "marker") and not query.include_logs:
+                    continue
+                serial = entry.call.serial if kind == "call" else entry.death.serial if kind == "death" else source.device_log.serial
+                if query.selection.serials and serial and serial not in query.selection.serials:
+                    continue
+                if query.HasField("step") and kind == "call" and entry.call.step != query.step:
+                    continue
+                if query.HasField("step") and kind == "action" and entry.action.step != query.step:
+                    continue
+                log_filter = query.log_filter
+                if kind == "action" and log_filter.exclude_actions:
+                    continue
+                if kind == "line":
+                    if entry.line.priority < log_filter.min_priority:
+                        continue
+                    if log_filter.tags and entry.line.tag not in log_filter.tags:
+                        continue
+                    if log_filter.HasField("message_regex") and not re.search(log_filter.message_regex, entry.line.message):
+                        continue
+                    if log_filter.packages and not set(entry.line.packages) & set(log_filter.packages):
+                        continue
+                rows.append(((entry.received_at_ms, entry.source_id, entry.sequence), entry))
+        markers = {}
+        for bound in ("from_marker", "until_marker"):
+            if query.HasField(bound):
+                newest = {}  # per device: its newest marker with the name, as the server does
+                for source, entries in selected:
+                    for e in entries:
+                        if e.WhichOneof("kind") == "marker" and e.marker == getattr(query, bound):
+                            key = (e.received_at_ms, e.source_id, e.sequence)
+                            newest[source.device_log.serial] = max(newest.get(source.device_log.serial, key), key)
+                if not newest:
+                    fail(context, grpc.StatusCode.NOT_FOUND, pb.FAILURE_REASON_UNKNOWN_LOG_MARKER, f"no marker {getattr(query, bound)}")
+                markers[bound] = min(newest.values()) if bound == "from_marker" else max(newest.values())
+        if len(markers) == 2 and markers["until_marker"] < markers["from_marker"]:
+            fail(context, grpc.StatusCode.INVALID_ARGUMENT, pb.FAILURE_REASON_UNSPECIFIED,
+                "the end of the read precedes its start: the until marker is older than the from marker")
+        rows = [(key, entry) for key, entry in rows
+            if (not query.HasField("from_time_ms") or key[0] >= query.from_time_ms)
+            and (not query.HasField("until_time_ms") or key[0] < query.until_time_ms)
+            and ("from_marker" not in markers or key >= markers["from_marker"])
+            and ("until_marker" not in markers or key <= markers["until_marker"])]
+        rows.sort(key=lambda row: row[0], reverse=query.newest_first)
+        limit = request.limit or query.limit or 200
+        page = rows[offset:offset + limit]
+        token = query.SerializeToString().hex()
+        return pb.ReadHistoryResponse(sources=[source for source, _ in selected], entries=[entry for _, entry in page],
+            issues=self.issues,
+            page=pb.HistoryPageInfo(next_cursor=f"{token}:{offset + limit}" if offset + limit < len(rows) else "",
+                through_time_ms=query.until_time_ms if query.HasField("until_time_ms") else 1_800_000_000_000))
 
-    def StopLogRecording(self, request, context):
-        recording = self.recordings[request.name]
+    def ListHistorySources(self, request, context):
+        self.requests.append(request)
+        return pb.ListHistorySourcesResponse(sources=[source for source, _ in self._selected(request.selection)])
+
+    def StartHistoryRecording(self, request, context):
+        self.requests.append(request)
+        if request.connection_id not in self.connections.live:
+            fail(context, grpc.StatusCode.NOT_FOUND, pb.FAILURE_REASON_UNKNOWN_CLIENT_CONNECTION, "no such connection")
+        if any(r.connection_id == request.connection_id and r.name == request.name for r in self.recordings.values()):
+            fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DAEMON_PRECONDITION, "duplicate recording name")
+        recording = pb.HistoryRecording(id=f"rec-{len(self.recordings) + 1}", connection_id=request.connection_id,
+            name=request.name, started_at_ms=int(time.time() * 1000),
+            spans=[pb.HistorySpan(source_id=source.id, after_sequence=source.last_sequence)
+                for source, _ in self._selected(pb.HistorySelection(connection_ids=[request.connection_id]))])
+        self.recordings[recording.id] = recording
+        return pb.StartHistoryRecordingResponse(recording=recording)
+
+    def StopHistoryRecording(self, request, context):
+        self.requests.append(request)
+        recording = self.recordings.get(request.recording_id)
+        if recording is None:
+            fail(context, grpc.StatusCode.NOT_FOUND, pb.FAILURE_REASON_DAEMON_PRECONDITION, "no such recording")
         if not recording.HasField("stopped_at_ms"):
-            recording.stopped_at_ms = 2
-            recording.complete = not bool(self.capture_error)
-            recording.capture_error = self.capture_error
-            for r in recording.ranges:
-                r.through_cursor = max((e.cursor for e in self._entries_for(r.attached_device_id, recording.client_connection_id)), default=0)
-        return pb.StopLogRecordingResponse(recording=recording)
+            recording.stopped_at_ms = int(time.time() * 1000)
+            known = {span.source_id: span for span in recording.spans}
+            for source, _ in self._selected(pb.HistorySelection(connection_ids=[recording.connection_id])):
+                if source.id not in known:
+                    known[source.id] = recording.spans.add(source_id=source.id, after_sequence=0)
+                known[source.id].through_sequence = source.last_sequence
+        return pb.StopHistoryRecordingResponse(recording=recording)
 
-    def ListLogRecordings(self, request, context):
-        return pb.ListLogRecordingsResponse(recordings=self.recordings.values())
+    def ListHistoryRecordings(self, request, context):
+        self.requests.append(request)
+        return pb.ListHistoryRecordingsResponse(recordings=[r for r in self.recordings.values()
+            if not request.connection_ids or r.connection_id in request.connection_ids])
 
-    def DeleteLogRecording(self, request, context):
-        del self.recordings[request.name]
-        return pb.DeleteLogRecordingResponse()
-
-    def ListRetainedLogs(self, request, context):
-        return pb.ListRetainedLogsResponse(logs=[a for a in self._archives() if not request.client_connection_id or a.client_connection_id == request.client_connection_id])
+    def DeleteHistoryRecording(self, request, context):
+        self.requests.append(request)
+        recording = self.recordings.get(request.recording_id)
+        if recording is None:
+            fail(context, grpc.StatusCode.NOT_FOUND, pb.FAILURE_REASON_DAEMON_PRECONDITION, "no such recording")
+        if not recording.HasField("stopped_at_ms"):
+            fail(context, grpc.StatusCode.FAILED_PRECONDITION, pb.FAILURE_REASON_DAEMON_PRECONDITION, "still recording")
+        del self.recordings[request.recording_id]
+        return pb.DeleteHistoryRecordingResponse()
 
 
 class _TokenCheck(grpc.ServerInterceptor):
@@ -850,7 +972,7 @@ class Fake:
         self.apps = FakeApps()
         self.app_data = FakeAppData()
         self.device_log = FakeDeviceLog()
-        self.device_log.connections = self.connections
+        self.history = FakeHistory(self.connections, self.devices, self.device_log)
         self.connections.devices = self.devices
         self.devices.log = self.connections
         self.apps.log = self.connections
@@ -865,6 +987,7 @@ class Fake:
         app_pb2_grpc.add_AppServiceServicer_to_server(self.apps, self.server)
         app_data_pb2_grpc.add_AppDataServiceServicer_to_server(self.app_data, self.server)
         device_log_pb2_grpc.add_DeviceLogServiceServicer_to_server(self.device_log, self.server)
+        history_pb2_grpc.add_HistoryServiceServicer_to_server(self.history, self.server)
         self.port = self.server.add_insecure_port("127.0.0.1:0")
         self.address = f"127.0.0.1:{self.port}"
         self.server.start()

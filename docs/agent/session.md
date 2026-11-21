@@ -344,23 +344,24 @@ the idle timeout. MCP has no background calls, so it is a CLI command only.
 
 ## History, recordings and release
 
-Every action and explicit wait is retained automatically. `history` reads the latest steps;
-`record start NAME` protects a named range of the same steps, durable RPC events and device logs:
+Every action and explicit wait is recorded automatically, and the server keeps the session's
+calls, crashes and device logs. `history` reads them; `record start NAME` keeps a named range of
+them past rolling eviction:
 
 ```sh
 tap-agent record start checkout
 tap-agent tap text=Pay,pkg=com.shop
 tap-agent record stop checkout
 tap-agent release
-tap-agent record export checkout --logs --json > checkout.json
+tap-agent history --recording checkout --logs --json > checkout.json
 ```
 
-Release frees devices and finalizes current protection; it does not write an export file.
-Events and logs remain readable after release/restart while retained. `history [--logs]
-[--json] [--from STEP|TIME] [--until STEP|TIME] [--limit N]` reads ordinary activity;
-`record list [-L]` discovers protected ranges. Default output is readable stdout text.
-Only actions and explicit waits are high-level steps, not internal inspections/polls.
-[History and recordings](export.md) explains pagination, retention, redaction and unknown outcomes.
+Release frees devices and stops an open recording; it writes no file. History stays readable
+after release and restart while it is kept. `history [--logs] [--json] [--from TIME]
+[--until TIME] [--limit N]` reads ordinary activity; `record list [-L]` lists recordings.
+Default output is readable stdout text. Only actions and explicit waits are steps, not internal
+inspections or polls. [History and recordings](export.md) explains pages, retention, redaction
+and unknown outcomes.
 
 ## SDK workflows and diagnostics
 
@@ -401,9 +402,9 @@ rendered lines; use the default view.
 
 ### One history reader
 
-`history` merges retained devices and connections. Add repeated `--device SERIAL` filters to
-select devices **before** step pagination. No held session is needed for a read. The default
-is readable text; `--json` returns the same `tap-history/1` evidence without creating files.
+`history` merges the kept device logs and connections into one timeline. Repeated
+`--device SERIAL` filters select devices. No held session is needed for a read. The default is
+readable text; `--json` returns the same `tap-history/2` page without creating files.
 
 ```sh
 tap-agent history --last 30s --logs --details
@@ -411,21 +412,19 @@ tap-agent history --device SERIAL --last-action --priority warn --tag Payments
 tap-agent history --device SERIAL --step 3 --logs
 ```
 
-`--limit` limits agent intent steps (default 200), not logs in an incident window. `--tail N`
-explicitly selects the newest matching log entries, including markers/actions, reports omissions,
-and preserves capture gaps. `--package`, `--priority`, `--tag` and `--grep` imply logs. They filter
-log lines, never independent crashes/ANRs or known RPC outcomes. `--no-actions` omits log action
-rows only. Driver-owned logcat noise is omitted where original package ownership is available;
-`--driver-lines` includes it. Unknown ownership is not guessed from a replacement attachment.
-Package filters require the original live attachment's package/UID mapping; use tag, priority
-or message regex filters on closed archives. Regex syntax is Java's and matches redacted messages.
+`--limit` (default 200) counts entries of the merged timeline; follow the printed
+`next:` / `older:` position with `--after`. `--package`, `--priority`, `--tag` and `--grep`
+imply logs. They filter log lines, never crashes/ANRs, calls or capture gaps. `--no-actions`
+omits log action rows only. The driver's own logcat lines are left out where the line's package
+is known; `--driver-lines` keeps them. Package filters need the server to know the attachment's
+app UIDs. Regex syntax is Java's and matches redacted messages.
 
-Step cursors and archive cursors are different. `--step CURSOR|STEP_ID` selects one retained
-agent step. Log rows print `[ARCHIVE_UUID:CURSOR]`; `--after ARCHIVE_UUID:CURSOR` reads after
-that original receipt, preserving other devices' observations at the same host timestamp.
-A bare integer is rejected. Expired anchors fail explicitly rather than inventing a start time.
-The default host-receipt bounds are inclusive `--from` and exclusive `--until`; original device
-clocks remain separate in JSON.
+`--step CURSOR|STEP_ID` reads one agent step (the cursor or id `history` prints): its calls,
+the crashes and gaps while it ran and, with logs, its device-log span. A window ending now (no
+start, `--last`, `--last-action`) pages from the newest entries; an explicit start pages
+forward. Positions for `--after` are opaque and carry the read's bounds, filters and
+`--device`. Markers are resolved among this session's connections. Bounds are server receipt
+times, inclusive `--from` and exclusive `--until`; device clocks stay separate in JSON.
 
 ### Markers and redaction
 

@@ -10,7 +10,7 @@ import io.github.noamcohen48.tap.daemon.core.NotOwnerException
 import io.github.noamcohen48.tap.daemon.core.UnknownAttachedDeviceException
 import io.github.noamcohen48.tap.daemon.core.UnknownClientConnectionException
 import io.github.noamcohen48.tap.daemon.core.UnknownLogMarkerException
-import io.github.noamcohen48.tap.daemon.core.UnknownLogRecordingException
+import io.github.noamcohen48.tap.daemon.core.UnknownHistoryRecordingException
 import io.github.noamcohen48.tap.daemon.core.VideoReaderOverflowException
 import io.github.noamcohen48.tap.daemon.snapshot.RefNotAddressableException
 import io.github.noamcohen48.tap.daemon.snapshot.UnknownRefException
@@ -245,11 +245,11 @@ internal fun Throwable.toStatus(): StatusRuntimeException {
                 Status.UNAVAILABLE.also { failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION }
             }
 
-            is UnknownLogRecordingException -> {
+            is UnknownHistoryRecordingException -> {
                 Status.NOT_FOUND.also {
                     failure.reason = FailureReason.FAILURE_REASON_DAEMON_PRECONDITION
                     failure.detail =
-                        "UNKNOWN_LOG_RECORDING"
+                        "UNKNOWN_HISTORY_RECORDING"
                 }
             }
 

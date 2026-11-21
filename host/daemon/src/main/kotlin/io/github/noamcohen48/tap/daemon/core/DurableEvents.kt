@@ -1,14 +1,14 @@
 package io.github.noamcohen48.tap.daemon.core
 
+import io.github.noamcohen48.tap.api.v1.HistoryDeath
 import io.github.noamcohen48.tap.api.v1.LoggedEvent
-import io.github.noamcohen48.tap.api.v1.RecordedAppDeath
 
 /** Keep only classified death metadata, while preserving original attachment identity. */
 internal fun durableDeath(
-    value: RecordedAppDeath,
+    value: HistoryDeath,
     redactor: LogRedactor,
-): RecordedAppDeath =
-    RecordedAppDeath
+): HistoryDeath =
+    HistoryDeath
         .newBuilder()
         .setAttachedDeviceId(value.attachedDeviceId)
         .setSerial(value.serial)

@@ -222,3 +222,24 @@ checks. Native image was not rebuilt; native protobuf reachability metadata test
 
 Related decisions: [Device logs](app-logs.md), [Agent step history](agent-step-recordings.md),
 [Daemon API](server-api.md), [CLI parsing](cli-parsing.md).
+
+## API revision (2026-11-21)
+
+The retention and protection rules above stand; the API that exposes them changed. History is
+read through `HistoryService` (`contracts/proto/history.proto`, `.docs/server-api.md`): one
+timeline merged across sources (a device log per attachment, a connection's calls and deaths),
+paged by an opaque cursor, bounded by time or marker, with gaps as entries and timeless missing
+evidence as typed issues (no `complete` flag). "Protected ranges" are now history recordings,
+owned by a connection, addressed by id, and following devices attached after their start. The
+private disk format moved to `host/daemon/src/main/proto/retention.proto`. Python
+`client.history` and `tap-agent history` / `record` are the clients; the Kotlin SDK reader is in
+`.docs/feature-todo.md`. Design and the user's choices: `.docs/history-api-revision.md`.
+
+A review of that API (same day) changed: marker bounds resolve per device (serial) within the
+selection, and the agent limits them to its session's connections; `step` keeps the read's
+bounds and filters deaths and gaps to its runs; `EXPIRED` is reported on the first page and for
+entries past the age limit inside kept files, with `missing_entries`; recordings stop when their
+connection closes and start on a degraded source with that source's issue; per-entry cursors and
+`HistoryPageInfo.start_cursor` were removed (cursors are at most 64 KiB raw); a redaction that
+could not be applied withholds the source's entries as one `INCOMPLETE` issue; issues appear once
+per read. Python separates `since` / `until` (times) from `since_marker` / `until_marker`.

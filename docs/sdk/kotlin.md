@@ -7,13 +7,9 @@ examples in Kotlin, and the [Kotlin API reference](../reference/kotlin.md) has e
 
 ## Post-script evidence
 
-`client.logRecordings.start(connection, "checkout")` protects the connection's durable RPC
-events and attached device logs. After `stop("checkout")` and connection release,
-`client.logRecordings.export("checkout", logs = true)` returns a `HistoryExport` with `.text`
-and `.toJson()` (`tap-history/1`). `history(originalConnectionId, logs = true)` reads ordinary
-retained activity. These are SDK RPC calls, not CLI subprocesses or implicit file writes, and
-work after daemon restart while evidence remains retained. Unknown outcomes, gaps and missing
-agent intent stay explicit. See [history and recordings](../agent/export.md#sdk-exports).
+The Kotlin SDK has no reader of the server's kept history yet (Python's `client.history`).
+Read a finished script's calls, crashes and device logs with Python or
+`tap-agent history --recording NAME`; see [history and recordings](../agent/export.md).
 
 ## Install
 

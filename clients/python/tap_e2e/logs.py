@@ -12,9 +12,7 @@ from typing import TYPE_CHECKING
 import grpc
 
 from . import _gen as pb
-from ._proto import _json, logged_event
 from .client import mapped_errors
-from .models import LoggedEvent
 
 if TYPE_CHECKING:
     from typing_extensions import Self
@@ -66,6 +64,9 @@ class LogLine:
     packages: tuple[str, ...] = ()
     """The apps installed under ``uid``: one for an app, several for apps sharing a uid, none for
     a system process or an app no longer installed."""
+    packages_observed_at: float | None = None
+    """When the server looked up ``packages`` (Unix seconds); None when the line was saved
+    without them, so empty ``packages`` then means "not known", not "a system process"."""
 
 
 @dataclass(frozen=True)
@@ -94,8 +95,8 @@ class LogAction:
 
 @dataclass(frozen=True)
 class LogEntry:
-    """One entry: exactly one of ``line``, ``marker``, ``action``, ``gap``, ``event`` or
-    ``death`` is set (the latter two belong to retained connection activity). ``str(entry)`` is the entry as one line of text, led by ``at`` in the local time zone
+    """One entry of the device log: exactly one of ``line``, ``marker``, ``action`` and ``gap``
+    is set. ``str(entry)`` is the entry as one line of text, led by ``at`` in the local time zone
     (``MM-DD HH:MM:SS.mmm``, the clock of every other Tap record; the device's own clock can be far
     off); a line then has uid, pid, tid, priority, tag and message, like ``logcat -v threadtime``."""
 
@@ -103,7 +104,8 @@ class LogEntry:
     """1, 2, 3, … per attachment, in the order the server got the entries. Pass it as ``since``
     to read what came after."""
     at: float
-    """The server host's receipt clock (Unix seconds); an RPC's original start is separate."""
+    """The server host's clock when it got the entry (Unix seconds), the clock of
+    ``LoggedEvent.at``."""
     line: LogLine | None = None
     marker: str | None = None
     """The name given to ``DeviceLog.mark``."""
@@ -111,12 +113,9 @@ class LogEntry:
     gap: str | None = None
     """The capture was interrupted here (the device disconnected, logcat ended) and lines may be
     missing: why."""
-    event: LoggedEvent | None = None
-    """A redacted SDK call, only present in a connection's retained event archive."""
-    death: dict | None = None
-    """An independently observed, redacted crash/ANR with original attachment identity."""
     host_monotonic_ns: int = 0
-    """Host receipt time; comparable only within the capture's original clock identity."""
+    """The server's monotonic clock when it got the entry; compare it only within one
+    ``LogEntries.clock_id``."""
 
     def __str__(self) -> str:
         moment = datetime.datetime.fromtimestamp(self.at)
@@ -135,14 +134,6 @@ class LogEntry:
         if self.line is not None:
             letter = self.line.priority.letter if self.line.priority else "?"
             return f"{letter} {self.line.tag}: {self.line.message}"
-        if self.death is not None:
-            detail = self.death.get("death", {})
-            kind = "ANR" if detail.get("kind") == "KIND_ANR" else "CRASH"
-            return f"── {kind} {detail.get('package_name', '?')} (pid {detail.get('pid', '?')})"
-        if self.event is not None:
-            event = self.event
-            call = event.command or event.app or event.device or {}
-            return f"── event {event.seq} {call} → {'unknown' if event.indeterminate else 'ok' if event.ok else 'failed'}"
         if self.marker is not None:
             return f"── marker {self.marker}"
         if self.gap is not None:
@@ -164,14 +155,15 @@ class LogEntries(list[LogEntry]):
     """What ``DeviceLog.read`` returns: the entries, oldest first."""
 
     clock_id: str = ""
-    """Original capture daemon's monotonic clock identity; preserved across archive reads."""
+    """The server run whose monotonic clock ``LogEntry.host_monotonic_ns`` is on."""
 
     capture_error: str = ""
-    """Nonempty when durable capture could not preserve all evidence (e.g. disk limit)."""
+    """Why the server could not keep all of this attachment's log (a storage limit or failure);
+    empty when it kept everything."""
 
     dropped: int = 0
-    """Entries unavailable in the requested cursor range, before user filtering. Sum over all
-    response batches; protected ranges can leave holes in ordinary history. Zero for a tail read."""
+    """How many entries of the requested range the server no longer has (its retention removed
+    them), counted before the filters. Always 0 for a ``tail`` read."""
 
     @property
     def text(self) -> str:
@@ -204,41 +196,41 @@ def _until_index(entries: list[LogEntry], until: str | int | LogEntry) -> int:
     return max((index for index, entry in enumerate(entries) if entry.cursor <= cursor), default=-1)
 
 
+def log_line(value: pb.LogLine) -> LogLine:
+    return LogLine(
+        device_time=value.device_time_ms / 1000,
+        uid=value.uid if value.HasField("uid") else None,
+        pid=value.pid,
+        tid=value.tid,
+        priority=LogPriority(value.priority) if any(int(p) == value.priority for p in LogPriority) else None,
+        tag=value.tag,
+        message=value.message,
+        packages=tuple(value.packages),
+        packages_observed_at=value.packages_observed_at_ms / 1000 if value.HasField("packages_observed_at_ms") else None,
+    )
+
+
+def log_action(value: pb.LogAction) -> LogAction:
+    return LogAction(
+        operation=value.operation,
+        target=value.target if value.HasField("target") else None,
+        finished=value.finished,
+        outcome=value.outcome if value.HasField("outcome") else None,
+        duration=value.duration_ms / 1000 if value.HasField("duration_ms") else None,
+        request_id=value.request_id if value.HasField("request_id") else None,
+        step=value.step if value.HasField("step") else None,
+    )
+
+
 def _entry(entry: pb.LogEntry) -> LogEntry:
     kind = entry.WhichOneof("kind")
-    line = action = None
-    if kind == "line":
-        value = entry.line
-        line = LogLine(
-            device_time=value.device_time_ms / 1000,
-            uid=value.uid if value.HasField("uid") else None,
-            pid=value.pid,
-            tid=value.tid,
-            priority=LogPriority(value.priority) if any(int(p) == value.priority for p in LogPriority) else None,
-            tag=value.tag,
-            message=value.message,
-            packages=tuple(value.packages),
-        )
-    elif kind == "action":
-        value = entry.action
-        action = LogAction(
-            operation=value.operation,
-            target=value.target if value.HasField("target") else None,
-            finished=value.finished,
-            outcome=value.outcome if value.HasField("outcome") else None,
-            duration=value.duration_ms / 1000 if value.HasField("duration_ms") else None,
-            request_id=value.request_id if value.HasField("request_id") else None,
-            step=value.step if value.HasField("step") else None,
-        )
     return LogEntry(
         cursor=entry.cursor,
         at=entry.host_time_ms / 1000,
-        line=line,
+        line=log_line(entry.line) if kind == "line" else None,
         marker=entry.marker if kind == "marker" else None,
-        action=action,
+        action=log_action(entry.action) if kind == "action" else None,
         gap=entry.gap if kind == "gap" else None,
-        event=logged_event(entry.event) if kind == "event" else None,
-        death=_json(entry.death) if kind == "death" else None,
         host_monotonic_ns=entry.host_monotonic_ns,
     )
 
@@ -291,10 +283,9 @@ class DeviceLog:
 
     The server captures it from the moment the device is attached, unless the attachment turned
     that off (``attach_device(capture_logs=False)``; every call here then raises ``ServerError``
-    with ``FailureReason.DAEMON_PRECONDITION``). Redacted disk evidence follows the daemon's
-    rolling policy and survives detach/restart; use ``client.log_recordings`` for archived
-    reads and named protection. A 16 MiB hot buffer serves live followers. Secrets are replaced
-    by ``<redacted>`` before storage and on read: see ``redact``.
+    with ``FailureReason.DAEMON_PRECONDITION``). It reads the log while the device is attached;
+    the server also keeps it after detach and restart, read with ``client.history``. Secrets are
+    replaced by ``<redacted>`` before the server stores a line and again on read: see ``redact``.
 
     Typical use, the app's warnings during one step::
 
@@ -409,9 +400,9 @@ class DeviceLog:
     ) -> LogFollower:
         """The entries from the starting point and then every new one as it is logged, until
         the returned ``LogFollower`` is closed or the device detached. Same starting points and
-        filters as ``read``, but backlog comes from the bounded live hot buffer. Read retained
-        evidence separately for older entries (``tail=1`` starts near now). Read it on its own
-        thread, or to wait for a line::
+        filters as ``read``, but the entries before now come from the newest 16 MiB the server
+        keeps in memory (``tail=1`` starts near now); ``client.history`` reads older ones. Read it
+        on its own thread, or to wait for a line::
 
             with device.logs.follow(since="checkout", tags=["Payments"]) as log:
                 done = next(e for e in log if e.line and "settled" in e.line.message)
@@ -426,7 +417,7 @@ class DeviceLog:
         """Writes a named marker into the log, at the time the server gets the call, and
         returns its cursor. Read from it with ``read(since=name)``; a later marker with the
         same name replaces it as the starting point. ``name`` is 1 to 200 characters on one
-        line. Closed capture or failed persistence refuses acknowledgment."""
+        line. The server answers only once it has stored the marker."""
         self._device._ensure_usable("logs.mark")
         with mapped_errors(self._device.serial):
             return self._device.client.device_log.MarkLog(
@@ -448,8 +439,9 @@ class DeviceLog:
         Redacted without any call: ``Authorization`` / ``Cookie`` style headers, ``password=``
         / ``token=`` style values, bearer tokens, JWTs, and the text of every ``sensitive``
         ``set_text`` / ``type_text`` on this device (literals of four characters or longer).
-        At most 64 patterns per attachment. Late rules rewrite retained segments; failure is
-        explicit. This cannot securely erase earlier copies or backups of unrecognized values."""
+        At most 64 patterns per attachment. A new pattern also rewrites what the server has
+        already stored of this attachment, its calls and crashes included (a failed rewrite is an
+        error); it cannot erase copies you saved or exported before."""
         self._device._ensure_usable("logs.redact")
         with mapped_errors(self._device.serial):
             self._device.client.device_log.RedactLog(

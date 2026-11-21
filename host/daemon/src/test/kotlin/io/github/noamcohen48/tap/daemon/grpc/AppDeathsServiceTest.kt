@@ -100,7 +100,7 @@ class AppDeathsServiceTest {
             val adb = Followed()
             AttachedHarness.with(adb) {
                 assertTrue(adb.started.await(2, TimeUnit.SECONDS))
-                daemon.retainedLogs.start("incident", connectionId, listOf(connectionId))
+                val protection = daemon.retainedLogs.start("incident", connectionId, listOf(connectionId))
                 stack.forEach(attached.appDeaths::ingest)
                 attached.appDeaths.ingest(crash.replace("boom, really", "password=secret-diagnostic, really"))
                 attached.appDeaths.ingest(anr)
@@ -125,14 +125,27 @@ class AppDeathsServiceTest {
                         .death.death.stackTrace
                         .contains("Main.pay"),
                 )
-                daemon.stopLogRecording("incident")
+                daemon.stopHistoryRecording(protection.id)
                 daemon.disconnectClient(connectionId, "released")
-                assertEquals(2, daemon.retainedLogs.entries(archive, "incident").count { it.hasDeath() })
-                val exported = logs.readLog(io.github.noamcohen48.tap.api.v1.ReadLogRequest.newBuilder()
-                    .setClientConnectionId(connectionId).setAttachedDeviceId(connectionId).setRecording("incident").build())
-                    .toList().flatMap { it.entriesList }
+                assertEquals(2, daemon.retainedLogs.entries(archive, protection.id).count { it.hasDeath() })
+                val exported =
+                    history
+                        .readHistory(
+                            io.github.noamcohen48.tap.api.v1.ReadHistoryRequest
+                                .newBuilder()
+                                .setSelection(
+                                    io.github.noamcohen48.tap.api.v1.HistorySelection
+                                        .newBuilder()
+                                        .setRecordingId(protection.id),
+                                ).build(),
+                        ).entriesList
                 assertEquals(2, exported.count { it.hasDeath() })
-                assertFalse(exported.first { it.hasDeath() }.death.death.stackTrace.contains("Main.pay"))
+                assertFalse(
+                    exported
+                        .first { it.hasDeath() }
+                        .death.death.stackTrace
+                        .contains("Main.pay"),
+                )
             }
         }
 

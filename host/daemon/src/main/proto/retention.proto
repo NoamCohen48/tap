@@ -1,0 +1,85 @@
+// The daemon's private retention files under `<state dir>/history-logs/`: not an API, not
+// published, and read by nothing but this daemon.
+//
+// Retained segments outlive a daemon upgrade, so these messages are a disk format. Field
+// numbers are never reused. The tap.v1 messages they embed (LogLine, LogAction, LoggedEvent,
+// AppDeath) are part of that format too: a breaking change to one of them must keep decoding
+// the bytes already on disk, or report the affected sources as unavailable, never misread them.
+syntax = "proto3";
+
+package tap.daemon.storage.v1;
+
+import "device_log.proto";
+import "event_log.proto";
+import "history.proto";
+
+option java_package = "io.github.noamcohen48.tap.daemon.storage";
+option java_multiple_files = true;
+option java_outer_classname = "RetentionStorageProto";
+
+// One entry of a source's segment file. Fields 1–7 keep the layout of the first retained
+// format (tap.v1.LogEntry) so its segments still decode.
+message StoredEntry {
+  uint64 cursor = 1;
+  int64 host_time_ms = 2;
+  oneof kind {
+    tap.v1.LogLine line = 3;
+    string marker = 4;
+    tap.v1.LogAction action = 5;
+    string gap = 6;
+    tap.v1.LoggedEvent event = 8;
+    tap.v1.HistoryDeath death = 9;
+  }
+  int64 host_monotonic_ns = 7;
+}
+
+message StoredSpan {
+  // A source id: an attachment id for a device log, a connection id for its calls.
+  string source_id = 1;
+  string serial = 2;
+  uint64 after_cursor = 3;
+  optional uint64 through_cursor = 4;
+}
+
+message StoredRecording {
+  string name = 1;
+  string connection_id = 2;
+  int64 started_at_ms = 3;
+  optional int64 stopped_at_ms = 4;
+  repeated StoredSpan spans = 5;
+  string capture_error = 7;
+  uint64 retained_bytes = 8;
+  string id = 10;
+}
+
+// The state inside a ReadHistory cursor. It is encrypted and authenticated with a key in the
+// state directory, so a client can neither read its filters nor move its boundaries.
+message StoredSourceBoundary {
+  string source_id = 1;
+  uint64 through_sequence = 2;
+  uint64 first_sequence = 3;
+}
+
+// An entry's place in the read order: received time, then source, then sequence.
+message StoredPosition {
+  int64 received_at_ms = 1;
+  string source_id = 2;
+  uint64 sequence = 3;
+}
+
+message StoredHistoryCursor {
+  uint32 version = 1;
+  tap.v1.ReadHistoryRequest query = 2;
+  // The bounds the first page resolved. A marker bound is the marker's exact position (both
+  // included); its time also becomes from/until_time_ms, which pick the files to read.
+  optional int64 from_time_ms = 10;
+  StoredPosition first = 11;
+  StoredPosition last = 12;
+  int64 until_time_ms = 3;
+  bool newest_first = 4;
+  bool positioned = 5;
+  int64 received_at_ms = 6;
+  string source_id = 7;
+  uint64 sequence = 8;
+  repeated StoredSourceBoundary sources = 9;
+}

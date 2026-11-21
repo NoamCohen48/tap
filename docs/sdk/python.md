@@ -265,11 +265,11 @@ Each `LoggedEvent` has the call (`command` or `app`) and its outcome (`error` or
 the server API's messages in proto3 JSON, so any language can read it; `to_dict()` gives a
 JSON-ready form. A command appears with the selector it sent, so a tap on a ref shows the
 selector the ref stood for. The server keeps each connection's last 2000 events, until the
-connection ends. This is a bounded live diagnostic API, not durable export. For retained,
-redacted activity after release/restart, use `client.log_recordings.history(connection_id)` or
-`client.log_recordings.export(name)`, optionally `logs=True`. The returned artifact provides
-`.text`, `.to_dict()` and `.to_json()` without writing a file or invoking a CLI. See
-[history and recordings](../agent/export.md#sdk-exports).
+connection ends. This is a bounded live diagnostic API, not durable export. For the kept,
+redacted history after release/restart, use `client.history.read(connections=[connection_id])`
+or `client.history.read(recording=recording)`, optionally `logs=True`. The returned
+`HistoryPage` provides `.text`, `.to_dict()` and `.to_json()` without writing a file or invoking
+a CLI. See [history after the script](../guide/logs.md#history-after-the-script).
 
 ```python
 log = connection.event_log()

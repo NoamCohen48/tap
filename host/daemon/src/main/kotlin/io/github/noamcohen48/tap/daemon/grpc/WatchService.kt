@@ -66,13 +66,13 @@ class WatchService(
             emit(
                 WatchLogResponse
                     .newBuilder()
-                    .addAllEntries(log.withPackages(batches.firstOrNull().orEmpty()))
+                    .addAllEntries(batches.firstOrNull().orEmpty())
                     .setDropped(subscription.dropped)
                     .setClockId(MediaClock.id)
                     .build(),
             )
-            batches.drop(1).forEach { emit(WatchLogResponse.newBuilder().addAllEntries(log.withPackages(it)).build()) }
-            log.live(subscription).collect { emit(WatchLogResponse.newBuilder().addAllEntries(log.withPackages(it)).build()) }
+            batches.drop(1).forEach { emit(WatchLogResponse.newBuilder().addAllEntries(it).build()) }
+            log.live(subscription).collect { emit(WatchLogResponse.newBuilder().addAllEntries(it).build()) }
         }.mapErrors()
 
     private fun <T> Flow<T>.mapErrors(): Flow<T> =

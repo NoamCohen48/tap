@@ -14,6 +14,15 @@ include them without approval.
 
 ## Backlog
 
+- [ ] **Kotlin SDK: `client.history`.** The Kotlin SDK has no reader of the server's kept
+  history (`HistoryService`) yet; only the Python SDK (`client.history`) and `tap-agent`
+  (`history`, `record`) do. Add a typed `TapClient.history` mirroring Python: `read` (selection,
+  time or marker bounds, `step`, `logs` + log filter, `newestFirst`, `limit`), `resume(cursor)`,
+  `pages`, `sources`, `startRecording` / `stopRecording` / `recordings` / `deleteRecording`, and a
+  `HistoryPage` artifact (`tap-history/2` JSON, text with `WARNING:` issues). Reuse the generated
+  `EventJson.kt` (`scripts/gen_event_redaction.py`, currently unused by the SDK) for calls, and
+  `AppDeath.toModel` / `LogLine.toModel` / `LogAction.toModel` for entries. Needs a fake
+  `HistoryService` in the SDK tests and the Kotlin page in `docs/guide/logs.md`.
 - [ ] **Agent event inbox beyond toasts.** Add `tap-agent events` / an MCP `events` tool only
   when it reports more than toast history. Today `toast --history` covers retained toast reads;
   snapshots and settle responses automatically deliver unread toasts. Candidate observations:

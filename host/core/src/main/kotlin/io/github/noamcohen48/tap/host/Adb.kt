@@ -554,6 +554,15 @@ open class Adb internal constructor(
                 listOf("-b", "main", "-b", "system", "-b", "crash", "-T", since ?: "1"),
         )
 
+    /** Logs [message] under [tag] at info priority on the device's main buffer (`log -t`). */
+    open suspend fun logLine(
+        serial: String,
+        tag: String,
+        message: String,
+    ) {
+        exec(serial, "shell", "log", "-t", shellQuote(tag), shellQuote(message), timeoutMs = 10_000)
+    }
+
     /** The Linux uid of every installed package (`pm list packages -U`). */
     open suspend fun packageUids(serial: String): Map<String, Int> =
         exec(serial, "shell", "pm", "list", "packages", "-U", timeoutMs = 20_000)

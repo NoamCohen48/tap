@@ -84,6 +84,8 @@ internal suspend fun <T> AttachedDevice.recorded(
             logs?.hostAction(operation, target, outcome, durationMs, step)
         }
     }
+    val changesPackages = event.hasApp() && (operation == "install" || operation == "uninstall")
+    if (changesPackages) logs?.beginPackageChange()
     val result =
         try {
             block()
@@ -102,6 +104,8 @@ internal suspend fun <T> AttachedDevice.recorded(
             }
             finish()
             throw status
+        } finally {
+            if (changesPackages) logs?.endPackageChange()
         }
     errorOf(result)?.let {
         event.error = it

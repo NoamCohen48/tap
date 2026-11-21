@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.daemon.grpc.ClientConnectionService
 import io.github.noamcohen48.tap.daemon.grpc.DAEMON_VERSION
 import io.github.noamcohen48.tap.daemon.grpc.DeviceLogService
 import io.github.noamcohen48.tap.daemon.grpc.DeviceService
+import io.github.noamcohen48.tap.daemon.grpc.HistoryService
 import io.github.noamcohen48.tap.daemon.grpc.StepInterceptor
 import io.github.noamcohen48.tap.daemon.grpc.TokenAuthInterceptor
 import io.github.noamcohen48.tap.daemon.grpc.WatchService
@@ -123,6 +124,7 @@ internal fun serve(
             .addService(AppService(daemon))
             .addService(AppDataService(daemon))
             .addService(DeviceLogService(daemon))
+            .addService(HistoryService(daemon))
             .addService(WatchService(daemon))
             .intercept(StepInterceptor())
             .intercept(TokenAuthInterceptor(token))

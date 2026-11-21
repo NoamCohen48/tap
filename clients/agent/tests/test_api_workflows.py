@@ -47,17 +47,14 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     agent.history("mark", "second")
     agent.tap("id=cancel")
     document = json.loads(agent.history(as_json=True))
-    # The SDK fake uses a fixed epoch; align this test's receipts with actual local step bounds.
-    starts = {step["id"]: int(datetime.datetime.fromisoformat(step["started_at"].replace("Z", "+00:00")).timestamp() * 1000)
-        for step in document["steps"]}
-    for event in next(iter(fake.connections.logs.values())):
-        if event.step in starts:
-            event.at_epoch_ms = starts[event.step]
-    document = json.loads(agent.history(as_json=True))
-    events = document["events"]
-    assert len(events) == 2  # The page selects the two intent step IDs, not an unrelated snapshot read.
-    later = json.loads(agent.history(start=document["steps"][1]["cursor"], as_json=True))["events"]
-    assert later == events[1:]
+    calls = [e["call"] for e in document["entries"] if e["kind"] == "call"]
+    # Every call is in the history; the two made by steps carry their step ids.
+    assert [c["step"] for c in calls if c.get("step")] == [step["id"] for step in document["steps"]]
+    assert any("read_toast_history" in c.get("command", {}) for c in calls if not c.get("step"))  # the snapshot's, no step
+    second = document["steps"][1]
+    only = json.loads(agent.history(step=second["id"], as_json=True))
+    assert [e["call"]["step"] for e in only["entries"] if e["kind"] == "call"] == [second["id"]]
+    assert [s["id"] for s in only["steps"]] == [second["id"]]
 
 
 def test_app_queries_and_visibility_reuse_sdk(fake, agent, client, monkeypatch):
@@ -251,7 +248,7 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
     ("settle", {"stable_for": 2, "timeout": 1}), ("settle", {"signal": "unknown"}),
     ("snapshot", {"candidates": True, "level": "all"}),
     ("history", {"start": "invalid"}), ("history", {"limit": 0}), ("history", {"as_json": 1}),
-    ("record", {"action": "stop"}), ("record", {"action": "list", "logs": True}), ("history", {"action": "driver", "tail": 5}), ("history", {"value": "x"}),
+    ("record", {"action": "stop"}), ("record", {"action": "export", "name": "x"}), ("history", {"action": "driver"}), ("history", {"value": "x"}),
     ("history", {"step": "1", "last_action": True}),
     ("wait", {"target": "id=input", "state": "count", "value": "²"}),
     ("wait", {"target": "id=input", "state": "count", "value": "9" * 5000}),
@@ -282,7 +279,7 @@ def test_cli_forwards_new_parameters(fake, agent):
     assert fake.devices.commands[-2].wait_screen_stable.signal == pb.STABILITY_ALL
     assert fake.devices.commands[-1].WhichOneof("op") == "read_toast_history"
     assert json.loads(run(["app", "installed", "com.example"])) is True
-    events = json.loads(run(["history", "--json"]))["events"]
+    events = [e["call"] for e in json.loads(run(["history", "--json"]))["entries"] if e["kind"] == "call"]
     assert any("wait_screen_stable" in event.get("command", {}) for event in events)
     assert events[-1]["command"].get("read_toast_history") == {}
     assert "detached" in run(["detach"])

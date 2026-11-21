@@ -618,9 +618,9 @@ def test_an_export_has_the_servers_record_of_each_call(fake, agent, tmp_path):
     with pytest.raises(AgentError):
         agent.tap("text=Nope")
     document = json.loads(agent.history(as_json=True))
-    assert document["format"] == "tap-history/1" and document["event_capture"][0]["dropped"] == 0
+    assert document["format"] == "tap-history/2" and not document["issues"]
     assert all(step["session"] == "agent" for step in document["steps"])
-    cold, tapped, missing = document["events"]
+    cold, tapped, missing = [e["call"] for e in document["entries"] if e["kind"] == "call"]
     assert cold["app"] == {"operation": "cold_launch", "package_name": "com.example"} and cold["ok"]
     # The ref is logged as the selector it named.
     assert tapped["command"]["tap"]["selector"] == {"node": {"resource": {"name": "login"}}}
@@ -630,7 +630,7 @@ def test_an_export_has_the_servers_record_of_each_call(fake, agent, tmp_path):
     assert not out.exists(), "history returns stdout data, not a file"
     out.parent.mkdir()
     out.write_text(agent.history(as_json=True))  # Explicit caller-side redirection/storage.
-    assert json.loads(out.read_text())["events"] == document["events"]
+    assert json.loads(out.read_text())["entries"] == document["entries"]
 
 def test_condition_reads_back_and_app_locale(fake, agent):
     agent.attach("emulator-5554")

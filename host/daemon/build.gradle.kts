@@ -1,6 +1,7 @@
 plugins {
     id("tap.kotlin-jvm")
     alias(libs.plugins.graalvm.native)
+    alias(libs.plugins.protobuf)
     application
 }
 
@@ -16,6 +17,20 @@ dependencies {
     testImplementation(libs.grpc.inprocess)
     testImplementation(libs.coroutines.test)
     testImplementation(testFixtures(project(":host:core")))
+}
+
+/*
+ * src/main/proto holds the daemon's private retention file format (tap.daemon.storage.v1). It
+ * imports tap.v1 messages from the :contracts:schema jar and is generated here, so it is never
+ * published with the API nor bundled into the driver.
+ */
+protobuf {
+    protoc { artifact = libs.protobuf.protoc.get().toString() }
+    generateProtoTasks {
+        all().forEach { task ->
+            task.builtins { named("java") { option("lite") } }
+        }
+    }
 }
 
 application {

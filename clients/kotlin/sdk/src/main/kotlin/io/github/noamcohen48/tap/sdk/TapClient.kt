@@ -9,9 +9,9 @@ import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DisconnectRequest
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.ListDevicesRequest
+import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
 import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
-import io.github.noamcohen48.tap.api.v1.UnquarantineRequest
 import io.grpc.Channel
 import io.grpc.ClientInterceptors
 import io.grpc.ManagedChannel
@@ -98,9 +98,6 @@ class TapClient public constructor(
     internal val apps = AppServiceGrpcKt.AppServiceCoroutineStub(callChannel)
     internal val appData = AppDataServiceGrpcKt.AppDataServiceCoroutineStub(callChannel)
     internal val deviceLog = DeviceLogServiceGrpcKt.DeviceLogServiceCoroutineStub(callChannel)
-
-    /** Protected log ranges and ordinary retained evidence, including after connection release. */
-    val logRecordings: LogRecordings = LogRecordings(this)
 
     private val versionChecked = AtomicBoolean(false)
 
@@ -387,15 +384,8 @@ class TapConnection internal constructor(
         client
             .devices()
             .filter { it.state == DeviceState.FREE || it.state == DeviceState.LEASED || it.retryOnAttach }
-            .sortedBy {
-                if (it.state == DeviceState.FREE) {
-                    0
-                } else if (it.state == DeviceState.LEASED) {
-                    1
-                } else {
-                    2
-                }
-            }.map { it.serial }
+            .sortedBy { if (it.state == DeviceState.FREE) 0 else if (it.state == DeviceState.LEASED) 1 else 2 }
+            .map { it.serial }
 
     /**
      * Attach [serial]. The underlying device session holds the device's

@@ -9,6 +9,7 @@ import io.github.noamcohen48.tap.daemon.core.LogReadSelectionLimitException
 import io.github.noamcohen48.tap.daemon.core.LogStart
 import io.github.noamcohen48.tap.daemon.core.RetainedLogs
 import io.github.noamcohen48.tap.daemon.core.UnknownLogMarkerException
+import io.github.noamcohen48.tap.daemon.core.deviceLog
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.FlowCollector
@@ -23,7 +24,13 @@ internal suspend fun FlowCollector<ReadLogResponse>.retainedLog(
 ) {
     val context = currentCoroutineContext()
 
-    fun entries(reverse: Boolean = false) = snapshot.entries(reverse).onEach { context.ensureActive() }.map(log::redacted)
+    fun entries(reverse: Boolean = false) =
+        snapshot
+            .entries(reverse)
+            .onEach {
+                context.ensureActive()
+            }.mapNotNull { it.deviceLog() }
+            .map(log::redacted)
     val after =
         when (start) {
             LogStart.Oldest, is LogStart.Tail -> {
@@ -79,7 +86,7 @@ internal suspend fun FlowCollector<ReadLogResponse>.retainedLog(
                 throw LogReadSelectionLimitException()
             }
         }
-        tail.asSequence().batches().forEach { emit(ReadLogResponse.newBuilder().addAllEntries(log.withPackages(it)).build()) }
+        tail.asSequence().batches().forEach { emit(ReadLogResponse.newBuilder().addAllEntries(it).build()) }
         return
     }
     var previous = first - 1
@@ -97,7 +104,7 @@ internal suspend fun FlowCollector<ReadLogResponse>.retainedLog(
             emit(
                 ReadLogResponse
                     .newBuilder()
-                    .addAllEntries(log.withPackages(batch))
+                    .addAllEntries(batch)
                     .setDropped(missing)
                     .build(),
             )
@@ -113,7 +120,7 @@ internal suspend fun FlowCollector<ReadLogResponse>.retainedLog(
         emit(
             ReadLogResponse
                 .newBuilder()
-                .addAllEntries(log.withPackages(batch))
+                .addAllEntries(batch)
                 .setDropped(missing)
                 .build(),
         )

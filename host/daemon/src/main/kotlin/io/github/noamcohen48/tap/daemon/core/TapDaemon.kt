@@ -471,33 +471,67 @@ class TapDaemon internal constructor(
         return connection.events
     }
 
-    /** Atomically protect the current device set with respect to attach/detach/disconnect. */
-    internal suspend fun startLogRecording(
+    /** Start a history recording of connection [owner]: its devices now, and later ones as they attach. */
+    internal suspend fun startHistoryRecording(
         owner: String,
         name: String,
-        agentStepsExpected: Boolean = false,
-    ): io.github.noamcohen48.tap.api.v1.LogRecording {
+    ): io.github.noamcohen48.tap.daemon.storage.StoredRecording {
         markInUse(owner)
         return synchronized(lifecycleLock) {
             clientConnectionsById[owner]?.takeUnless { it.closed } ?: throw UnknownClientConnectionException(owner)
             val devices = attachedDevicesById.values.filter { it.ownerConnectionId == owner }
-            devices.firstOrNull { it.logs == null }?.let { throw LogCaptureOffException(it.deviceSession.serial) }
-            retainedLogs.start(name, owner, devices.map { it.id } + owner, agentStepsExpected)
+            retainedLogs.start(name, owner, devices.mapNotNull { it.logs?.archive?.id } + owner)
         }
     }
 
-    /** A stop during admitted work records a gap before freezing its receipt boundary. */
-    internal fun stopLogRecording(name: String): io.github.noamcohen48.tap.api.v1.LogRecording =
-        synchronized(lifecycleLock) {
-            val recording = retainedLogs.list().firstOrNull { it.name == name } ?: throw UnknownLogRecordingException(name)
-            if (!recording.hasStoppedAtMs() && (clientConnectionsById[recording.clientConnectionId]?.inFlight ?: 0) > 0) {
+    /**
+     * A stop first lets each device's log capture catch up, so lines logged before it (such as
+     * the driver's lines for the last call) are inside the recording; a device that does not
+     * catch up in time gets a gap saying so. A stop during admitted work records a gap before
+     * freezing its receipt boundary.
+     */
+    internal suspend fun stopHistoryRecording(id: String): io.github.noamcohen48.tap.daemon.storage.StoredRecording {
+        val pending = retainedLogs.get(id)
+        if (!pending.hasStoppedAtMs()) catchUpLogs(pending.connectionId)
+        return synchronized(lifecycleLock) {
+            val recording = retainedLogs.get(id)
+            if (!recording.hasStoppedAtMs() && (clientConnectionsById[recording.connectionId]?.inFlight ?: 0) > 0) {
                 retainedLogs.interruption(
-                    retainedLogs.archive(recording.clientConnectionId, recording.clientConnectionId),
-                    "recording stopped with calls in flight; outcomes may fall outside its boundary",
+                    retainedLogs.archive(recording.connectionId, recording.connectionId),
+                    "the recording stopped while calls were running; their outcomes may fall outside it",
                 )
             }
-            retainedLogs.stop(name)
+            retainedLogs.stop(id)
         }
+    }
+
+    /** Waits until every device of connection [owner] delivered a barrier line logged now. */
+    private suspend fun catchUpLogs(owner: String) {
+        val devices = synchronized(lifecycleLock) { attachedDevicesById.values.filter { it.ownerConnectionId == owner && it.logs != null } }
+        coroutineScope {
+            devices
+                .map { device ->
+                    async {
+                        val logs = device.logs!!
+                        val token = java.util.UUID.randomUUID().toString()
+                        val arrived = logs.barrier(token)
+                        val caughtUp =
+                            try {
+                                config.adb.logLine(device.deviceSession.serial, BARRIER_TAG, token)
+                                withTimeoutOrNull(LOG_CATCH_UP_MS) { arrived.await() } != null
+                            } catch (error: CancellationException) {
+                                throw error
+                            } catch (_: Exception) {
+                                false
+                            } finally {
+                                logs.forgetBarrier(token)
+                            }
+                        // Through the device log, which numbers its entries: a gap written to the store directly would reuse a cursor.
+                        if (!caughtUp) logs.interrupted("the device log had not caught up when the recording stopped; its last lines may be missing")
+                    }
+                }.awaitAll()
+        }
+    }
 
     /** Every live connection with its attached devices, in no particular order. */
     fun connections(): List<ConnectionInfo> = synchronized(lifecycleLock) { connectionsLocked() }
@@ -669,6 +703,7 @@ class TapDaemon internal constructor(
             // awaiting so N uncooperative devices cannot add N ms.
             if (deadlineNanos != null && remainingMs(deadlineNanos) <= 0L) {
                 devices.forEach { launchDetachedCleanup(it, shutdownAttachedDeviceMs, "attached device ${it.id}") }
+                endRecordings(id)
                 config.log("connection $id shutdown budget exhausted; ${devices.size} attached device(s) detached with cleanup launched")
                 return@withContext devices.size
             }
@@ -685,9 +720,15 @@ class TapDaemon internal constructor(
                         }
                     }.awaitAll()
             }
+            endRecordings(id)
             config.log("connection $id disconnected ($reason): attachedDevices=${devices.size}")
             return@withContext devices.size
         }
+
+    /** A closed connection's recordings end with it, after its devices' logs closed. */
+    private fun endRecordings(id: String) {
+        runCatching { retainedLogs.endConnection(id) }.onFailure { config.log("could not end the history recordings of connection $id") }
+    }
 
     private data class Snapshot(
         val attachedDevices: List<AttachedDevice>,
@@ -1090,7 +1131,7 @@ class TapDaemon internal constructor(
                             attachedDevice.appDeaths.onRecord = { death ->
                                 try {
                                     val receipt =
-                                        io.github.noamcohen48.tap.api.v1.RecordedAppDeath
+                                        io.github.noamcohen48.tap.api.v1.HistoryDeath
                                             .newBuilder()
                                             .setAttachedDeviceId(attachedId)
                                             .setSerial(serial)
@@ -1153,6 +1194,8 @@ class TapDaemon internal constructor(
         }
         measureAttachmentStage(serial, "daemon_attach_log_capture") {
             registered.logs?.let { logs ->
+                logs.refreshPackageOwnership(force = true)
+                logs.startPackageRefresh()
                 // Started only now: an attachment that lost to a disconnect never had a child to reap.
                 // A detach that already won closes the log, and the capture's lines then go nowhere.
                 registered.logcat = LogcatCapture(config.adb, serial, attachedAt, logs).also { it.start() }

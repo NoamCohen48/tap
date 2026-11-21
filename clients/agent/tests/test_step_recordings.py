@@ -1,4 +1,4 @@
-"""Automatic intent fidelity and log diagnostics, without replay or legacy export commands."""
+"""The agent's own steps: what it records of each command, and how `history` shows them."""
 # pyright: reportMissingImports=false
 from __future__ import annotations
 
@@ -19,6 +19,9 @@ from tap_agent.step_capture import ACTIONS, CONDITIONAL, EXCLUDED, WAITS
 
 def document(agent):
     return json.loads(agent.history(as_json=True))
+
+
+NOTHING = "nothing happened in this range (or none of it is kept)"
 
 
 def _statuses(agent):
@@ -43,15 +46,13 @@ def test_an_interrupted_step_is_kept_and_does_not_block_later_input(fake, agent,
     agent.key("back")
     assert len(fake.devices.commands) == 1
     agent.release()
-    saved = document(agent)
-    assert not saved["complete"]
-    assert [step["outcome"]["status"] for step in saved["steps"]] == ["interrupted", "succeeded"]
+    assert _statuses(agent) == ["interrupted", "succeeded"]
 
 
 def test_a_session_records_actions_and_waits_not_inspections_and_resolves_refs(fake, agent):
-    assert agent.history() == "no retained activity"
+    assert agent.history() == NOTHING
     agent.attach("first")
-    assert agent.history() == "no retained activity"
+    assert agent.history() == NOTHING
     fake.devices.refs["e1"] = res("save").to_proto()
     agent.tap("@e1")
     agent.snapshot()
@@ -59,7 +60,7 @@ def test_a_session_records_actions_and_waits_not_inspections_and_resolves_refs(f
     agent.count("id=save")
     agent.wait("id=save", state="count", value=0, timeout=.1)
     saved = document(agent)
-    assert not saved["complete"]
+    assert saved["format"] == "tap-history/2"
     assert [s["action"] for s in saved["steps"]] == ["tap", "wait"]
     assert [s["kind"] for s in saved["steps"]] == ["action", "wait"]
     assert all(s["serial"] == "first" and s["session"] == "agent" for s in saved["steps"])
@@ -74,8 +75,9 @@ def test_a_session_records_actions_and_waits_not_inspections_and_resolves_refs(f
     assert counts[0] is None and counts[1:] and set(counts[1:]) == {ids[1]}
     assert all(step is None for call, step in calls if call.WhichOneof("op") == "read_toast_history")
     agent.release()
-    assert document(agent)["complete"]
-    assert "tap" in agent.history() and "wait" in agent.history()
+    assert _statuses(agent) == ["succeeded", "succeeded"]
+    text = agent.history()
+    assert "step 1: tap" in text and "step 2: wait" in text
 
 
 def test_history_selects_one_stable_global_step_by_cursor_or_id(fake, agent):
@@ -88,7 +90,9 @@ def test_history_selects_one_stable_global_step_by_cursor_or_id(fake, agent):
     with pytest.raises(AgentError, match="not retained"):
         agent.history(step="999999")
     with pytest.raises(AgentError, match="own end"):
-        agent.history(step=first["id"], until=999999)
+        agent.history(step=first["id"], until="2026-01-01T00:00:00Z")
+    request = fake.history.requests[-1]
+    assert request.step == first["id"] and list(request.selection.connection_ids) == [first["connection_id"]]
 
 
 def test_markers_bound_history_and_are_stored_with_original_attachment(fake, agent):
@@ -99,46 +103,51 @@ def test_markers_bound_history_and_are_stored_with_original_attachment(fake, age
     assert list(agent.records.marker_names().values()) == [["checkout@1", "paid@2"]]
     markers = agent.records.marker_anchor("checkout")
     assert markers[0]["attached_device_id"] == "attached-first"
-    saved = json.loads(agent.history(since_marker="checkout", until_marker="paid", as_json=True))
-    assert saved["range"]["from_time"] == 0
-    assert saved["range"]["until_time"] == .001
-    args = cli.parser().parse_args(["history", "--since-marker", "checkout", "--until-marker", "paid", "--json"])
-    assert json.loads(cli.run(args, agent)) == saved
+    saved = json.loads(agent.history(since_marker="checkout", until_marker="paid", logs=True, as_json=True))
+    request = fake.history.requests[-1]
+    assert request.from_marker == "checkout" and request.until_marker == "paid"  # the server resolves markers
+    assert [e.get("marker") for e in saved["entries"]] == ["checkout", "paid"]
+    args = cli.parser().parse_args(["history", "--since-marker", "checkout", "--until-marker", "paid", "--logs", "--json"])
+    assert json.loads(cli.run(args, agent))["entries"] == saved["entries"]
     with pytest.raises(AgentError, match="own end"):
         agent.history(step="1", until_marker="paid")
 
 
-def test_history_intent_limit_does_not_limit_logs_and_driver_lines_remain_opt_in(fake, agent):
+def test_one_limit_pages_the_merged_timeline_and_log_filters_imply_logs(fake, agent):
     agent.attach("first")
-    owner = next(iter(fake.connections.live))
-    fake.device_log.archives.append(pb.RetainedLog(client_connection_id=owner, attached_device_id="attached-first", serial="first"))
-    agent.tap("id=save")
-    fake.device_log.entries = [pb.LogEntry(cursor=1, marker="flow"),
-        pb.LogEntry(cursor=2, line=pb.LogLine(packages=["io.github.noamcohen48.tap.driver"], message="Retrieving nodes")),
-        *(pb.LogEntry(cursor=c, line=pb.LogLine(packages=["com.shop"], message=f"line {c}")) for c in range(3, 8))]
-    assert "Retrieving nodes" not in agent.history(logs=True, limit=1)
-    assert "Retrieving nodes" in agent.history(driver_lines=True, limit=1)
-    saved = json.loads(agent.history(logs=True, limit=1, as_json=True))
-    assert len(saved["log"]["first"]["entries"]) == 6
-    tail = json.loads(agent.history(tail=2, as_json=True))
-    assert [e["cursor"] for e in tail["log"]["first"]["entries"]] == [6, 7]
-    assert tail["log_omitted"] == 4
+    fake.history.logs["attached-first"] = [
+        pb.LogEntry(cursor=c, host_time_ms=1_790_000_000_000 + c, line=pb.LogLine(tag="Shop", message=f"line {c}"))
+        for c in range(1, 6)]
+    newest = json.loads(agent.history(logs=True, limit=2, as_json=True))
+    assert [e["line"]["message"] for e in newest["entries"]] == ["line 4", "line 5"]  # the newest, oldest first
+    assert newest["next"].startswith("bl:") and fake.history.requests[-1].newest_first
+    text = agent.history(logs=True, limit=2)
+    assert text.splitlines()[-1] == f"older: --after {newest['next']}"
+    older = json.loads(agent.history(after=newest["next"], limit=2, as_json=True))
+    assert [e["line"]["message"] for e in older["entries"]] == ["line 2", "line 3"]
+    forward = json.loads(agent.history(start="2026-01-01T00:00:00Z", tags=["Shop"], limit=3, as_json=True))
+    request = fake.history.requests[-1]
+    assert request.include_logs and list(request.log_filter.tags) == ["Shop"] and not request.newest_first
+    assert [e["line"]["message"] for e in forward["entries"]] == ["line 1", "line 2", "line 3"] and forward["next"].startswith("fl:")
+    agent.history(driver_lines=True)
+    assert fake.history.requests[-1].log_filter.include_driver_lines
+    with pytest.raises(AgentError, match="--after continues"):
+        agent.history(after=newest["next"], tags=["Shop"])
 
 
 def test_marker_names_remain_data_and_missing_markers_are_explicit(fake, agent):
     agent.attach("first")
     assert "'with space'" in agent.history("mark", "with space")
     assert agent.records.marker_anchor("with space")[0]["name"] == "with space"
-    with pytest.raises(AgentError, match="no retained marker"):
+    with pytest.raises(AgentError, match="marker"):
         agent.history(since_marker="never")
 
 
-def test_an_until_marker_before_the_start_is_not_an_invented_open_range(fake, agent):
+def test_an_until_marker_before_the_start_is_refused_not_read_as_an_open_range(fake, agent):
     agent.attach("first")
-    record = agent.records.ensure(agent.session, next(iter(fake.connections.live)))
-    agent.records.mark(record, "early", "first", 1, batch_id="early", attached_device_id="attached-first", at="2026-01-01T00:00:00.000Z")
-    agent.records.mark(record, "late", "first", 2, batch_id="late", attached_device_id="attached-first", at="2026-01-02T00:00:00.000Z")
-    with pytest.raises(AgentError, match="must not precede"):
+    fake.history.logs["attached-first"] = [pb.LogEntry(cursor=1, host_time_ms=1, marker="early"),
+        pb.LogEntry(cursor=2, host_time_ms=2, marker="late")]
+    with pytest.raises(AgentError, match="older than the from marker"):
         agent.history(since_marker="late", until_marker="early")
 
 
@@ -150,7 +159,7 @@ def test_capture_indexes_private_files_without_a_second_evidence_command(fake, a
     saved = document(agent)["artifacts"]
     assert len(saved) == 1 and saved[0]["serial"] == "first"
     assert saved[0]["directory"] == str(directory)
-    assert "current state requested" in agent.history()
+    assert f"CAPTURE saved to {directory}" in agent.history()
     with pytest.raises(AgentError):
         agent.capture(out=directory)
     assert not hasattr(agent, "log")
@@ -179,7 +188,7 @@ def test_uncertain_mutation_outcomes_remain_unknown_and_are_not_replayed(fake, a
     fake.devices.responder = None
     agent.key("back")
     assert len(fake.devices.commands) == 2
-    assert _statuses(agent) == ["unknown", "succeeded"] and not document(agent)["complete"]
+    assert _statuses(agent) == ["unknown", "succeeded"]
 
 
 @pytest.mark.parametrize("code", ["NOT_FOUND", "AMBIGUOUS", "NOT_INTERACTABLE", "STALE_BEFORE_INPUT", "TRANSPORT_LOST", "DEADLINE_EXCEEDED"])
@@ -192,7 +201,7 @@ def test_refusal_before_input_is_failed_and_capture_continues(fake, agent, code)
     agent.key("back")
     agent.release()
     saved = document(agent)
-    assert _statuses(agent) == ["failed", "succeeded"] and saved["complete"]
+    assert _statuses(agent) == ["failed", "succeeded"]
     assert saved["steps"][0]["outcome"]["error"] == code
 
 
@@ -295,7 +304,6 @@ def test_sensitive_input_selectors_and_exception_text_never_enter_history(fake, 
         agent.fill("id=input", secret, sensitive=True)
     agent.release()
     saved = document(agent)
-    assert saved["complete"]
     assert saved["steps"][0]["targets"]["target"] == {"redacted": True}
     assert saved["steps"][1]["outcome"] == {"status": "rejected_before_input", "error": "AgentError"}
     assert secret not in json.dumps(saved)
@@ -312,7 +320,7 @@ def test_storage_failures_do_not_replay_or_replace_the_action_outcome(fake, agen
     assert result.startswith("tapped") and "do not repeat" in result
     assert len(fake.devices.commands) == 1
     saved = document(agent)
-    assert not saved["complete"] and saved["steps"][0]["outcome"]["status"] == "running"
+    assert saved["steps"][0]["outcome"]["status"] == "running"
     monkeypatch.setattr(agent.records, "begin", fail)
     with pytest.raises(AgentError, match="disk full"):
         agent.tap("id=again")
@@ -332,5 +340,6 @@ def test_separate_process_views_preserve_local_steps_when_daemon_is_unavailable(
     monkeypatch.setattr(TapClient, "create", unavailable)
     saved = document(offline)
     assert saved["steps"] == before["steps"]
-    assert not saved["complete"] and saved["events_unavailable"]
-    assert "tap" in offline.history() and "WARNING" in offline.history()
+    assert [issue["kind"] for issue in saved["issues"]] == ["unavailable"]
+    text = offline.history()
+    assert "step 1: tap" in text and "WARNING: unavailable: the server's history could not be read" in text

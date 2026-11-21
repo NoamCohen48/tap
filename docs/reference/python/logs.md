@@ -17,21 +17,28 @@ Guide: [Device logs](../../guide/logs.md).
 
 ::: tap_e2e.logs.LogFollower
 
-## Retained history and protected ranges
+## History and recordings
 
-Available through `client.log_recordings`, including after the original connection ends.
-`export(name)` and `history(original_connection_id)` return `tap-history/1` with durable RPC
-events and optional logs, without invoking a CLI or writing files.
+`client.history`: the server's kept history, also after the connection ended, and named
+recordings of it. Guide: [History after the script](../../guide/logs.md#history-after-the-script).
 
-::: tap_e2e.history.HistoryExport
+::: tap_e2e.history.History
 
-::: tap_e2e.log_recordings.LogRecordings
+::: tap_e2e.history.HistoryPage
 
-::: tap_e2e.log_recordings.LogRecording
+::: tap_e2e.history.HistoryEntry
 
-::: tap_e2e.log_recordings.LogRecordingRange
+::: tap_e2e.history.HistorySource
 
-::: tap_e2e.log_recordings.RetainedLog
+::: tap_e2e.history.HistoryIssue
+
+::: tap_e2e.history.HistoryIssueKind
+
+::: tap_e2e.history.HistoryRecording
+
+::: tap_e2e.history.HistorySpan
+
+## Steps
 
 ::: tap_e2e.steps.step
 
