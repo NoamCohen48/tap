@@ -736,12 +736,16 @@ class Agent:
 
     def snapshot(self, device: str | None = None, level: str = render.DEFAULT, *, as_json: bool = False,
                  package: str | None = None, window: int | None = None,
-                 hide_keyboard: bool = False, hide_system_chrome: bool = False) -> str:
+                 hide_keyboard: bool = False, hide_system_chrome: bool = False, keyboard: bool = False) -> str:
         """Contextual ref-addressed outline, optionally filtered by window-root package or
-        one-based window ordinal. Hiding keyboard/system windows uses Android window types;
+        one-based window ordinal. A keyboard (input-method) window prints as its header line
+        with a node count unless ``keyboard``; ``hide_keyboard`` drops even that. Hiding
+        keyboard/system windows uses Android window types;
         unknown types stay visible. Filters never change refs or selectors. ``context`` is
         descriptive, not a target predicate. ``as_json`` returns the unfiltered structured SDK snapshot with selector candidates."""
-        filters = render.SnapshotFilter(package, window, hide_keyboard, hide_system_chrome)
+        if keyboard and hide_keyboard:
+            raise AgentError("--keyboard shows the keyboard's nodes; --hide-keyboard hides its window: choose one", EXIT_USAGE)
+        filters = render.SnapshotFilter(package, window, hide_keyboard, hide_system_chrome, keyboard)
         if window is not None and (isinstance(window, bool) or not isinstance(window, int) or window < 1):
             raise AgentError("window must be a positive one-based ordinal", EXIT_USAGE)
         if as_json and (level != render.DEFAULT or filters != render.SnapshotFilter()):

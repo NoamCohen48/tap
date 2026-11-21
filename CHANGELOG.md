@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent snapshots and `--settle` diffs print a keyboard window as one header line with a
+  node count; `snapshot --keyboard` (MCP `keyboard`) or `--window N` shows its keys, and
+  `--hide-keyboard` still drops the window.
 - tap-agent snapshot lines end in `accepts=` with what the node takes (`tap`, `long`, `check`,
   `edit`, `scroll`, `actions`), in every view and in `--settle` diffs; `accepts=scroll` replaces
   the `scrollable` word.
