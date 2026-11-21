@@ -38,10 +38,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "`snapshot` is the main way to see the screen: text, one node per line, grouped by window, "
         "each with a ref (`@e12`) to act on. A ref names a selector the server found to match "
         "exactly that node, and keeps naming it while it stays on screen. Prefer it to "
-        "`screenshot`, which an agent has to look at. `elements` reads a collection as JSON values "
-        "in one bulk call, without a diagnostic snapshot; `--texts` projects raw text. "
-        "Snapshots and settle append unread historical toasts; `toast --history` inspects retained "
-        "toasts without consuming them. Gaps/resets are explicit; history is not current UI.",
+        "`screenshot`, which an agent has to look at. `elements` reads a collection, one line per "
+        "match, in one bulk call, without a diagnostic snapshot; `--texts` projects raw text. "
+        "Snapshots and settle append unread historical toasts; `toast` reads retained "
+        "toasts without consuming them, and `toast --wait` waits for one. Gaps/resets are explicit; history is not current UI.",
         ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "deaths", "media-record"],
     ),
     (
@@ -114,10 +114,10 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "they happen. Supported verbs take `--events KINDS` to print events observed during the "
         "step and `--expect KIND[:TEXT]` to require one (see each verb's options; not "
         "`scroll-until`). Capture is finite and observations do not prove causality. "
-        "`wait-event` waits for the next one, and `watch` "
+        "`watch KIND --until-first` waits for the next one, and `watch` "
         "streams them (run it in the background to be told when something happens). Events are "
         "hints: read the screen again before acting on one.",
-        ["wait-event", "watch"],
+        ["watch"],
     ),
     (
         "Agent setup",
@@ -141,11 +141,9 @@ MCP_NAMES: dict[str, str | None] = {
     "push": "push_file",
     "pull": "pull_file",
     "media": "add_media",
-    "toast": "await_toast",
     "key": "press_key",
     "panel": "open_panel",
     "wait": "wait_for",
-    "wait-event": "wait_event",
     "mcp": None,
     "skill": None,
 }

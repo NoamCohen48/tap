@@ -269,6 +269,9 @@ Do: keep the content meaning for `scroll` and `fling`. Give `swipe` explicit fin
 
 ## Waits: one shape
 
+Status: done, except `app visible`: it stays an `app` action whose help says it waits (the
+allowed alternative), since `wait app=PKG` would add an `app=` term to every target.
+
 Waiting has four shapes: `wait TARGET`; `toast TEXT`, which waits by default while `toast
 --history` reads; `notification await` (a sub-word); `wait-event KIND`, `deaths --wait` (a flag)
 and `settle`.

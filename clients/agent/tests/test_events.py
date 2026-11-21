@@ -12,6 +12,7 @@ from tap_e2e import TapClient
 from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
+from tap_agent.targets import UsageError
 from tap_agent import events as device_events
 from tap_agent.core import EXIT_FAILED, EXIT_USAGE
 from tap_agent.mcp_server import create_server
@@ -112,7 +113,7 @@ def test_a_failing_step_still_closes_its_registrations(fake, agent):
     until(lambda: fake.devices.event_streams == 0)
 
 
-def test_wait_event_prints_the_first_match(fake, agent):
+def test_watch_until_first_prints_the_first_match(fake, agent):
     agent.attach("emulator-5554")
 
     def later() -> None:
@@ -120,17 +121,22 @@ def test_wait_event_prints_the_first_match(fake, agent):
         fake.devices.feed_events([toast(1, "Loading"), toast(2, "Message sent")])
 
     threading.Thread(target=later, daemon=True).start()
-    assert agent.wait_event("toast", "SENT", package="com.shop", timeout=2) == 'toast "Message sent" (com.shop)'
+    assert agent.watch_first("toast", "SENT", package="com.shop", timeout=2) == 'toast "Message sent" (com.shop)'
     assert fake.devices.event_requests[-1].package_name == "com.shop"
 
 
-def test_wait_event_times_out_and_rejects_unknown_kinds(fake, agent):
+def test_watch_until_first_times_out_and_rejects_unknown_or_several_kinds(fake, agent):
     agent.attach("emulator-5554")
     with pytest.raises(AgentError, match="ToastShownEvent"):
-        agent.wait_event("toast", timeout=0.2)
-    with pytest.raises(AgentError) as failure:
-        agent.wait_event("banana", timeout=0.2)
-    assert failure.value.exit_code == EXIT_USAGE
+        agent.watch_first("toast", timeout=0.2)
+    for kinds in ("banana", ["toast", "window"], "toast,window"):
+        with pytest.raises(AgentError) as failure:
+            agent.watch_first(kinds, timeout=0.2)
+        assert failure.value.exit_code == EXIT_USAGE
+    parser = cli.parser()
+    for args in (["watch", "toast", "--until-first", "--for", "1s"], ["watch", "toast", "--until-first", "--json"]):
+        with pytest.raises(UsageError):
+            cli.run(parser.parse_args(args), agent)
 
 
 def test_watch_streams_lines_until_the_device_is_detached(fake, agent):
@@ -171,7 +177,7 @@ def test_cli_parses_the_event_options_on_every_input_verb():
     assert (args.events, args.expect_events, args.event_timeout) == (["toast,window"], ["toast:saved"], 5.0)
     assert root.parse_args(["app", "launch", "com.shop", "--expect", "window"]).expect_events == ["window"]
     with pytest.raises(SystemExit):
-        root.parse_args(["wait-event", "banana"])
+        root.parse_args(["wait-event", "toast"])
 
 
 def test_cli_end_to_end(fake, monkeypatch, capsys):
@@ -182,6 +188,7 @@ def test_cli_end_to_end(fake, monkeypatch, capsys):
     tap_causes(fake, [toast(1, "Draft saved")])
     assert cli.main(["tap", "text=Save", "--expect", "toast:saved", "-s", "cli"]) == 0
     assert capsys.readouterr().out == 'tapped text=Save\nevents:\n✓ toast "Draft saved" (com.shop)\n'
+    assert cli.main(["watch", "toast", "--text", "x", "-s", "cli"]) == EXIT_USAGE
 
 
 def test_device_event_lines():
@@ -222,3 +229,16 @@ async def test_mcp_tools(fake, server):
 
         result = await client.call_tool("watch", {"kinds": ["toast"], "duration_seconds": 0.3})
         assert not result.is_error and result.content[0].text == "(no events)"
+
+        subscribed = len(fake.devices.event_requests)
+
+        def later() -> None:
+            until(lambda: len(fake.devices.event_requests) > subscribed and fake.devices.event_streams == 1)
+            fake.devices.feed_events([toast(5, "Loading"), toast(6, "Message sent")])
+
+        threading.Thread(target=later, daemon=True).start()
+        result = await client.call_tool("watch", {"kinds": ["toast"], "until_first": True, "text": "sent", "timeout_seconds": 2})
+        assert not result.is_error and result.content[0].text == 'toast "Message sent" (com.shop)'
+        for wrong in ({"kinds": ["toast"]}, {"kinds": ["toast"], "until_first": True, "duration_seconds": 1},
+                      {"kinds": ["toast"], "duration_seconds": 1, "text": "x"}):
+            assert (await client.call_tool("watch", wrong)).is_error

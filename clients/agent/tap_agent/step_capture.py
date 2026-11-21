@@ -35,7 +35,7 @@ if TYPE_CHECKING:
 # Explicit policies make mixed read/write commands reviewable. A coverage test classifies every
 # public Agent method, so new methods cannot accidentally disappear from recordings.
 ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
-WAITS = frozenset({"wait", "settle", "toast", "wait_event"})
+WAITS = frozenset({"wait", "settle", "toast", "watch_first"})
 CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
 EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "recording", "pull", "activity", "record", "history"})
 
@@ -50,7 +50,7 @@ def category(name: str, parameters: dict[str, Any]) -> str | None:
     if name in ACTIONS:
         return "action"
     if name in WAITS:
-        return None if name == "toast" and parameters.get("history") else "wait"
+        return None if name == "toast" and not parameters.get("wait") else "wait"
     if name == "action":
         return "action" if parameters["name"] is not None else None
     if name in ("keyboard", "screen"):
@@ -60,8 +60,9 @@ def category(name: str, parameters: dict[str, Any]) -> str | None:
     if name == "clipboard":
         return "action" if parameters["text"] is not None else None
     if name == "notification":
-        action = parameters["action"]
-        return None if action == "list" else "wait" if action == "await" else "action"
+        if parameters["action"] not in (None, ""):
+            return "action"
+        return "wait" if parameters.get("wait") else None
     if name == "permission":
         return "wait" if parameters["choice"] is None else "action"
     if name == "app":

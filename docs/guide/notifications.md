@@ -42,17 +42,17 @@ is capped at 1024 UTF-16 units (`text_truncated` reports it). Accessibility deli
 guarantee that every Android/OEM/custom toast is observable.
 
 ```sh
-tap-agent toast --history
-tap-agent toast Saved --contains --history --package com.example
-tap-agent toast --history --after-seq 12 --stream STREAM_ID --json
+tap-agent toast                                   # retained toasts, oldest first
+tap-agent toast Saved --contains --package com.example
+tap-agent toast --after-seq 12 --stream STREAM_ID --json
 ```
 
 The printed cursor covers all observations, including those excluded by text/package filters.
 History reads do not affect the existing toast wait's 3.5-second lookback.
 
 For agents, snapshots and settle responses deliver and acknowledge unread toast observations.
-CLI and MCP share that unread cursor. `toast --history`, including explicit
-`--after-seq N --stream ID` reads, never acknowledges it. See
+CLI and MCP share that unread cursor. A `toast` read, including one with
+`--after-seq N --stream ID`, never acknowledges it. See
 [catching toasts between actions](../agent/session.md#catch-toasts-between-actions) for limits
 and recovery.
 

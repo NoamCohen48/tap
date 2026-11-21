@@ -29,12 +29,12 @@ def responder(command):
 def test_snapshot_delivers_once_across_instances_and_history_does_not_consume(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = responder
-    assert "Saved 1" in agent.toast(history=True)
+    assert "Saved 1" in agent.toast()
     screen = agent.snapshot()
     assert "history, not current UI" in screen and "Saved 1" in screen and "Saved 2" in screen
     resumed = Agent("agent", client=agent.client, out_dir=agent.out_dir)
     assert "Saved" not in resumed.snapshot()
-    assert "Saved 1" in resumed.toast(history=True)
+    assert "Saved 1" in resumed.toast()
     assert json.loads(resumed.snapshot(as_json=True))["toast_events"]["events"] == []
 
 
@@ -48,7 +48,7 @@ def test_events_command_is_not_exposed():
 def test_explicit_cursor_does_not_consume_and_candidates_stays_json(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = responder
-    assert "Saved 2" in agent.toast(history=True, after_seq=1, stream="one")
+    assert "Saved 2" in agent.toast(after_seq=1, stream="one")
     data = json.loads(agent.snapshot(as_json=True))
     assert [e["sequence"] for e in data["toast_events"]["events"]] == [1, 2]
     assert "nodes" in data
@@ -60,10 +60,13 @@ def test_settle_acknowledges_but_cli_toast_history_does_not(fake, agent):
     fake.devices.responder = responder
     assert "Saved 1" in agent.settle()
     assert all(c.WhichOneof("op") in ("device_info", "wait_screen_stable", "read_toast_history") for c in fake.devices.commands)
-    args = cli.parser().parse_args(["toast", "--history", "--json"])
+    args = cli.parser().parse_args(["toast", "--json"])
     assert len(json.loads(cli.run(args, agent))["events"]) == 2
     assert "Saved" not in agent.snapshot()
-    assert category("toast", {"history": True}) is None
+    assert category("toast", {"wait": False}) is None
+    assert category("toast", {"wait": True}) == "wait"
+    assert category("notification", {"action": None, "wait": False}) is None
+    assert category("notification", {"action": None, "wait": True}) == "wait"
 
 
 def test_devices_and_new_streams_do_not_share_acknowledgements(fake, agent):

@@ -468,7 +468,7 @@ def test_notifications_are_listed_awaited_opened_and_dismissed(fake, agent):
         "com.example: 'New message' - 'from Ada' [Reply]\nandroid: 'USB debugging connected' (ongoing)"
     )
     assert agent.notification(package="android") == "android: 'USB debugging connected' (ongoing)"
-    assert agent.notification("await", "New", contains=True) == "com.example: 'New message' - 'from Ada' [Reply]"
+    assert agent.notification(title="New", contains=True, wait=True) == "com.example: 'New message' - 'from Ada' [Reply]"
     assert agent.notification("open", "New message", button="Reply") == "pressed 'Reply' on the notification"
     assert agent.notification("dismiss", text="from Ada") == "dismissed the notification"
     assert sent[2].await_notification.match.mode == pb.MATCH_CONTAINS
@@ -476,7 +476,10 @@ def test_notifications_are_listed_awaited_opened_and_dismissed(fake, agent):
     assert sent[4].dismiss_notification.match.text == "from Ada"
     for bad in (
         lambda: agent.notification("peek"),
-        lambda: agent.notification("await", contains=True),
+        lambda: agent.notification("await"),
+        lambda: agent.notification(contains=True, wait=True),
+        lambda: agent.notification("open", "x", wait=True),
+        lambda: agent.notification(settle=True),
         lambda: agent.notification("dismiss", "x", button="Reply"),
     ):
         with pytest.raises(AgentError) as info:
@@ -510,11 +513,11 @@ def test_keyboard_submit_clipboard_and_toast(fake, agent):
     assert fake.devices.commands[-1].perform_ime_action.selector == res("search")._proto
     assert agent.clipboard("copied") == "clipboard set (6 characters)"
     assert agent.clipboard() == "copied"
-    assert agent.toast("Saved", contains=True, timeout=2) == "toast 'Saved order' from com.example"
+    assert agent.toast("Saved", contains=True, timeout=2, wait=True) == "toast 'Saved order' from com.example"
     toast = fake.devices.commands[-1].await_toast
     assert (toast.text, toast.mode, toast.HasField("package_name")) == ("Saved", pb.MATCH_CONTAINS, False)
     assert fake.devices.commands[-1].timeout_ms == 2000
-    agent.toast(package="com.example")
+    agent.toast(package="com.example", wait=True)
     toast = fake.devices.commands[-1].await_toast
     assert not toast.HasField("text") and toast.package_name == "com.example"
     assert agent.app("revoke", "com.example", "android.permission.CAMERA") == (
@@ -715,11 +718,11 @@ def test_files_push_pull_and_media(fake, agent, tmp_path):
 EXPECTED_TOOLS = {
     "devices", "attach", "sessions", "release", "snapshot", "tap", "fill", "type_text", "clear",
     "scroll", "swipe", "fling", "drag", "pinch", "press_key", "open_panel", "rotate", "screen", "permission",
-    "submit", "keyboard", "clipboard", "await_toast", "wait_for", "settle", "screenshot", "capture", "app",
+    "submit", "keyboard", "clipboard", "toast", "wait_for", "settle", "screenshot", "capture", "app",
     "condition", "accessibility_action", "set_progress", "set_location", "push_file", "pull_file", "add_media",
     "foreground_activity", "notification", "app_data", "inspect", "exists", "count", "elements",
     "detach", "server_info", "device_info", "capabilities", "media_record", "scroll_until", "record", "history",
-    "unquarantine", "deaths", "wait_event", "watch",
+    "unquarantine", "deaths", "watch",
 }
 
 

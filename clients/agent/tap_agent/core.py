@@ -177,7 +177,7 @@ def _integer(value: int, name: str, low: int, high: int) -> int:
     return value
 
 
-NOTIFICATION_ACTIONS = ("list", "await", "open", "dismiss")
+NOTIFICATION_ACTIONS = ("open", "dismiss")
 
 
 APP_DATA_ACTIONS = ("capabilities", "list", "read", "write", "delete", "export-db", "import-db")
@@ -1306,24 +1306,25 @@ class Agent:
         contains: bool = False,
         package: str | None = None,
         timeout: float = DEFAULT_WAIT,
-        *, history: bool = False, after_seq: int = 0, stream: str = "", as_json: bool = False,
+        *, wait: bool = False, after_seq: int = 0, stream: str = "", as_json: bool = False,
     ) -> str:
-        """Waits for a toast of any app (only ``package``'s when given), shown in the last 3.5 s
-        or arriving within ``timeout``; ``text`` must match it exactly, or be part of it with
-        ``contains``. With ``history``, reads the retained observations immediately instead;
-        ``after_seq``/``stream`` form a non-consuming cursor. History is not current UI state."""
+        """Reads the retained toast observations immediately, oldest first, of any app (only
+        ``package``'s when given) whose text matches ``text`` exactly, or contains it with
+        ``contains``; ``after_seq``/``stream`` form a non-consuming cursor. History is not current
+        UI state. With ``wait``: waits instead for a matching toast shown in the last 3.5 s or
+        arriving within ``timeout``."""
         command_timeout(timeout)
         if contains and text is None:
             raise AgentError("toast --contains needs a text", EXIT_USAGE)
         _integer(after_seq, "after_seq", 0, 2**63 - 1)
         if not isinstance(stream, str) or len(stream) > 128:
             raise AgentError("stream must be a string of at most 128 characters", EXIT_USAGE)
-        if not history and (after_seq or stream or as_json):
-            raise AgentError("after_seq, stream and json need toast history", EXIT_USAGE)
+        if wait and (after_seq or stream or as_json):
+            raise AgentError("after_seq, stream and json read toast history; --wait takes none of them", EXIT_USAGE)
 
         def step() -> str:
             d = self._device(device)
-            if history:
+            if not wait:
                 page = d.toast_history(after_seq, stream_id=stream)
                 kept = tuple(e for e in page.events if (package is None or e.toast.package_name == package)
                              and (text is None or (text in e.toast.text if contains else text == e.toast.text)))
@@ -1382,19 +1383,24 @@ class Agent:
             raise AgentError(f"{output}\nexpected event did not happen within {format_duration(wait)}: {missing}")
         return output
 
-    def wait_event(
+    def watch_first(
         self,
-        kind: str,
+        kinds: str | Sequence[str],
         text: str | None = None,
         device: str | None = None,
         package: str | None = None,
         timeout: float = DEFAULT_WAIT,
     ) -> str:
-        """Waits up to ``timeout`` for the first event of ``kind`` (``toast``, ``window``,
-        ``content``, ``click``, ``scroll``, ``text``) from now on, whose subject contains
-        ``text`` (ignoring case) when given, from ``package`` only when given, and prints it.
-        Only events after the call count: for what an input causes, use ``--expect`` on it."""
+        """``watch --until-first``: waits up to ``timeout`` for the first event of one kind
+        (``toast``, ``window``, ``content``, ``click``, ``scroll``, ``text``) from now on, whose
+        subject contains ``text`` (ignoring case) when given, from ``package`` only when given,
+        and prints it. Only events after the call count: for what an input causes, use
+        ``--expect`` on it."""
         command_timeout(timeout)
+        names = [name.strip() for part in ([kinds] if isinstance(kinds, str) else kinds) for name in part.split(",") if name.strip()]
+        if len(names) != 1:
+            raise AgentError(f"--until-first waits for one event kind, not {len(names)}", EXIT_USAGE)
+        kind = names[0]
 
         def step() -> str:
             expectation = device_events.Expectation(device_events.kind(kind), text or None)
@@ -1457,7 +1463,7 @@ class Agent:
 
     def notification(
         self,
-        action: str = "list",
+        action: str | None = None,
         title: str | None = None,
         text: str | None = None,
         device: str | None = None,
@@ -1466,15 +1472,22 @@ class Agent:
         button: str | None = None,
         timeout: float = DEFAULT_WAIT,
         settle: bool = False,
+        *, wait: bool = False,
     ) -> str:
-        """The device's notifications, read as data (the shade stays closed). ``list``: every
-        active one, newest first; ``await``: wait until one matches and print it; ``open``: open
-        the one that matches as a tap does (or press its ``button``); ``dismiss``: swipe it away.
-        ``title`` / ``text`` match exactly, or as parts with ``contains``; ``package`` narrows to
-        one app. Notification access is given to the driver for the session."""
+        """The device's notifications, read as data (the shade stays closed). Without ``action``:
+        every active one, newest first; with ``wait``: wait until one matches and print it.
+        ``open``: open the one that matches as a tap does (or press its ``button``); ``dismiss``:
+        swipe it away. ``title`` / ``text`` match exactly, or as parts with ``contains``;
+        ``package`` narrows to one app. Notification access is given to the driver for the
+        session."""
         command_timeout(timeout)
-        if action not in NOTIFICATION_ACTIONS:
-            raise AgentError(f"notification takes {', '.join(NOTIFICATION_ACTIONS)}, not {action!r}", EXIT_USAGE)
+        action = action or None
+        if action is not None and action not in NOTIFICATION_ACTIONS:
+            raise AgentError(f"notification takes {' or '.join(NOTIFICATION_ACTIONS)}, or nothing to read, not {action!r}", EXIT_USAGE)
+        if wait and action is not None:
+            raise AgentError(f"--wait reads; it does not go with {action}", EXIT_USAGE)
+        if settle and action is None:
+            raise AgentError("--settle goes with open or dismiss, not a read", EXIT_USAGE)
         if contains and title is None and text is None:
             raise AgentError("notification --contains needs a title or text", EXIT_USAGE)
         if button is not None and action != "open":
@@ -1483,12 +1496,12 @@ class Agent:
 
         def step() -> str:
             d = self._device(device)
-            if action == "list":
+            if action is None and not wait:
                 shown = d.notifications(timeout=timeout)
                 if package is not None:
                     shown = [n for n in shown if n.package_name == package]
                 return "\n".join(_notification_line(n) for n in shown) or "no notifications"
-            if action == "await":
+            if action is None:
                 return _notification_line(d.await_notification(title, text, mode, package_name=package, timeout=timeout))
             if action == "open":
                 with sending():
