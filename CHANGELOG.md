@@ -20,6 +20,8 @@ name the components affected. Earlier releases used independent version lines. T
   interval, hold)` / `longPressKey`, Python `press_key(code, presses=, interval=, hold=)` /
   `long_press_key`, and tap-agent `key NAME --long | --hold 2s | --double | --times N [--interval]`
   (MCP `press_key` `long`, `hold_seconds`, `presses`, `interval_seconds`).
+- tap-agent `capture` also saves `<serial>.snapshot.txt`, the hierarchy as the snapshot outline
+  with refs; a failed snapshot is listed like any other part.
 - tap-agent `key` accepts every Android key name (`volume-up`, `media-play-pause`, `camera`, …,
   generated from `KeyEvent` by `clients/agent/scripts/gen_keys.py`), and `key --list` (MCP
   `press_key(list_keys=true)`) prints them with their codes. Digit keys are `keycode-0` ..

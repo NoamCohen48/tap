@@ -181,8 +181,10 @@ tap-agent capture                 # all the history that is kept
 tap-agent capture --last 10m -o evidence/checkout-failure
 ```
 
-`<serial>.history.txt` is what `history --logs --details` prints for this session on the
-device, every page in one file; `<serial>.history.json` is the same as one `tap-history/2`
+`<serial>.snapshot.txt` is the hierarchy as the outline `snapshot --all --keyboard` prints, with
+the refs the agent uses, next to the full XML (like any snapshot, it is the baseline the next
+`--settle` diff compares with). `<serial>.history.txt` is what `history --logs --details` prints
+for this session on the device, every page in one file; `<serial>.history.json` is the same as one `tap-history/2`
 document. A part that cannot be read (the history too) is listed as failed and the others are
 still saved. The current screen is perishable, so when it matters take a `capture` first;
 history stays readable afterward.

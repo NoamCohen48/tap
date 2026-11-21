@@ -99,6 +99,13 @@ def _take(agent: Agent, name: str | None, device: str | None, out: str | None, s
         saved = [str(save_private(directory / f"{stem}.{part}.{artifact.extension}", artifact.bytes))
             for part, artifact in captured.artifacts.items()]
         failures: dict[str, BaseException] = dict(captured.failures)
+        try:  # the hierarchy as the outline an agent reads, with its refs; never fails the capture
+            from . import render
+            outline = render.snapshot_text(d.screen_snapshot(), render.ALL, filters=render.SnapshotFilter(keyboard=True))
+        except Exception as error:  # noqa: BLE001 - reported as a failed part, like the others
+            failures["snapshot"] = error
+        else:
+            saved.append(str(save_private(directory / f"{stem}.snapshot.txt", (outline + "\n").encode())))
         try:  # what led up to now; reading it never fails the capture
             text, document = complete(agent, d.owner_connection.id, d.serial, since)
         except Exception as error:  # noqa: BLE001 - reported as a failed part, like the others

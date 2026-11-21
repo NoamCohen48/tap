@@ -930,8 +930,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         all_captures: Annotated[bool, Field(description="clean: every bundle.")] = False,
         as_json: Annotated[bool, Field(description="list/show: structured JSON instead of text.")] = False,
     ) -> CallToolResult:
-        """Save one evidence bundle to a new private directory: the screenshot, hierarchy,
-        device/driver logs and activity/window state now, and the device's history (steps, calls,
+        """Save one evidence bundle to a new private directory: the screenshot, hierarchy (and its
+        snapshot outline with refs), device/driver logs and activity/window state now, and the device's history (steps, calls,
         crashes, ANRs, device log) as history.txt and history.json. Returns its name or id and the
         paths; a part that fails is listed and the rest are saved. Never a past screen. list,
         show and clean manage the bundles; clean deletes only files the agent saved."""
