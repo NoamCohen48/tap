@@ -36,6 +36,12 @@ internal class DumpNode(
     val contentInvalid: Boolean = false,
     val error: String? = null,
     val windowType: Int = 0,
+    /** `editable`: `AccessibilityNodeInfo.isEditable`, whatever the class. */
+    val editable: Boolean = false,
+    /** `actions`: the `StandardAction` names the node offers, in dump order. */
+    val actions: List<String> = emptyList(),
+    /** `custom-actions`: the node's custom action labels. */
+    val customActions: List<String> = emptyList(),
 ) {
     var subtreeEnd: Int = index + 1
         internal set
@@ -191,6 +197,9 @@ internal object HierarchyParser {
                     showingHint = attributes.flag("showing-hint"),
                     contentInvalid = attributes.flag("content-invalid"),
                     error = attributes.present("error"),
+                    editable = attributes.flag("editable"),
+                    actions = attributes.present("actions")?.split(' ')?.filter { it.isNotEmpty() }.orEmpty(),
+                    customActions = attributes.present("custom-actions")?.split('\n').orEmpty(),
                 )
             nodes += node
             open += OpenElement(name, node)

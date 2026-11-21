@@ -679,8 +679,10 @@ class ScreenNode:
     reused for another node. ``selector`` is one the daemon found to match only this node in the
     dump (None when there is none); ``by_index`` marks one that ends in an index pick, which is
     right for this dump but fragile if the screen reorders. ``window_package`` is the package of
-    the window the node is in. ``interactive``: clickable, long-clickable, checkable, scrollable
-    or editable."""
+    the window the node is in. ``interactive``: the node accepts input of its own: editable,
+    clickable, long-clickable, checkable or scrollable, or it offers a custom action or a standard
+    one that acts on it (focus, selection, copy and show-on-screen alone do not count); decided
+    from the node, never its class."""
 
     ref: str
     depth: int
@@ -710,6 +712,12 @@ class ScreenNode:
     """One-based window ordinal in this dump, not a persistent window ID; zero if unknown."""
     window_type: int = 0
     """Android accessibility window type: 1 application, 2 keyboard, 3 system; zero if unknown."""
+    editable: bool = False
+    """The node is editable text (``AccessibilityNodeInfo.isEditable``), whatever its class."""
+    actions: tuple[StandardAction, ...] = ()
+    """The standard actions the node offers that Tap can perform (``Element.perform_action``)."""
+    custom_actions: tuple[str, ...] = ()
+    """The labels of the custom actions the node offers (``Element.perform_custom_action``)."""
 
 
 @dataclass(frozen=True)

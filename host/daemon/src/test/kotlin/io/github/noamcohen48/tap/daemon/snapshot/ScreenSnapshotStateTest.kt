@@ -3,6 +3,7 @@ package io.github.noamcohen48.tap.daemon.snapshot
 import io.github.noamcohen48.tap.api.v1.NodeChange
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.ScreenNode
+import io.github.noamcohen48.tap.api.v1.StandardAction
 import io.github.noamcohen48.tap.daemon.snapshot.Dumps.AUT
 import kotlin.test.Test
 import kotlin.test.assertContentEquals
@@ -33,9 +34,39 @@ class ScreenSnapshotStateTest {
         assertTrue(button.hasSelector() && !button.byIndex)
         assertTrue(button.bounds.right > button.bounds.left)
         val input = screen.nodes.single { it.resourceName == "$AUT:id/view_input" }
-        assertTrue(input.interactive, "an EditText is editable, so interactive")
+        assertTrue(input.interactive, "the recorded field is clickable")
         assertFalse(screen.nodes.first().interactive)
         assertFalse(screen.nodes.first().hasText())
+    }
+
+    @Test
+    fun `interactivity comes from the node's own facts, never its class`() {
+        val nodes =
+            ScreenSnapshots
+                .screen(
+                    "<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation=\"0\">" +
+                        "<node class=\"android.widget.FrameLayout\" package=\"p\" bounds=\"[0,0][10,10]\">" +
+                        // An editable field whose class is not an EditText, and that is not clickable.
+                        "<node class=\"com.example.AutoComplete\" package=\"p\" editable=\"true\" focusable=\"true\" bounds=\"[0,0][1,1]\"/>" +
+                        // A row reachable only through accessibility actions.
+                        "<node class=\"android.view.View\" package=\"p\" actions=\"A11Y_EXPAND A11Y_FOCUS\" custom-actions=\"Archive&#10;Pin\" bounds=\"[0,1][1,2]\"/>" +
+                        // A focusable label: focus alone is not something to act on.
+                        "<node class=\"android.widget.TextView\" package=\"p\" text=\"Total\" focusable=\"true\" actions=\"A11Y_FOCUS A11Y_SELECT\" bounds=\"[0,2][1,3]\"/>" +
+                        // An EditText class name that is not editable is no longer interactive by its name.
+                        "<node class=\"android.widget.EditText\" package=\"p\" text=\"read-only\" bounds=\"[0,3][1,4]\"/>" +
+                        // A newer driver's action this daemon does not know is ignored.
+                        "<node class=\"android.view.View\" package=\"p\" actions=\"A11Y_FROM_THE_FUTURE\" bounds=\"[0,4][1,5]\"/>" +
+                        "</node></hierarchy>",
+                ).nodes
+        val (field, row, label, readOnly, future) = nodes.drop(1)
+        assertTrue(field.editable && field.interactive)
+        assertTrue(row.interactive && !row.editable)
+        assertEquals(listOf(StandardAction.A11Y_EXPAND, StandardAction.A11Y_FOCUS), row.actionsList)
+        assertEquals(listOf("Archive", "Pin"), row.customActionsList)
+        assertFalse(label.interactive)
+        assertEquals(listOf(StandardAction.A11Y_FOCUS, StandardAction.A11Y_SELECT), label.actionsList)
+        assertFalse(readOnly.interactive || readOnly.editable)
+        assertTrue(future.actionsList.isEmpty() && !future.interactive)
     }
 
     @Test

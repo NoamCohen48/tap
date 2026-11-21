@@ -14,8 +14,11 @@ import java.io.Writer
  * The diagnostic hierarchy dump: the XML `UiDevice.dumpWindowHierarchy` writes (uiautomator
  * 2.4 `AccessibilityNodeInfoDumper`: same elements, attributes, visible-children rule and
  * clipped bounds), plus the field state that dump leaves out: `showing-hint`,
- * `content-invalid`, `error` and `window-type`. Written independently, not copied, so the extra attributes
- * need no fork of UiAutomator. Diagnostic only: never on the selector or mutation path.
+ * `content-invalid`, `error`, `window-type`, `editable` and what the node accepts: `actions` (the
+ * standard actions Tap can perform on it, by their `StandardAction` names, space-separated) and
+ * `custom-actions` (its custom action labels, one per line). Written independently, not copied, so
+ * the extra attributes need no fork of UiAutomator. Diagnostic only: never on the selector or
+ * mutation path.
  */
 internal object HierarchyDump {
     private val NAF_EXCLUDED_CLASSES =
@@ -89,6 +92,10 @@ internal object HierarchyDump {
             add("showing-hint" to node.isShowingHintText.toString())
             add("content-invalid" to node.isContentInvalid.toString())
             add("error" to node.error?.toString().orEmpty())
+            add("editable" to node.isEditable.toString())
+            val (standard, custom) = AccessibilityActionCommands.offered(node)
+            add("actions" to standard.joinToString(" ") { it.name })
+            add("custom-actions" to custom.joinToString("\n"))
         }
 
     /**
