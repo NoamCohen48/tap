@@ -42,7 +42,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "in one bulk call, without a diagnostic snapshot; `--texts` projects raw text. "
         "Snapshots and settle append unread historical toasts; `toast --history` inspects retained "
         "toasts without consuming them. Gaps/resets are explicit; history is not current UI.",
-        ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "log", "deaths", "media-record"],
+        ["snapshot", "inspect", "exists", "count", "elements", "settle", "wait", "activity", "screenshot", "capture", "deaths", "media-record"],
     ),
     (
         "Acting on elements",

@@ -1,5 +1,12 @@
 # Device logs
 
+For the agent's merged reader use `tap-agent history --logs` (not a separate `log` command).
+Repeated `--device` filters apply before step pagination. Log filters imply logs but never
+remove independent crashes/ANRs or capture gaps; `--tail N` reports omitted rows, while
+`--limit` limits only agent intent. `history mark NAME` / `history redact REGEX` control this
+session's held attachments. See [the agent guide](../agent/session.md#one-history-reader).
+`tap logs` is daemon.log; `tap logs driver --serial SERIAL` reads the current driver buffer.
+
 !!! info "Examples are in Python"
     Kotlin has the same calls on `device.logs`: `read(LogStart.Marker("checkout"),
     LogFilter(packages = listOf("com.shop"), minPriority = LogPriority.WARN))`, `follow(...)`

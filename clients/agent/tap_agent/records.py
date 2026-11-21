@@ -68,8 +68,19 @@ _SCHEMA_5 = (
     "CREATE INDEX markers_record ON markers(record_id)",
     "DELETE FROM history_cursors",  # sqlite_sequence survives pruning; committed cursors are never reused.
 )
-_MIGRATIONS = {1: _SCHEMA_2, 2: _SCHEMA_3, 3: _SCHEMA_4, 4: _SCHEMA_5}
-VERSION = 5
+_SCHEMA_6 = (
+    "ALTER TABLE markers ADD COLUMN batch_id TEXT",
+    "ALTER TABLE markers ADD COLUMN attached_device_id TEXT",
+    """CREATE TABLE artifacts (
+ id TEXT PRIMARY KEY, record_id TEXT NOT NULL REFERENCES records(id) ON DELETE CASCADE,
+ connection_id TEXT NOT NULL, serial TEXT NOT NULL, attached_device_id TEXT NOT NULL,
+ at TEXT NOT NULL, started_at TEXT NOT NULL, directory TEXT NOT NULL, parts TEXT NOT NULL,
+ failures TEXT NOT NULL
+)""",
+    "CREATE INDEX artifacts_time ON artifacts(at)",
+)
+_MIGRATIONS = {1: _SCHEMA_2, 2: _SCHEMA_3, 3: _SCHEMA_4, 4: _SCHEMA_5, 5: _SCHEMA_6}
+VERSION = 6
 
 
 class RecordError(Exception):
@@ -409,11 +420,13 @@ class RecordStore:
             connection.execute("INSERT INTO steps(record_id,seq,action,kind,parameters,started_at,status,step_id,cursor) VALUES(?,?,?,?,?,?,'running',?,?)", (recording["id"], sequence, action, kind, encoded, _now(), step_id, cursor))
             return sequence
 
-    def mark(self, recording: dict[str, Any], name: str, serial: str | None, cursor: int | None) -> None:
+    def mark(self, recording: dict[str, Any], name: str, serial: str | None, cursor: int | None, *,
+             batch_id: str | None = None, attached_device_id: str | None = None, at: str | None = None) -> None:
         """A marker after the history's last step (``cursor``: its entry in the device log)."""
         with self._db(write=True) as connection:
             after = connection.execute("SELECT coalesce(max(seq),0) FROM steps WHERE record_id=?", (recording["id"],)).fetchone()[0]
-            connection.execute("INSERT INTO markers(record_id,after_seq,name,at,serial,cursor) VALUES(?,?,?,?,?,?)", (recording["id"], after, name, _now(), serial, cursor))
+            connection.execute("INSERT INTO markers(record_id,after_seq,name,at,serial,cursor,batch_id,attached_device_id) VALUES(?,?,?,?,?,?,?,?)",
+                (recording["id"], after, name, at or _now(), serial, cursor, batch_id, attached_device_id))
 
     def marker_names(self) -> dict[str, list[str]]:
         """Every history's markers as ``name@cursor`` by history id, oldest first."""
@@ -518,12 +531,13 @@ class RecordStore:
             if recording.get("protected"):
                 members = [dict(row) for row in connection.execute("SELECT * FROM records WHERE protected=? ORDER BY rowid", (recording["protected"],))]
                 recording = {**members[0], **{key: members[-1][key] for key in ("state", "stopped_at", "stop_reason")}, "name": recording["protected"]}
-            steps, markers = [], []
+            steps, markers, artifacts = [], [], []
             for member in members:
                 offset = len(steps)
+                artifacts.extend(self._artifact_document(row) for row in connection.execute("SELECT * FROM artifacts WHERE record_id=? ORDER BY at,id", (member["id"],)))
                 for row in connection.execute("SELECT * FROM steps WHERE record_id=? ORDER BY seq", (member["id"],)):
                     steps.append(_step_document(row, sequence=offset + row["seq"]))
-                markers.extend({**dict(row), "after_seq": offset + row["after_seq"]} for row in connection.execute("SELECT name,at,after_seq,serial,cursor FROM markers WHERE record_id=? ORDER BY rowid", (member["id"],)))
+                markers.extend({**dict(row), "after_seq": offset + row["after_seq"]} for row in connection.execute("SELECT name,at,after_seq,serial,cursor,batch_id,attached_device_id FROM markers WHERE record_id=? ORDER BY rowid", (member["id"],)))
         log_status = next((_decode(row["log_status"]) for row in reversed(members) if row.get("log_status")), None)
         bounds = {}
         for key, wanted in (("since", since), ("until", until)):
@@ -543,9 +557,61 @@ class RecordStore:
             last = markers.index(bounds["until"]) if "until" in bounds else len(markers) - 1
             steps = [step for step in steps if low < step["seq"] <= high]
             markers = markers[first:last + 1]
-        return {"format": FORMAT, "recording": recording.get("protected"), **({"log_capture": log_status} if log_status is not None else {}), "markers": markers, **({"range": {key: {"name": marker["name"], "cursor": marker["cursor"]} for key, marker in bounds.items()}} if bounds else {}), **{key: recording[key] for key in ("name", "session", "connection_id", "started_at", "stopped_at", "stop_reason")},
+        return {"format": FORMAT, "artifacts": artifacts, "recording": recording.get("protected"), **({"log_capture": log_status} if log_status is not None else {}), "markers": markers, **({"range": {key: {"name": marker["name"], "cursor": marker["cursor"]} for key, marker in bounds.items()}} if bounds else {}), **{key: recording[key] for key in ("name", "session", "connection_id", "started_at", "stopped_at", "stop_reason")},
             "state": "live" if recording["state"] == "recording" else "stopped",
             "complete": recording["state"] == "stopped" and (log_status is None or log_status.get("complete") is True) and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}
+
+    def marker_anchor(self, name: str, devices: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        if not self._exists():
+            raise RecordError("no retained marker named " + repr(name))
+        with self._db() as connection:
+            rows = [dict(row) for row in connection.execute("SELECT m.*,r.connection_id FROM markers m JOIN records r ON r.id=m.record_id WHERE m.name=? ORDER BY m.rowid DESC", (name,))
+                if not devices or row["serial"] in devices]
+            if not rows:
+                raise RecordError("no retained marker named " + repr(name))
+            batch = rows[0]["batch_id"]
+            return [row for row in rows if row["batch_id"] == batch] if batch is not None else rows[:1]
+
+    def artifact(self, recording: dict[str, Any], *, serial: str, attached_device_id: str,
+                 started_at: str, directory: str, parts: list[str], failures: dict[str, str]) -> None:
+        """Index already saved files only; never read their contents or persist exception text."""
+        document = _json({"directory": directory, "parts": parts, "failures": failures})
+        if _bytes(document) > 64 * 1024:
+            raise RecordError("capture reference exceeds 64 KiB; saved files remain available")
+        with self._db(write=True) as connection:
+            connection.execute("INSERT INTO artifacts VALUES(?,?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex,
+                recording["id"], recording["connection_id"], serial, attached_device_id, _now(), started_at,
+                directory, _json(parts), _json(failures)))
+
+    @staticmethod
+    def _artifact_document(row) -> dict[str, Any]:
+        try:
+            parts, failures = json.loads(row["parts"]), json.loads(row["failures"])
+        except (ValueError, TypeError) as error:
+            raise RecordError("capture reference contains invalid stored JSON") from error
+        if not isinstance(parts, list) or not all(isinstance(part, str) for part in parts) or not isinstance(failures, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in failures.items()):
+            raise RecordError("capture reference contains invalid stored metadata")
+        return {**{key: row[key] for key in ("id", "connection_id", "serial", "attached_device_id", "at", "started_at", "directory")},
+            "kind": "capture", "parts": parts, "failures": failures,
+            "scope": "state_captured_at_request_time", "storage": "external_local_files"}
+
+    def artifact_references(self, *, start: str | None = None, until: str | None = None,
+                            devices: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        if not self._exists():
+            return []
+        with self._db() as connection:
+            rows = connection.execute("SELECT * FROM artifacts WHERE at>=? AND at<? ORDER BY at,id", (start or "", until or "\uffff"))
+            return [self._artifact_document(row) for row in rows if not devices or row["serial"] in devices]
+
+    def resolve_step(self, wanted: str | int) -> dict[str, Any]:
+        if not self._exists():
+            raise RecordError("no retained step")
+        with self._db() as connection:
+            row = connection.execute("SELECT s.*,r.connection_id FROM steps s JOIN records r ON r.id=s.record_id WHERE s.cursor=? OR s.step_id=?",
+                (wanted if isinstance(wanted, int) else -1, str(wanted))).fetchone()
+            if row is None:
+                raise RecordError("step is not retained; use a global history cursor or step ID")
+            return {**_step_document(row), "connection_id": row["connection_id"]}
 
     def cursor_time(self, cursor: int) -> str | None:
         """Resolve an exact retained step boundary, never invent time for an expired cursor."""
@@ -555,7 +621,7 @@ class RecordStore:
             row = connection.execute("SELECT started_at FROM steps WHERE cursor=?", (cursor,)).fetchone()
             return row[0] if row is not None else None
 
-    def timeline(self, *, start: str | int | None = None, until: str | int | None = None, limit: int = 200) -> dict[str, Any]:
+    def timeline(self, *, start: str | int | None = None, until: str | int | None = None, limit: int = 200, devices: tuple[str, ...] = ()) -> dict[str, Any]:
         """A bounded page of all retained client steps, using stable store-wide cursors.
 
         Bounds are inclusive from/exclusive until, as positive step cursors or ISO timestamps
@@ -570,19 +636,18 @@ class RecordStore:
         cursor_high = upper[1] - 1 if upper is not None and upper[0] == "cursor" else 2**63 - 1
         time_low = lower[1] if lower is not None and lower[0] == "started_at" else ""
         time_high = upper[1] if upper is not None and upper[0] == "started_at" else "\uffff"
-        parameters = (cursor_low, cursor_high, time_low, time_high, limit + 1)
+        device_clause = " AND s.serial IN (" + ",".join("?" for _ in devices) + ")" if devices else ""
+        parameters = (cursor_low, cursor_high, time_low, time_high, *devices, limit + 1)
         ascending = lower is not None
         with self._db() as connection:
             if ascending:
                 rows = list(connection.execute("""SELECT s.*,r.connection_id,r.session,r.state AS record_state
                     FROM steps s JOIN records r ON r.id=s.record_id
-                    WHERE s.cursor>=? AND s.cursor<=? AND s.started_at>=? AND s.started_at<?
-                    ORDER BY s.cursor ASC LIMIT ?""", parameters))
+                    WHERE s.cursor>=? AND s.cursor<=? AND s.started_at>=? AND s.started_at<?""" + device_clause + " ORDER BY s.cursor ASC LIMIT ?", parameters))
             else:
                 rows = list(connection.execute("""SELECT s.*,r.connection_id,r.session,r.state AS record_state
                     FROM steps s JOIN records r ON r.id=s.record_id
-                    WHERE s.cursor>=? AND s.cursor<=? AND s.started_at>=? AND s.started_at<?
-                    ORDER BY s.cursor DESC LIMIT ?""", parameters))
+                    WHERE s.cursor>=? AND s.cursor<=? AND s.started_at>=? AND s.started_at<?""" + device_clause + " ORDER BY s.cursor DESC LIMIT ?", parameters))
             more = len(rows) > limit
             rows = rows[:limit]
             if not ascending:
@@ -592,7 +657,9 @@ class RecordStore:
             for record_id in dict.fromkeys(row["record_id"] for row in rows):
                 members = [row for row in rows if row["record_id"] == record_id]
                 low_seq, high_seq = min(row["seq"] for row in members), max(row["seq"] for row in members)
-                for marker in connection.execute("SELECT name,at,serial,cursor,after_seq FROM markers WHERE record_id=? ORDER BY rowid", (record_id,)):
+                for marker in connection.execute("SELECT name,at,serial,cursor,after_seq,batch_id,attached_device_id FROM markers WHERE record_id=? ORDER BY rowid", (record_id,)):
+                    if devices and marker["serial"] not in devices:
+                        continue
                     if not low_seq - 1 <= marker["after_seq"] <= high_seq:
                         continue
                     if lower is not None and lower[0] == "started_at" and marker["at"] < lower[1]:
@@ -602,6 +669,12 @@ class RecordStore:
                     anchor = connection.execute("SELECT cursor FROM steps WHERE record_id=? AND seq=?", (record_id, marker["after_seq"])).fetchone()
                     result["markers"].append({**dict(marker), "after_cursor": anchor[0] if anchor else None,
                         "connection_id": members[0]["connection_id"]})
+            if not rows and all(bound is None or bound[0] == "started_at" for bound in (lower, upper)):
+                # Bookmarks are activity even when no application step has ever run.
+                for marker in connection.execute("""SELECT m.*,r.connection_id FROM markers m JOIN records r ON r.id=m.record_id
+                    WHERE m.at>=? AND m.at<? ORDER BY m.at,m.rowid""", (time_low, time_high)):
+                    if not devices or marker["serial"] in devices:
+                        result["markers"].append({**dict(marker), "after_cursor": None})
             result["complete"] = bool(rows) and all(row["record_state"] == "stopped" and row["status"] not in ("running", "unknown", "interrupted") for row in rows)
             if rows:
                 if ascending and more:

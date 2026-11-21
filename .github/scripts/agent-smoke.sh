@@ -34,7 +34,7 @@ step snapshot -i | tee "$OUT/snapshot.txt"
 ref=$(sed -n 's/^\(@e[0-9]*\) .*id=view_button.*/\1/p' "$OUT/snapshot.txt" | head -1)
 [ -n "$ref" ] || { echo "no view_button in the snapshot"; exit 1; }
 step record start "$RECORDING"
-step log mark smoke
+step history mark smoke
 step tap "$ref" --settle
 step wait "text=View tapped"
 step record stop "$RECORDING"

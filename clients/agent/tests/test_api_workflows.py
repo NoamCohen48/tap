@@ -44,7 +44,7 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     agent.snapshot(candidates=True)
     assert fake.devices.snapshot_requests[-1].selector_candidates
     agent.tap("id=save")
-    agent.log("mark", "second")
+    agent.history("mark", "second")
     agent.tap("id=cancel")
     document = json.loads(agent.history(as_json=True))
     # The SDK fake uses a fixed epoch; align this test's receipts with actual local step bounds.
@@ -133,16 +133,14 @@ def test_scroll_until_has_count_and_deadline_bounds(fake, agent):
     assert len([c for c in fake.devices.commands[before:] if c.WhichOneof("op") == "scroll"]) == 1
 
 
-@pytest.mark.parametrize("kind", ["evidence", "driver"])
-def test_diagnostics_save_private_new_outputs(fake, agent, tmp_path, kind):
+def test_capture_saves_private_new_outputs_and_references_them(fake, agent, tmp_path):
     agent.attach("first")
-    path = pathlib.Path(agent.log(kind))
-    assert path.exists() and stat.S_IMODE(path.stat().st_mode) == 0o600
-    assert path.read_bytes()
-    before = len(fake.devices.owners)
-    with pytest.raises(AgentError, match="already exists"):
-        agent.log(kind, out=str(path))
-    assert len(fake.devices.owners) == before
+    directory = tmp_path / "bundle"
+    paths = [pathlib.Path(path) for path in agent.capture(out=directory).splitlines()]
+    assert paths and all(path.exists() and stat.S_IMODE(path.stat().st_mode) == 0o600 for path in paths)
+    saved = json.loads(agent.history(as_json=True))["artifacts"]
+    assert saved[0]["parts"] == [path.name for path in paths]
+    assert saved[0]["storage"] == "external_local_files"
 
 
 @pytest.fixture
@@ -253,8 +251,8 @@ def test_recording_failures_never_replay_and_custom_copy_keeps_canonical(agent, 
     ("settle", {"stable_for": 2, "timeout": 1}), ("settle", {"signal": "unknown"}),
     ("snapshot", {"candidates": True, "level": "all"}),
     ("history", {"start": "invalid"}), ("history", {"limit": 0}), ("history", {"as_json": 1}),
-    ("record", {"action": "stop"}), ("record", {"action": "list", "logs": True}), ("log", {"action": "driver", "tail": 5}), ("log", {"out": "x"}),
-    ("log", {"step": "1", "last_action": True}),
+    ("record", {"action": "stop"}), ("record", {"action": "list", "logs": True}), ("history", {"action": "driver", "tail": 5}), ("history", {"value": "x"}),
+    ("history", {"step": "1", "last_action": True}),
     ("wait", {"target": "id=input", "state": "count", "value": "²"}),
     ("wait", {"target": "id=input", "state": "count", "value": "9" * 5000}),
     ("wait", {"target": "id=input", "state": "count", "value": 10**5000}),

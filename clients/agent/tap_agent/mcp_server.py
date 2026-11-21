@@ -27,7 +27,6 @@ from .core import (
     EXIT_APP_DIED,
     EXIT_NO_DAEMON,
     EXIT_USAGE,
-    LOG_LIMIT,
     Agent,
     AgentError,
 )
@@ -52,8 +51,16 @@ Never replay an uncertain/INDETERMINATE mutation: inspect the screen first. A wa
 may accompany an action that already ran; after an ANR stop the app before launching it again.
 Use expect_death only for deliberate reproductions on tools that accept it.
 The session lives in the daemon and ends after 15 idle minutes or on release.
-log reads the device log: the app's lines with your steps and Tap's actions between them; mark
-a name (log action=mark) before a flow and read since it afterwards. Every action and wait is
+history is the one global reader: filter with devices, packages/tags/priority/grep, step,
+last_action, since_marker/until_marker or an opaque ARCHIVE_UUID:CURSOR after receipt.
+history(action="mark", value="NAME") bookmarks held attachments; action="redact" adds Java
+regex redaction. Controls never attach devices; partial acknowledgements are explicit.
+Log filters imply logs but never erase deaths, RPC outcomes or capture gaps. tail limits log
+rows and reports omissions; limit is only an intent-page limit. Package filters require the
+original live attachment's UID mapping. capture explicitly collects current state into new
+private files and indexes external references in history; reads never take a fresh capture.
+Driver infrastructure diagnostics belong to daemon `tap logs driver --serial SERIAL`, not an
+agent log tool. Every action and wait is
 recorded as a step without being asked. record start/stop protects a named range of steps and
 device logs from rolling eviction. record action=export reads a named range; history reads
 paginated activity (stable step/time bounds, from inclusive/until exclusive). Both default to
@@ -266,48 +273,6 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             session,
             report=False,
             step=lambda a: a.deaths(device or None, package=package or None, all_apps=all_apps, trace=trace, as_json=as_json),
-        )
-
-    @mcp.tool(name="log")
-    async def log(
-        action: Literal["read", "mark", "redact", "driver", "evidence"] = "read",
-        value: Annotated[str, Field(description="mark: the marker's name; redact: a regular expression whose matches are hidden in the whole log, lines already captured included.")] = "",
-        since: Annotated[str, Field(description="Read from a marker: its name (the newest with it) or @CURSOR, as `mark` prints it.")] = "",
-        after: Annotated[int | None, Field(ge=0, description="Read what came after this cursor (the last line of an earlier read).")] = None,
-        tail: Annotated[int | None, Field(ge=1, le=100_000, description="Read the newest N entries that pass the filters.")] = None,
-        last_action: Annotated[bool, Field(description="Read from the start of the newest Tap action.")] = False,
-        step: Annotated[str, Field(description="Read only one step, by its number or id: from its first action to its last.")] = "",
-        until: Annotated[str, Field(description="End the read at a marker (a name or @CURSOR) instead of now.")] = "",
-        packages: Annotated[list[str] | None, Field(description="Only these apps' lines.")] = None,
-        priority: Annotated[Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None, Field(description="Lines at least this severe.")] = None,
-        tags: Annotated[list[str] | None, Field(description="Only lines with one of these tags.")] = None,
-        grep: Annotated[str, Field(description="Only lines whose message matches this regular expression.")] = "",
-        actions: Annotated[bool, Field(description="False leaves Tap's own actions out.")] = True,
-        limit: Annotated[int, Field(ge=1, le=5000, description="At most this many entries: from a start the first ones (read on with `after` the last cursor), otherwise the newest.")] = LOG_LIMIT,
-        as_json: Annotated[bool, Field(description="Return the entries as JSON data (line, action, marker or gap per entry) instead of rendered lines.")] = False,
-        driver_lines: Annotated[bool, Field(description="Keep the Tap driver's own logcat lines (UiAutomator lookups), left out by default.")] = False,
-        path: Annotated[str, Field(description="driver / evidence: write to this new private file instead of one under the agent directory.")] = "",
-        session: Session = "",
-        device: Device = "",
-    ) -> CallToolResult:
-        """The session's history on a device: the app's logcat lines since the attach, in order
-        with the steps you ran (`── step 12 tap  [id]`), Tap's own actions (`── tap  text="Pay"`,
-        `── tap  → ok  243 ms`) and markers, secrets redacted. Read it after an action to see
-        what the app logged (`last_action`, one `step`, or `mark` a name and read `since` it,
-        `until` a second marker to close the range); narrow with `packages`, `priority`, `tags`,
-        `grep`; `as_json` returns the entries as data to filter or compute on. A read from a start
-        returns its first `limit` entries and says how many more follow; the last line gives the
-        cursor to pass as `after` for what comes next. Times are the host's clock. `mark` also
-        retains a marker in step history. `driver` saves the Tap driver's own diagnostic log and `evidence` the device's
-        failure evidence (log, crashes, ANRs, activity and window state) to a private file."""
-        return await call(
-            session,
-            lambda a: a.log(
-                action, value or None, device or None, since=since or None, after=after, tail=tail,
-                last_action=last_action, packages=packages or (), priority=priority, tags=tags or (), grep=grep or None,
-                actions=actions, limit=limit, step=step or None, until=until or None, as_json=as_json, out=path or None,
-                driver_lines=driver_lines,
-            ),
         )
 
     @mcp.tool(name="media_record")
@@ -925,7 +890,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="capture", annotations=WRITES_FILES)
     async def capture(session: Session = "", device: Device = "", path: str = "") -> CallToolResult:
-        """Save a screenshot, the hierarchy, device info and the driver log; returns the paths."""
+        """Save current screenshot, hierarchy, device/driver logs and activity/window state to a new
+        private directory; return paths and index external history references. Never a past screen."""
         return await call(session, lambda a: a.capture(device or None, path or None))
 
     @mcp.tool(name="app_data")
@@ -1001,6 +967,21 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="history")
     async def history(
+        action: Literal["read", "mark", "redact"] = "read",
+        value: Annotated[str, Field(description="mark NAME or redact REGEX, held attachments only.")] = "",
+        devices: Annotated[list[str] | None, Field(description="Select serials before pagination; defaults to all retained devices, or all held attachments for controls.")] = None,
+        packages: Annotated[list[str] | None, Field(description="Log package filters; original live attachment mapping required.")] = None,
+        priority: Literal["verbose", "debug", "info", "warn", "error", "fatal"] | None = None,
+        tags: list[str] | None = None,
+        grep: Annotated[str, Field(description="Log message regex; never filters deaths or capture gaps.")] = "",
+        actions: bool = True,
+        driver_lines: bool = False,
+        since_marker: str = "",
+        until_marker: str = "",
+        step: Annotated[str, Field(description="One stable global step cursor or ID.")] = "",
+        last_action: bool = False,
+        tail: Annotated[StrictInt | None, Field(ge=1, le=100_000, description="Newest N log rows, with omissions reported; gaps preserved.")] = None,
+        after: Annotated[str, Field(description="Original ARCHIVE_UUID:CURSOR, not a bare step cursor.")] = "",
         start: Annotated[str, Field(description="Inclusive stable step cursor or ISO timestamp with timezone (--from); pages forward.")] = "",
         until: Annotated[str, Field(description="Exclusive step cursor or ISO timestamp with timezone.")] = "",
         last: Annotated[str, Field(description="All retained activity in the last duration, e.g. 30s; excludes start/until.")] = "",
@@ -1012,7 +993,11 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     ) -> CallToolResult:
         """Show retained activity, not a catalog of internal history partitions. Stable step cursors
         survive rotation and cleanup. Known missing evidence and uncertain outcomes remain explicit."""
-        return await call(session, report=False, step=lambda a: a.history(start=start or None, until=until or None, last=last or None, limit=limit, logs=logs, as_json=as_json, details=details))
+        return await call(session, report=False, step=lambda a: a.history(action, value or None, start=start or None, until=until or None,
+            last=last or None, limit=limit, logs=logs, as_json=as_json, details=details, devices=devices or (), packages=packages or (),
+            priority=priority, tags=tags or (), grep=grep or None, actions=actions, driver_lines=driver_lines,
+            since_marker=since_marker or None, until_marker=until_marker or None, step=step or None,
+            last_action=last_action, tail=tail, after=after or None))
 
     return mcp
 

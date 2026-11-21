@@ -13,7 +13,6 @@ from tap_e2e import Device, FailureReason, ServerError, TapClient, res
 from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
-from tap_agent.core import EXIT_USAGE
 from tap_agent.records import RecordError
 from tap_agent.step_capture import ACTIONS, CONDITIONAL, EXCLUDED, WAITS
 
@@ -79,107 +78,82 @@ def test_a_session_records_actions_and_waits_not_inspections_and_resolves_refs(f
     assert "tap" in agent.history() and "wait" in agent.history()
 
 
-def test_the_log_names_each_step_and_reads_one_by_number_or_id(fake, agent):
+def test_history_selects_one_stable_global_step_by_cursor_or_id(fake, agent):
     agent.attach("first")
     agent.tap("id=cart")
     agent.fill("id=card", "4111")
-    first, second = (step["id"] for step in document(agent)["steps"])
-    fake.device_log.entries = [
-        pb.LogEntry(cursor=1, action=pb.LogAction(operation="tap", target="res=cart", request_id=1, step=first)),
-        pb.LogEntry(cursor=2, action=pb.LogAction(operation="tap", finished=True, outcome="ok", duration_ms=5, request_id=1, step=first)),
-        pb.LogEntry(cursor=3, action=pb.LogAction(operation="set_text", target="res=card", request_id=2, step=second)),
-        pb.LogEntry(cursor=4, action=pb.LogAction(operation="launch", target="com.other")),
-    ]
-    lines = agent.log().splitlines()
-    assert len(lines) == 7 and lines[-1] == "cursor 4"
-    assert lines[0] == f"── step 1 tap  [{first}]" and lines[3] == f"── step 2 fill  [{second}]"
-    agent.log(step="2")
-    assert fake.device_log.requests[-1].step == second
-    agent.log(step=first)
-    assert fake.device_log.requests[-1].step == first
-    with pytest.raises(AgentError, match="no step '9'"):
-        agent.log(step="9")
-    with pytest.raises(AgentError, match="only one of"):
-        agent.log(step="1", tail=5)
+    first, second = document(agent)["steps"]
+    assert json.loads(agent.history(step=str(second["cursor"]), as_json=True))["steps"][0]["id"] == second["id"]
+    assert json.loads(agent.history(step=first["id"], as_json=True))["steps"][0]["id"] == first["id"]
+    with pytest.raises(AgentError, match="not retained"):
+        agent.history(step="999999")
+    with pytest.raises(AgentError, match="own end"):
+        agent.history(step=first["id"], until=999999)
 
 
-def test_markers_still_bound_device_log_reads_and_are_stored_with_intent(fake, agent):
+def test_markers_bound_history_and_are_stored_with_original_attachment(fake, agent):
     agent.attach("first")
     agent.tap("id=pay")
-    step = document(agent)["steps"][0]["id"]
-    agent.log("mark", "checkout")
-    agent.log("mark", "paid")
-    marks = agent.records.marker_names()
-    assert list(marks.values()) == [["checkout@1", "paid@2"]]
-    line = pb.LogLine(uid=10123, priority=pb.LOG_PRIORITY_WARN, tag="Shop", message="paying")
-    fake.device_log.entries = [pb.LogEntry(cursor=1, marker="checkout"),
-        pb.LogEntry(cursor=2, action=pb.LogAction(operation="tap", step=step)),
-        pb.LogEntry(cursor=3, line=line), pb.LogEntry(cursor=4, marker="paid"), pb.LogEntry(cursor=5, line=line)]
-    saved = json.loads(agent.log(since="checkout", until="paid", as_json=True))
-    assert saved["cursor"] == 4 and saved["dropped"] == 0
-    assert saved["steps"] == {step: {"seq": 1, "action": "tap"}}
-    assert [entry["kind"] for entry in saved["entries"]] == ["marker", "action", "line", "marker"]
-    assert json.loads(cli.run(cli.parser().parse_args(["log", "--since", "checkout", "--until", "paid", "--json"]), agent)) == saved
-    assert agent.log(since="@1").splitlines()[0].endswith(" ── marker checkout")
-    with pytest.raises(AgentError, match="no marker at cursor 3"):
-        agent.log(since="@3")
-    with pytest.raises(AgentError, match="before where the read starts"):
-        agent.log(since="@4", until="@1")
-    with pytest.raises(AgentError, match="a --step read already ends"):
-        agent.log(step="1", until="paid")
-    with pytest.raises(AgentError, match="no read options"):
-        agent.log("mark", "x", as_json=True)
+    agent.history("mark", "checkout")
+    agent.history("mark", "paid")
+    assert list(agent.records.marker_names().values()) == [["checkout@1", "paid@2"]]
+    markers = agent.records.marker_anchor("checkout")
+    assert markers[0]["attached_device_id"] == "attached-first"
+    saved = json.loads(agent.history(since_marker="checkout", until_marker="paid", as_json=True))
+    assert saved["range"]["from_time"] == 0
+    assert saved["range"]["until_time"] == .001
+    args = cli.parser().parse_args(["history", "--since-marker", "checkout", "--until-marker", "paid", "--json"])
+    assert json.loads(cli.run(args, agent)) == saved
+    with pytest.raises(AgentError, match="own end"):
+        agent.history(step="1", until_marker="paid")
 
 
-def test_log_pagination_keeps_end_and_filters_and_driver_lines_remain_opt_in(fake, agent):
+def test_history_intent_limit_does_not_limit_logs_and_driver_lines_remain_opt_in(fake, agent):
     agent.attach("first")
+    owner = next(iter(fake.connections.live))
+    fake.device_log.archives.append(pb.RetainedLog(client_connection_id=owner, attached_device_id="attached-first", serial="first"))
     agent.tap("id=save")
     fake.device_log.entries = [pb.LogEntry(cursor=1, marker="flow"),
-        pb.LogEntry(cursor=2, line=pb.LogLine(uid=10247, priority=pb.LOG_PRIORITY_DEBUG, tag="UiDevice", packages=["io.github.noamcohen48.tap.driver"], message="Retrieving nodes")),
-        *(pb.LogEntry(cursor=c, line=pb.LogLine(uid=10123, priority=pb.LOG_PRIORITY_INFO, tag="Shop", packages=["com.shop"], message=f"line {c}")) for c in range(3, 8)),
-        pb.LogEntry(cursor=8, marker="done")]
-    lines = agent.log(since="flow", until="done", packages=["com.shop"], grep="line .", limit=3).splitlines()
-    assert lines[-2:] == ["(4 more entries after this; read on with: log --after 4 --until @8 --package com.shop --grep 'line .')", "cursor 4"]
-    assert not any("Retrieving nodes" in line for line in lines)
-    page = json.loads(agent.log(since="flow", limit=2, as_json=True))
-    assert [(entry["cursor"], entry["kind"]) for entry in page["entries"]] == [(1, "marker"), (3, "line")]
-    assert page["next"] == "--after 3"
-    assert [entry["cursor"] for entry in json.loads(agent.log(since="flow", limit=2, as_json=True, driver_lines=True))["entries"]] == [1, 2]
+        pb.LogEntry(cursor=2, line=pb.LogLine(packages=["io.github.noamcohen48.tap.driver"], message="Retrieving nodes")),
+        *(pb.LogEntry(cursor=c, line=pb.LogLine(packages=["com.shop"], message=f"line {c}")) for c in range(3, 8))]
+    assert "Retrieving nodes" not in agent.history(logs=True, limit=1)
+    assert "Retrieving nodes" in agent.history(driver_lines=True, limit=1)
+    saved = json.loads(agent.history(logs=True, limit=1, as_json=True))
+    assert len(saved["log"]["first"]["entries"]) == 6
+    tail = json.loads(agent.history(tail=2, as_json=True))
+    assert [e["cursor"] for e in tail["log"]["first"]["entries"]] == [6, 7]
+    assert tail["log_omitted"] == 4
 
 
-def test_marker_names_are_quoted_and_unknown_markers_are_usage_errors(fake, agent):
+def test_marker_names_remain_data_and_missing_markers_are_explicit(fake, agent):
     agent.attach("first")
-    assert agent.log("mark", "with space") == "marked 'with space' at cursor 1; read from it with --since 'with space' or --since @1"
-    with pytest.raises(AgentError) as refused:
-        agent.log(since="never")
-    assert refused.value.exit_code == EXIT_USAGE
-    assert "no marker 'never' in this device's log" in str(refused.value)
+    assert "'with space'" in agent.history("mark", "with space")
+    assert agent.records.marker_anchor("with space")[0]["name"] == "with space"
+    with pytest.raises(AgentError, match="no retained marker"):
+        agent.history(since_marker="never")
 
 
-def test_an_until_marker_before_the_start_says_so():
-    from types import SimpleNamespace as Entry
-
-    from tap_agent.core import _until
-    entries = [Entry(cursor=5, marker=None), Entry(cursor=6, marker="paid"), Entry(cursor=7, marker=None)]
-    assert [entry.cursor for entry in _until(entries, "paid", [])] == [5, 6]
-    assert [entry.cursor for entry in _until(entries, 6, [])] == [5, 6]
-    with pytest.raises(AgentError, match="before where the read starts"):
-        _until(entries, "start", [{"name": "start", "cursor": 2}])
-    with pytest.raises(AgentError, match="no marker 'never'"):
-        _until(entries, "never", [])
-
-
-def test_driver_log_and_failure_evidence_keep_exclusive_private_files(fake, agent, tmp_path):
+def test_an_until_marker_before_the_start_is_not_an_invented_open_range(fake, agent):
     agent.attach("first")
-    driver = pathlib.Path(agent.log("driver"))
-    assert driver.parent == agent.out_dir and driver.suffix == ".txt" and driver.stat().st_mode & 0o777 == 0o600
-    evidence = pathlib.Path(agent.log("evidence", out=tmp_path / "evidence.json"))
-    assert isinstance(json.loads(evidence.read_text()), dict)
-    with pytest.raises(AgentError, match="already exists"):
-        agent.log("evidence", out=evidence)
-    with pytest.raises(AgentError, match="only --out"):
-        agent.log("driver", tail=5)
-    assert not agent.records.list()
+    record = agent.records.ensure(agent.session, next(iter(fake.connections.live)))
+    agent.records.mark(record, "early", "first", 1, batch_id="early", attached_device_id="attached-first", at="2026-01-01T00:00:00.000Z")
+    agent.records.mark(record, "late", "first", 2, batch_id="late", attached_device_id="attached-first", at="2026-01-02T00:00:00.000Z")
+    with pytest.raises(AgentError, match="must not precede"):
+        agent.history(since_marker="late", until_marker="early")
+
+
+def test_capture_indexes_private_files_without_a_second_evidence_command(fake, agent, tmp_path):
+    agent.attach("first")
+    directory = tmp_path / "capture"
+    paths = agent.capture(out=directory).splitlines()
+    assert paths and all(pathlib.Path(path).stat().st_mode & 0o777 == 0o600 for path in paths)
+    saved = document(agent)["artifacts"]
+    assert len(saved) == 1 and saved[0]["serial"] == "first"
+    assert saved[0]["directory"] == str(directory)
+    assert "current state requested" in agent.history()
+    with pytest.raises(AgentError):
+        agent.capture(out=directory)
+    assert not hasattr(agent, "log")
 
 
 def test_settle_timeouts_are_explicit_without_recording_internal_calls(fake, agent):

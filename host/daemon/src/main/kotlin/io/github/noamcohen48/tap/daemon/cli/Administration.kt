@@ -66,6 +66,27 @@ internal class Administration(
             .devicesList
             .sortedBy { it.serial }
 
+    /** Read the existing attachment only; no session, lease, agent or driver is started. */
+    fun driverLog(serial: String): List<String> {
+        val matches =
+            listSessions().flatMap { session ->
+                session.attachedDevicesList.filter { it.serial == serial }.map { session.clientConnectionId to it.attachedDeviceId }
+            }
+        check(matches.size == 1) { "device '$serial' is not uniquely attached; inspect tap sessions" }
+        val (owner, attached) = matches.single()
+        return devices
+            .withDeadlineAfter(15, TimeUnit.SECONDS)
+            .driverLog(
+                io.github.noamcohen48.tap.api.v1.DriverLogRequest
+                    .newBuilder()
+                    .setClientConnectionId(
+                        owner,
+                    ).setAttachedDeviceId(attached)
+                    .build(),
+            ).linesList
+            .map { redact(it, descriptor.token) }
+    }
+
     fun disconnect(
         id: String,
         reason: String,
@@ -235,6 +256,20 @@ internal fun discoveryReport(
         }
     }
     return when (line.command) {
+        "logs driver" -> {
+            val serial = line.options.getValue("--serial")
+            val lines = admin.driverLog(serial)
+            CliReport(
+                0,
+                buildJsonObject {
+                    put("serial", serial)
+                    put("lines", JsonArray(lines.map(::JsonPrimitive)))
+                    put("scope", "current_attachment_driver_buffer")
+                },
+                lines.joinToString("\n").ifEmpty { "no driver diagnostics retained for $serial" },
+            )
+        }
+
         "devices", "devices show" -> {
             val devices = admin.listDevices()
             if (line.command == "devices show") {
