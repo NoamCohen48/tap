@@ -447,3 +447,19 @@ def test_capture_cli_takes_a_name_or_a_management_word(fake, agent, tmp_path):
     assert out.startswith("capture login saved to ")
     assert cli.run(parser.parse_args(["capture", "list"]), agent).split()[1] == "login"
     assert "directory " in cli.run(parser.parse_args(["capture", "show", "login"]), agent)
+
+
+def test_capture_saves_the_snapshot_outline_and_survives_a_failed_one(fake, agent, tmp_path, monkeypatch):
+    agent.attach("first")
+    fake.devices.snapshot = pb.ScreenSnapshotResponse(nodes=[pb.ScreenNode(
+        ref="e3", window_package="com.example", text="Pay", interactive=True, flags=[pb.FLAG_ENABLED, pb.FLAG_CLICKABLE])])
+    agent.capture(out=tmp_path / "bundle")
+    outline = (tmp_path / "bundle" / "first.snapshot.txt").read_text()
+    assert '@e3  "Pay"  accepts=tap' in outline
+    assert "first.snapshot.txt" in document(agent)["artifacts"][-1]["parts"]
+    def lost(*args, **kwargs):
+        raise TapError("snapshot lost")
+    monkeypatch.setattr(type(agent._device(None)), "screen_snapshot", lost)
+    lines = agent.capture(out=tmp_path / "failed").splitlines()
+    assert any(line.startswith("snapshot failed: ") for line in lines)
+    assert any(line.endswith(".history.txt") for line in lines)

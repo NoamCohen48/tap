@@ -226,7 +226,7 @@ Do:
 
 ## `capture`: a complete bundle, with the device's history
 
-Status: done (the snapshot-outline pairing is not done).
+Status: done, with a `snapshot.txt` outline next to the hierarchy XML.
 
 `capture` saves the device's state now (screenshot, hierarchy, device info, driver log, logcat,
 crashes, activities, windows). Its logcat includes Tap's device-side action lines, but not what

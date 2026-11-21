@@ -290,7 +290,8 @@ not an app-state assertion. None of this uses synchronization/awaitIdle.
 
 `screenshot` saves a PNG and prints its path (look at it only when the text is not enough);
 `capture` saves one evidence bundle: screenshot, hierarchy, device info, driver diagnostics and
-device logs/crashes, including **current** activity/task/window state, plus the device's history
+device logs/crashes, including **current** activity/task/window state, the screen as a
+`snapshot.txt` outline with refs, plus the device's history
 as `history.txt` (what `history --logs --details` prints) and `history.json` (`tap-history/2`):
 the session's steps, calls, crashes, ANRs, gaps and device log, all that is kept or
 `--last 10m` / `--from TIME`. A part that fails is listed (`history failed: …`) and the rest are
