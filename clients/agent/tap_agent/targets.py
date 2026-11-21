@@ -292,7 +292,7 @@ def format_duration(seconds: float) -> str:
     return f"{round(seconds * 1000)}ms"
 
 
-# Short names an agent is likely to use, on top of every Android key name (keycodes.CODES).
+# Short names an agent is likely to use, on top of every Android key name (CODES).
 KEY_ALIASES = {
     "up": 19,
     "down": 20,
@@ -308,12 +308,16 @@ COMMON_KEYS = ("back", "home", "recents", "enter", "tab", "delete", "escape", "u
                "volume-up", "volume-down", "power", "media-play-pause")
 
 
-def _keys() -> dict[str, int]:
-    from .keycodes import CODES
-    return {**CODES, **KEY_ALIASES}
+def _codes() -> dict[str, int]:
+    """Every Android key name from the SDK's table, lowercase with dashes (``Key.VOLUME_UP`` ->
+    ``volume-up``; ``Key.KEYCODE_0`` -> ``0``)."""
+    from tap_e2e import Key
+
+    return {name.lower().replace("_", "-").removeprefix("keycode-"): int(key) for name, key in Key.__members__.items()}
 
 
-KEYS = _keys()
+CODES = _codes()
+KEYS = {**CODES, **KEY_ALIASES}
 
 
 def parse_key(name: str) -> int:

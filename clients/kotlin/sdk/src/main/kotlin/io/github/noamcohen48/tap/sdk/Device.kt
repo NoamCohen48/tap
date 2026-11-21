@@ -100,10 +100,6 @@ private const val FILE_CHUNK_BYTES = 1 shl 20
 /** A file transfer's whole-call deadline: the server's 5-minute adb transfer plus the upload. */
 private const val FILE_DEADLINE_MS = 10 * 60_000L
 
-const val KEYCODE_HOME = 3
-const val KEYCODE_BACK = 4
-const val KEYCODE_SLEEP = 223
-const val KEYCODE_WAKEUP = 224
 const val DEFAULT_GESTURE_PERCENT = 80
 
 /**
@@ -323,11 +319,11 @@ class Device internal constructor(
         }
     }
 
-    /** Send `KEYCODE_BACK`. */
-    suspend fun pressBack() = pressKey(KEYCODE_BACK)
+    /** Send [Keys.BACK]. */
+    suspend fun pressBack() = pressKey(Keys.BACK)
 
-    /** Send `KEYCODE_HOME`. */
-    suspend fun pressHome() = pressKey(KEYCODE_HOME)
+    /** Send [Keys.HOME]. */
+    suspend fun pressHome() = pressKey(Keys.HOME)
 
     /**
      * Presses an Android key code [presses] times (a mutation: never replayed on transport loss),
@@ -418,11 +414,11 @@ class Device internal constructor(
         executeOrThrow { unfreezeRotation = UnfreezeRotation.getDefaultInstance() }
     }
 
-    /** Turns the screen on (`KEYCODE_WAKEUP`; nothing happens when it is on). The keyguard may still show: see [dismissKeyguard]. */
-    suspend fun wake() = pressKey(KEYCODE_WAKEUP)
+    /** Turns the screen on ([Keys.WAKEUP]; nothing happens when it is on). The keyguard may still show: see [dismissKeyguard]. */
+    suspend fun wake() = pressKey(Keys.WAKEUP)
 
-    /** Turns the screen off (`KEYCODE_SLEEP`; nothing happens when it is off). */
-    suspend fun sleep() = pressKey(KEYCODE_SLEEP)
+    /** Turns the screen off ([Keys.SLEEP]; nothing happens when it is off). */
+    suspend fun sleep() = pressKey(Keys.SLEEP)
 
     /**
      * Dismisses a keyguard that has no PIN, pattern or password (`wm dismiss-keyguard`); with no

@@ -20,7 +20,7 @@ import io.github.noamcohen48.tap.api.v1.ObserveRequest
 import io.github.noamcohen48.tap.api.v1.ObserveResponse
 import io.github.noamcohen48.tap.api.v1.Observing
 import io.github.noamcohen48.tap.sdk.Device
-import io.github.noamcohen48.tap.sdk.KEYCODE_BACK
+import io.github.noamcohen48.tap.sdk.Keys
 import io.github.noamcohen48.tap.sdk.TapClient
 import io.github.noamcohen48.tap.sdk.TapConnection
 import io.github.noamcohen48.tap.sdk.TapUsageException
@@ -183,7 +183,7 @@ class TapTestBridgeTest {
                                 try {
                                     // Accepted mutation before the scope: it must run exactly
                                     // once — the cancellation below must never replay it.
-                                    device.pressKey(KEYCODE_BACK)
+                                    device.pressKey(Keys.BACK)
                                     coroutineScope {
                                         // UNDISPATCHED so the waiter reaches its suspension
                                         // before the sibling can fail; the sibling only fails
@@ -565,7 +565,7 @@ class TapTestBridgeTest {
             val (state, context) = liveTest(connection)
             val extension = TapExtension()
             val device = state.devices.getValue("device")
-            val call = invocation { tapTest { device.pressKey(KEYCODE_BACK) } }
+            val call = invocation { tapTest { device.pressKey(Keys.BACK) } }
             extension.interceptBeforeEachMethod(call, stubInvocationContext(), context)
             extension.interceptTestTemplateMethod(call, stubInvocationContext(), context)
             extension.interceptAfterEachMethod(call, stubInvocationContext(), context)
@@ -588,7 +588,7 @@ class TapTestBridgeTest {
                 extension.interceptTestMethod(invocation { tapTest { throw AssertionError("boom") } }, stubInvocationContext(), context)
             }
             assertTrue(state.rootJob.isCancelled, "the failing test cancelled the root job")
-            extension.interceptAfterEachMethod(invocation { tapTest { device.pressKey(KEYCODE_BACK) } }, stubInvocationContext(), context)
+            extension.interceptAfterEachMethod(invocation { tapTest { device.pressKey(Keys.BACK) } }, stubInvocationContext(), context)
             assertEquals(1, fakeDevices.pressKeyExecutes.get(), "cleanup ran on the devices")
             extension.afterEach(context)
         } finally {

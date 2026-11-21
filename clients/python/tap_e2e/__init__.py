@@ -33,7 +33,8 @@ from .client import (
     start_daemon,
     stop_daemon,
 )
-from .device import KEYCODE_BACK, KEYCODE_HOME, Device, Timeouts
+from .device import Device, Timeouts
+from .keys import Key
 from .element import DOWN, LEFT, RIGHT, UP, Element, ElementWait
 from .elements import Elements
 from .errors import (
@@ -188,8 +189,6 @@ __all__ = [
     "DOWN",
     "ENDS_WITH",
     "EXACT",
-    "KEYCODE_BACK",
-    "KEYCODE_HOME",
     "LEFT",
     "CollectedObservation",
     "Movement",
@@ -222,6 +221,7 @@ __all__ = [
     "ConnectionEntry",
     "DaemonStartResult",
     "Device",
+    "Key",
     "DeviceBusyError",
     "DeviceEntry",
     "UnquarantineResult",

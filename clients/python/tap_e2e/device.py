@@ -47,6 +47,7 @@ from .models import (
     ToastHistory,
 )
 from .events import DeviceEvents
+from .keys import Key
 from .logs import DeviceLog
 from .selectors import Selector
 from .screen import Screen
@@ -59,12 +60,6 @@ _LONG_PRESS_ESTIMATE = 1.5
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
     from typing_extensions import Self
-
-KEYCODE_HOME = 3
-KEYCODE_BACK = 4
-KEYCODE_SLEEP = 223
-KEYCODE_WAKEUP = 224
-
 
 @dataclass(frozen=True)
 class Timeouts:
@@ -254,12 +249,12 @@ class Device:
         return _capabilities_from_proto(response)
 
     def press_back(self) -> None:
-        """Send ``KEYCODE_BACK``."""
-        self.press_key(KEYCODE_BACK)
+        """Send ``Key.BACK``."""
+        self.press_key(Key.BACK)
 
     def press_home(self) -> None:
-        """Send ``KEYCODE_HOME``."""
-        self.press_key(KEYCODE_HOME)
+        """Send ``Key.HOME``."""
+        self.press_key(Key.HOME)
 
     def press_key(self, key_code: int, *, presses: int = 1, interval: float = 0.1, hold: float | None = None,
                   timeout: float | None = None) -> None:
@@ -337,13 +332,13 @@ class Device:
         self._execute_or_raise(unfreeze_rotation=pb.UnfreezeRotation())
 
     def wake(self) -> None:
-        """Turn the screen on (``KEYCODE_WAKEUP``; nothing happens when it is on). The keyguard
+        """Turn the screen on (``Key.WAKEUP``; nothing happens when it is on). The keyguard
         may still show: see ``dismiss_keyguard``."""
-        self.press_key(KEYCODE_WAKEUP)
+        self.press_key(Key.WAKEUP)
 
     def sleep(self) -> None:
-        """Turn the screen off (``KEYCODE_SLEEP``; nothing happens when it is off)."""
-        self.press_key(KEYCODE_SLEEP)
+        """Turn the screen off (``Key.SLEEP``; nothing happens when it is off)."""
+        self.press_key(Key.SLEEP)
 
     def dismiss_keyguard(self) -> None:
         """Dismiss a keyguard that has no PIN, pattern or password (``wm dismiss-keyguard``); with
