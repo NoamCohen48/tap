@@ -120,7 +120,7 @@ internal fun DeviceInfoProto.toModel(): DeviceInfo =
         highContrastText = if (hasHighContrastText()) highContrastText else null,
         colorInversion = if (hasColorInversion()) colorInversion else null,
         boldText = boldText,
-        softKeyboard = if (hasSoftKeyboard()) softKeyboard else null,
+        showImeWithHardKeyboard = if (hasShowImeWithHardKeyboard()) showImeWithHardKeyboard else null,
     )
 
 internal fun ToastProto.toModel(): Toast = Toast(text = text, packageName = packageName)

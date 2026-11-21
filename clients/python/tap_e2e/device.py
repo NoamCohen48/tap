@@ -599,13 +599,13 @@ class Device:
         ``DeviceInfo.stay_awake``."""
         self._condition("set_stay_awake", "SetStayAwake", pb.SetStayAwakeRequest, enabled=bool(enabled))
 
-    def set_soft_keyboard(self, enabled: bool) -> None:
+    def set_show_ime_with_hard_keyboard(self, enabled: bool) -> None:
         """Show the soft keyboard while a hardware keyboard is connected, or not, until
         ``detach()``: Settings › Physical keyboard › Show on-screen keyboard. Input methods that
         follow it hide the soft keyboard while a hardware keyboard is connected unless it is on (an
         emulator usually has one); Gboard on an API 34 emulator showed the keyboard either way.
-        With no hardware keyboard it changes nothing. Read back with ``DeviceInfo.soft_keyboard``."""
-        self._condition("set_soft_keyboard", "SetSoftKeyboard", pb.SetSoftKeyboardRequest, enabled=bool(enabled))
+        With no hardware keyboard it changes nothing. Read back with ``DeviceInfo.show_ime_with_hard_keyboard``."""
+        self._condition("set_show_ime_with_hard_keyboard", "SetShowImeWithHardKeyboard", pb.SetShowImeWithHardKeyboardRequest, enabled=bool(enabled))
 
     def set_accessibility_display(
         self,

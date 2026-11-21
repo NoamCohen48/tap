@@ -670,7 +670,7 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
     device.set_accessibility_display(color_inversion=True, bold_text=False)
     with pytest.raises(ValueError):
         device.set_accessibility_display()
-    device.set_soft_keyboard(True)
+    device.set_show_ime_with_hard_keyboard(True)
     animations, font, density, reset, dark, _, network, locales, location, awake, a11y, soft = fake.devices.conditions
     assert soft.enabled is True
     assert awake.enabled is True

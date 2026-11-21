@@ -66,8 +66,8 @@ def test_device_info_maps_rotation_and_screen_state():
     assert (info.stay_awake, info.high_contrast_text, info.color_inversion, info.bold_text) == (False, None, None, False)
     a11y = _proto.device_info(pb.DeviceInfo(stay_awake=True, high_contrast_text=False, color_inversion=True, bold_text=True))
     assert (a11y.stay_awake, a11y.high_contrast_text, a11y.color_inversion, a11y.bold_text) == (True, False, True, True)
-    assert info.soft_keyboard is None
-    assert _proto.device_info(pb.DeviceInfo(soft_keyboard=False)).soft_keyboard is False
+    assert info.show_ime_with_hard_keyboard is None
+    assert _proto.device_info(pb.DeviceInfo(show_ime_with_hard_keyboard=False)).show_ime_with_hard_keyboard is False
 
 
 def test_intent_extras_keep_their_type_and_refuse_what_am_start_cannot_carry():

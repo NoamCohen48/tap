@@ -548,7 +548,7 @@ message DeviceInfo {
   int32 driver_uid = 26;
   // Settings.Secure `show_ime_with_hard_keyboard`: the soft keyboard shows while a hardware
   // keyboard is connected. Absent when Android does not let the driver read it.
-  optional bool soft_keyboard = 27;
+  optional bool show_ime_with_hard_keyboard = 27;
 }
 
 // An active notification: the package that posted it, its title and text (Notification extras

@@ -55,8 +55,8 @@ import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationResponse
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkResponse
-import io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest
-import io.github.noamcohen48.tap.api.v1.SetSoftKeyboardResponse
+import io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest
+import io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardResponse
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeResponse
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
@@ -689,12 +689,12 @@ class DeviceService(
             SetStayAwakeResponse.getDefaultInstance()
         }
 
-    override suspend fun setSoftKeyboard(request: SetSoftKeyboardRequest): SetSoftKeyboardResponse =
+    override suspend fun setShowImeWithHardKeyboard(request: SetShowImeWithHardKeyboardRequest): SetShowImeWithHardKeyboardResponse =
         reply {
-            condition(request.clientConnectionId, request.attachedDeviceId, "set_soft_keyboard", { enabled = request.enabled }) {
-                it.setSoftKeyboard(request.enabled)
+            condition(request.clientConnectionId, request.attachedDeviceId, "set_show_ime_with_hard_keyboard", { enabled = request.enabled }) {
+                it.setShowImeWithHardKeyboard(request.enabled)
             }
-            SetSoftKeyboardResponse.getDefaultInstance()
+            SetShowImeWithHardKeyboardResponse.getDefaultInstance()
         }
 
     override suspend fun setAccessibilityDisplay(request: SetAccessibilityDisplayRequest): SetAccessibilityDisplayResponse =

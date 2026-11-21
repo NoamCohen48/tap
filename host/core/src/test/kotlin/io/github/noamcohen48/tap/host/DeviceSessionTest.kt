@@ -1342,15 +1342,15 @@ class DeviceSessionTest {
     @Test
     fun `the soft keyboard setting is read back and restored`() =
         runBlocking {
-            val state = FakeDeviceState(mapOf(StateKey.SOFT_KEYBOARD to "0"))
-            openWithState("session-soft-keyboard", state) { session, _ ->
-                session.conditions.setSoftKeyboard(true)
-                assertEquals("1", state.values[StateKey.SOFT_KEYBOARD])
-                state.stuck += StateKey.SOFT_KEYBOARD
-                assertFailsWith<DeviceSettingException> { session.conditions.setSoftKeyboard(false) }
+            val state = FakeDeviceState(mapOf(StateKey.SHOW_IME_WITH_HARD_KEYBOARD to "0"))
+            openWithState("session-ime-with-hard-keyboard", state) { session, _ ->
+                session.conditions.setShowImeWithHardKeyboard(true)
+                assertEquals("1", state.values[StateKey.SHOW_IME_WITH_HARD_KEYBOARD])
+                state.stuck += StateKey.SHOW_IME_WITH_HARD_KEYBOARD
+                assertFailsWith<DeviceSettingException> { session.conditions.setShowImeWithHardKeyboard(false) }
                 state.stuck.clear()
                 session.close(timeoutMs = 5_000)
-                assertEquals("0", state.values[StateKey.SOFT_KEYBOARD])
+                assertEquals("0", state.values[StateKey.SHOW_IME_WITH_HARD_KEYBOARD])
             }
         }
 

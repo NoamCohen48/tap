@@ -207,7 +207,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     "condition": [
         ("tap-agent condition",
          "animations on, dark-mode off, font-scale 1, density 420 dpi, airplane-mode off, wifi on, "
-         "mobile-data on, locale en-US, stay-awake on, soft-keyboard on, high-contrast-text off, "
+         "mobile-data on, locale en-US, stay-awake on, ime-with-hard-keyboard on, high-contrast-text off, "
          "color-inversion off, bold-text off"),
         ("tap-agent condition dark-mode on", "dark-mode on (restored on release)"),
     ],

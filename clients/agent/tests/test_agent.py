@@ -647,7 +647,7 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     )
     assert agent.condition() == (
         "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en, "
-        "stay-awake off, soft-keyboard unknown, high-contrast-text unknown, color-inversion on, bold-text off"
+        "stay-awake off, ime-with-hard-keyboard unknown, high-contrast-text unknown, color-inversion on, bold-text off"
     )
     assert agent.condition("animations", "off") == "animations off (restored on release)"
     assert agent.condition("font_scale", "1.25") == "font-scale 1.25 (restored on release)"
@@ -679,8 +679,8 @@ def test_condition_reads_back_and_app_locale(fake, agent):
     assert fake.devices.conditions[-1].color_inversion is True and not fake.devices.conditions[-1].HasField("bold_text")
     assert agent.condition("stay_awake", "on") == "stay-awake off (restored on release)"
     assert fake.devices.conditions[-1].enabled is True
-    assert agent.condition("soft-keyboard", "on") == "soft-keyboard unknown (restored on release)"
-    assert type(fake.devices.conditions[-1]).__name__ == "SetSoftKeyboardRequest" and fake.devices.conditions[-1].enabled is True
+    assert agent.condition("ime-with-hard-keyboard", "on") == "ime-with-hard-keyboard unknown (restored on release)"
+    assert type(fake.devices.conditions[-1]).__name__ == "SetShowImeWithHardKeyboardRequest" and fake.devices.conditions[-1].enabled is True
     assert agent.activity() == "no activity is resumed"
     fake.devices.foreground = ("com.example", "com.example.MainActivity")
     assert agent.activity() == "com.example/com.example.MainActivity"

@@ -70,7 +70,7 @@ internal class DeviceConditionsReader(
     val colorInversion: Boolean? get() = secure(DISPLAY_INVERSION)?.let { it == 1 }
 
     /** `show_ime_with_hard_keyboard`: the soft keyboard shows with a hardware keyboard; null when unreadable. */
-    val softKeyboard: Boolean? get() = secure(SHOW_IME_WITH_HARD_KEYBOARD)?.let { it == 1 }
+    val showImeWithHardKeyboard: Boolean? get() = secure(SHOW_IME_WITH_HARD_KEYBOARD)?.let { it == 1 }
 
     /**
      * Bold text (API 31+; older devices have no such setting): `font_weight_adjustment`, what the

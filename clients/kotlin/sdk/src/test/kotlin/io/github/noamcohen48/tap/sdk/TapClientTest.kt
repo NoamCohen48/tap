@@ -2899,7 +2899,7 @@ class TapClientTest {
                         device.setStayAwake(true)
                         device.setAccessibilityDisplay(highContrastText = true, boldText = false)
                         assertFailsWith<IllegalArgumentException> { device.setAccessibilityDisplay() }
-                        device.setSoftKeyboard(true)
+                        device.setShowImeWithHardKeyboard(true)
                         assertEquals(ForegroundActivity("io.example", "io.example.MainActivity"), device.foregroundActivity())
                         fakeDevices.foreground = null
                         assertEquals(null, device.foregroundActivity())
@@ -2916,7 +2916,7 @@ class TapClientTest {
                     val location = sent[8] as io.github.noamcohen48.tap.api.v1.SetLocationRequest
                     assertTrue(location.latitude == 48.8584 && location.accuracyM == 3.5f && !location.hasAltitudeM())
                     assertTrue((sent[9] as io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest).enabled)
-                    assertTrue((sent.last() as io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest).enabled)
+                    assertTrue((sent.last() as io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest).enabled)
                     val display = sent[10] as io.github.noamcohen48.tap.api.v1.SetAccessibilityDisplayRequest
                     assertTrue(display.highContrastText && display.hasBoldText() && !display.boldText && !display.hasColorInversion())
                     for (request in sent) {
@@ -2962,7 +2962,7 @@ class TapClientTest {
                                         request.attachedDeviceId
                                 }
 
-                                is io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest -> {
+                                is io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest -> {
                                     request.clientConnectionId to
                                         request.attachedDeviceId
                                 }
@@ -3645,10 +3645,10 @@ class TapClientTest {
                 .getDefaultInstance()
                 .also { conditions += request }
 
-        override suspend fun setSoftKeyboard(
-            request: io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest,
-        ): io.github.noamcohen48.tap.api.v1.SetSoftKeyboardResponse =
-            io.github.noamcohen48.tap.api.v1.SetSoftKeyboardResponse
+        override suspend fun setShowImeWithHardKeyboard(
+            request: io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest,
+        ): io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardResponse =
+            io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardResponse
                 .getDefaultInstance()
                 .also { conditions += request }
 

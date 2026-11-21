@@ -156,10 +156,10 @@ class DeviceServiceStub:
                 request_serializer=device__pb2.SetStayAwakeRequest.SerializeToString,
                 response_deserializer=device__pb2.SetStayAwakeResponse.FromString,
                 _registered_method=True)
-        self.SetSoftKeyboard = channel.unary_unary(
-                '/tap.v1.DeviceService/SetSoftKeyboard',
-                request_serializer=device__pb2.SetSoftKeyboardRequest.SerializeToString,
-                response_deserializer=device__pb2.SetSoftKeyboardResponse.FromString,
+        self.SetShowImeWithHardKeyboard = channel.unary_unary(
+                '/tap.v1.DeviceService/SetShowImeWithHardKeyboard',
+                request_serializer=device__pb2.SetShowImeWithHardKeyboardRequest.SerializeToString,
+                response_deserializer=device__pb2.SetShowImeWithHardKeyboardResponse.FromString,
                 _registered_method=True)
         self.SetAccessibilityDisplay = channel.unary_unary(
                 '/tap.v1.DeviceService/SetAccessibilityDisplay',
@@ -384,7 +384,7 @@ class DeviceServiceServicer:
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
-    def SetSoftKeyboard(self, request, context):
+    def SetShowImeWithHardKeyboard(self, request, context):
         """Shows the soft keyboard while a hardware keyboard is connected (Settings › Physical keyboard
         › Show on-screen keyboard): Settings.Secure `show_ime_with_hard_keyboard` 1, or 0. Input
         methods that follow it hide the soft keyboard while a hardware keyboard is connected unless it
@@ -563,10 +563,10 @@ def add_DeviceServiceServicer_to_server(servicer, server):
                     request_deserializer=device__pb2.SetStayAwakeRequest.FromString,
                     response_serializer=device__pb2.SetStayAwakeResponse.SerializeToString,
             ),
-            'SetSoftKeyboard': grpc.unary_unary_rpc_method_handler(
-                    servicer.SetSoftKeyboard,
-                    request_deserializer=device__pb2.SetSoftKeyboardRequest.FromString,
-                    response_serializer=device__pb2.SetSoftKeyboardResponse.SerializeToString,
+            'SetShowImeWithHardKeyboard': grpc.unary_unary_rpc_method_handler(
+                    servicer.SetShowImeWithHardKeyboard,
+                    request_deserializer=device__pb2.SetShowImeWithHardKeyboardRequest.FromString,
+                    response_serializer=device__pb2.SetShowImeWithHardKeyboardResponse.SerializeToString,
             ),
             'SetAccessibilityDisplay': grpc.unary_unary_rpc_method_handler(
                     servicer.SetAccessibilityDisplay,
@@ -1253,7 +1253,7 @@ class DeviceService:
             _registered_method=True)
 
     @staticmethod
-    def SetSoftKeyboard(request,
+    def SetShowImeWithHardKeyboard(request,
             target,
             options=(),
             channel_credentials=None,
@@ -1266,9 +1266,9 @@ class DeviceService:
         return grpc.experimental.unary_unary(
             request,
             target,
-            '/tap.v1.DeviceService/SetSoftKeyboard',
-            device__pb2.SetSoftKeyboardRequest.SerializeToString,
-            device__pb2.SetSoftKeyboardResponse.FromString,
+            '/tap.v1.DeviceService/SetShowImeWithHardKeyboard',
+            device__pb2.SetShowImeWithHardKeyboardRequest.SerializeToString,
+            device__pb2.SetShowImeWithHardKeyboardResponse.FromString,
             options,
             channel_credentials,
             insecure,

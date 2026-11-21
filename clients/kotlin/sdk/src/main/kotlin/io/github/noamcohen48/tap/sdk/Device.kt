@@ -41,7 +41,7 @@ import io.github.noamcohen48.tap.api.v1.SetFontScaleRequest
 import io.github.noamcohen48.tap.api.v1.SetLocationRequest
 import io.github.noamcohen48.tap.api.v1.SetNetworkRequest
 import io.github.noamcohen48.tap.api.v1.SetOrientation
-import io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest
+import io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest
 import io.github.noamcohen48.tap.api.v1.SetStayAwakeRequest
 import io.github.noamcohen48.tap.api.v1.SetSystemLocalesRequest
 import io.github.noamcohen48.tap.api.v1.StartRecordingRequest
@@ -687,12 +687,12 @@ class Device internal constructor(
      * [setAnimations]: Settings › Physical keyboard › Show on-screen keyboard. Input methods that
      * follow it hide the soft keyboard while a hardware keyboard is connected unless it is on (an
      * emulator usually has one); Gboard on an API 34 emulator showed the keyboard either way. With
-     * no hardware keyboard it changes nothing. Read back with [DeviceInfo.softKeyboard].
+     * no hardware keyboard it changes nothing. Read back with [DeviceInfo.showImeWithHardKeyboard].
      */
-    suspend fun setSoftKeyboard(enabled: Boolean) {
-        condition("Device.setSoftKeyboard") {
-            setSoftKeyboard(
-                SetSoftKeyboardRequest
+    suspend fun setShowImeWithHardKeyboard(enabled: Boolean) {
+        condition("Device.setShowImeWithHardKeyboard") {
+            setShowImeWithHardKeyboard(
+                SetShowImeWithHardKeyboardRequest
                     .newBuilder()
                     .setClientConnectionId(ownerConnection.id)
                     .setAttachedDeviceId(attachedDeviceId)

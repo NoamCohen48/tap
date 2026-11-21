@@ -406,6 +406,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
    case, so the 30 s cap holds; `key --double` goes.
    Status: done.
 5. The soft-keyboard condition takes Android's name: show IME with a hardware keyboard.
+   Status: done (`ime-with-hard-keyboard`, `show_ime_with_hard_keyboard`).
 6. The server classifies each window (application, keyboard, status bar, navigation bar,
    system, …); tap-agent stops guessing bars from their size.
 7. Snapshot: `--keyboard collapse|show|omit` and `--system-bars collapse|show|omit` in place of

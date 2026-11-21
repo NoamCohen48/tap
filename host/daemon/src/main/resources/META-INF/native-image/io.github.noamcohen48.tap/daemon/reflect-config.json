@@ -994,11 +994,11 @@
     "allDeclaredFields": true
   },
   {
-    "name": "io.github.noamcohen48.tap.api.v1.SetSoftKeyboardRequest",
+    "name": "io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardRequest",
     "allDeclaredFields": true
   },
   {
-    "name": "io.github.noamcohen48.tap.api.v1.SetSoftKeyboardResponse",
+    "name": "io.github.noamcohen48.tap.api.v1.SetShowImeWithHardKeyboardResponse",
     "allDeclaredFields": true
   },
   {
