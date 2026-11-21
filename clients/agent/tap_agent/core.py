@@ -1088,7 +1088,7 @@ class Agent:
     def key(self, name: str | None = None, device: str | None = None, settle: bool = False, *, list_keys: bool = False,
             long: bool = False, hold: float | None = None, times: int = 1, interval: float | None = None) -> str:
         """Presses a key: any Android key name (back, home, enter, volume-up, media-play-pause, ...)
-        or an Android key code. ``long`` holds each press for the device's long-press timeout (the
+        or ``code:N`` for an Android key code. ``long`` holds each press for the device's long-press timeout (the
         repeat Android reports as a long press); ``hold`` seconds holds it that long, repeating as a
         held key does. ``times`` presses it that often, ``interval`` seconds (default 0.1) from each
         release to the next press. ``list_keys`` prints every name with its code instead, without a
@@ -1895,7 +1895,7 @@ def key_listing() -> str:
     by_code: dict[int, str] = {}
     for key, code in CODES.items():
         by_code.setdefault(code, key)
-    rows = [f"{key}  {code}" + (f"  (keycode-{key})" if key.isdigit() else "") for key, code in sorted(CODES.items(), key=lambda kv: (kv[1], kv[0]))]
+    rows = [f"{key}  {code}" for key, code in sorted(CODES.items(), key=lambda kv: (kv[1], kv[0]))]
     rows += [f"{alias}  {code}  (= {by_code.get(code, code)})" for alias, code in KEY_ALIASES.items()]
     return "\n".join(rows)
 
