@@ -132,9 +132,9 @@ def parser() -> argparse.ArgumentParser:
 
     verb("sessions", "list sessions with their devices", common)
     verb("release", "end the session and detach its devices", common)
-    verb("devices", "list devices, properties and who holds them", common)
-    p = verb("unquarantine", "put a checked quarantined device back in service (retries its cleanup first)", common)
-    p.add_argument("serial")
+    p = verb("devices", "list devices, properties and who holds them; or unquarantine SERIAL: put a checked quarantined device back in service (retries its cleanup first)", common)
+    p.add_argument("action", nargs="?", choices=("unquarantine",), help="omit to list")
+    p.add_argument("serial", nargs="?", help="unquarantine: the device's serial")
     verb("detach", "detach one device without ending its session", on_device)
     p = verb("server-info", "daemon version, compatibility and configuration", common)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
@@ -415,7 +415,7 @@ def parser() -> argparse.ArgumentParser:
 
 # Verbs after which no app deaths are reported: they need no device or session (record, export
 # and the inventory work without one), end the session, or list deaths themselves.
-UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "unquarantine", "server-info", "history", "deaths"})
+UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "server-info", "history", "deaths"})
 
 
 def run(args: argparse.Namespace, agent: Agent) -> str:
@@ -433,8 +433,10 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "release":
         return agent.release()
     if v == "devices":
-        return agent.devices()
-    if v == "unquarantine":
+        if args.action is None:  # argparse gives a lone word to action, so serial is None here
+            return agent.devices()
+        if args.serial is None:
+            raise UsageError("devices unquarantine needs the device's SERIAL")
         return agent.unquarantine(args.serial)
     if v == "detach":
         return agent.detach(device)

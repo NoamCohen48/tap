@@ -419,7 +419,7 @@ A `QUARANTINED` device (see `devices`) is one Tap could not prove clean after a 
 run tests on it. To look at it and fix it: `attach SERIAL --quarantined` (MCP:
 `inspect_quarantined`), then screenshot, snapshot and act as usual; Tap still puts back what
 the sessions changed when you `detach`, and the device stays quarantined. When it is in a good
-state, `unquarantine SERIAL` puts it back in service and says what is still off. Ask the user
+state, `devices unquarantine SERIAL` puts it back in service and says what is still off. Ask the user
 before unquarantining a device you did not check. One marked `retried on attach` needs none of
 this: the next attach retries its restore.
 Synchronization, observed test-client liveness and passive watcher streams are not agent tools.

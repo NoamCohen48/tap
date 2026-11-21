@@ -616,7 +616,7 @@ class Agent:
             if device.quarantine_reason is not None:
                 text += (
                     f"\n{serial} is quarantined ({device.quarantine_reason}): inspect and fix it; "
-                    f"it stays quarantined after detach until `unquarantine {serial}`"
+                    f"it stays quarantined after detach until `devices unquarantine {serial}`"
                 )
             return text
 
