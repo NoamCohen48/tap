@@ -5,6 +5,7 @@ import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.ScreenNode
 import io.github.noamcohen48.tap.api.v1.SelectorCandidate
 import io.github.noamcohen48.tap.api.v1.StandardAction
+import io.github.noamcohen48.tap.api.v1.WindowKind
 
 /** One parsed screen before ref alignment: [nodes] have no `ref` and no `change` yet. */
 internal class Screen(
@@ -27,9 +28,10 @@ internal object ScreenSnapshots {
         val hierarchy = HierarchyParser.parse(xml)
         val synthesis = SelectorSynthesis(hierarchy)
         val selectors = if (candidates) synthesis.candidates() else synthesis.synthesise().map(::listOfNotNull)
+        val kinds = WindowKinds.of(hierarchy)
         return Screen(
             hierarchy.rotation,
-            hierarchy.nodes.map { screenNode(it, selectors[it.index], candidates) },
+            hierarchy.nodes.map { screenNode(it, selectors[it.index], candidates, kinds[it.window] ?: WindowKind.WINDOW_KIND_UNSPECIFIED) },
             hierarchy.displayWidth,
             hierarchy.displayHeight,
             hierarchy.densityDpi,
@@ -41,13 +43,14 @@ internal object ScreenSnapshots {
         node: DumpNode,
         synthesised: List<Synthesised>,
         candidates: Boolean = false,
+        windowKind: WindowKind = WindowKind.WINDOW_KIND_UNSPECIFIED,
     ): ScreenNode =
         ScreenNode
             .newBuilder()
             .setDepth(node.depth)
             .setWindowPackage(node.windowPackage)
             .setWindowIndex(node.window + 1)
-            .setWindowType(node.windowType)
+            .setWindowKind(windowKind)
             .apply {
                 node.className?.let { className = it }
                 node.resourceName?.let { resourceName = it }

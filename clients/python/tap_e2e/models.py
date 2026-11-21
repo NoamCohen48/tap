@@ -298,6 +298,24 @@ class NodeChange(enum.Enum):
     REMOVED = "REMOVED"
 
 
+class WindowKind(enum.Enum):
+    """What a ``ScreenNode``'s window is, as the server decides it for every client.
+    ``APPLICATION`` .. ``MAGNIFICATION_OVERLAY`` are Android's window types; ``STATUS_BAR`` and
+    ``NAVIGATION_BAR`` are the system bars (a SystemUI window along one whole display edge, at most
+    64 dp thick); the shade, volume panel and system dialogs are ``SYSTEM``. ``UNKNOWN``: the driver
+    did not say, or a kind this client does not know."""
+
+    APPLICATION = "APPLICATION"
+    INPUT_METHOD = "INPUT_METHOD"
+    SYSTEM = "SYSTEM"
+    ACCESSIBILITY_OVERLAY = "ACCESSIBILITY_OVERLAY"
+    SPLIT_SCREEN_DIVIDER = "SPLIT_SCREEN_DIVIDER"
+    MAGNIFICATION_OVERLAY = "MAGNIFICATION_OVERLAY"
+    STATUS_BAR = "STATUS_BAR"
+    NAVIGATION_BAR = "NAVIGATION_BAR"
+    UNKNOWN = "UNKNOWN"
+
+
 class SelectorKind(enum.Enum):
     """How a ``SelectorCandidate`` singles out its node. ``PLAIN``: one property (resource id,
     text, description or hint); ``COMBINED``: two of the node's own properties; ``ANCESTOR``: a
@@ -710,8 +728,8 @@ class ScreenNode:
     """The error the app set on the node (``TextView.setError``), if any."""
     window_index: int = 0
     """One-based window ordinal in this dump, not a persistent window ID; zero if unknown."""
-    window_type: int = 0
-    """Android accessibility window type: 1 application, 2 keyboard, 3 system; zero if unknown."""
+    window_kind: WindowKind = WindowKind.UNKNOWN
+    """What the node's window is: an app, the keyboard, the status or navigation bar, …"""
     editable: bool = False
     """The node is editable text (``AccessibilityNodeInfo.isEditable``), whatever its class."""
     actions: tuple[StandardAction, ...] = ()

@@ -62,8 +62,8 @@ covers the screen's bottom. The status and navigation bars are one header line e
 (`· status bar (6 nodes, --system-bars to show)`; MCP `system_bars`) and never appear in
 `--settle` diffs; `--hide-system-chrome` drops even their headers. The notification shade, quick
 settings, the volume panel and system dialogs ("isn't responding") always show in full.
-Suppression uses Android window types, never package guesses; Settings and permission dialogs
-remain application windows. Unknown types remain visible. Filters affect presentation only,
+Suppression uses the window kind the server reports, never package guesses; Settings and
+permission dialogs remain application windows. Unknown kinds remain visible. Filters affect presentation only,
 not refs, and cannot be combined with `--json`. Settle/action diffs also show context.
 
 ## Reading collections

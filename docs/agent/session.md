@@ -143,9 +143,9 @@ nothing is collapsed.
 header, valid only for that dump (not a persistent Android window ID). The MCP tool exposes
 `package`, `window`, `keyboard`, `hide_keyboard`, `system_bars` and `hide_system_chrome` with the
 same behavior.
-Suppression uses Android accessibility window types, not package-name guesses: application
-windows such as Settings and permission dialogs remain visible. Unknown types, including older
-drivers' dumps, remain visible. `--json` returns the complete structured snapshot
+Suppression uses the window kind the server reports, never package-name guesses: application
+windows such as Settings and permission dialogs remain visible, and windows of an unknown kind
+remain visible. `--json` returns the complete structured snapshot
 with selector candidates and cannot be combined with view filters.
 
 Settle/action diffs use the same contextual rendering. A changed descendant also surfaces its

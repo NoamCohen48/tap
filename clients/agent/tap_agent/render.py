@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tap_e2e import ElementSnapshot, NodeChange, NodeFlag, ScreenNode, ScreenSnapshot, StandardAction
+from tap_e2e import ElementSnapshot, NodeChange, NodeFlag, ScreenNode, ScreenSnapshot, StandardAction, WindowKind
 
 # What `snapshot` shows. INTERACTIVE: nodes an action can target; DEFAULT: those plus nodes with
 # text or a description (what a person reads); ALL: every node, layout containers included.
@@ -105,44 +105,13 @@ def node_line(node: ScreenNode, context: str = "") -> str:
     return "  ".join(parts)
 
 
-BAR_MAX_DP = 64
-"""The thickest a system bar is: status bars are 24 dp (taller around a camera cutout), navigation
-bars 48 dp. A shade, heads-up notification or system dialog is always thicker."""
-
-SYSTEM_UI = "com.android.systemui"
+_BARS = {WindowKind.STATUS_BAR: "status bar", WindowKind.NAVIGATION_BAR: "navigation bar"}
 
 
 def system_bars(snapshot: ScreenSnapshot) -> dict[int, str]:
     """The windows of ``snapshot`` that are the status bar or the navigation bar, by window
-    ordinal: a SystemUI system window that runs along one whole edge of the display and is at
-    most ``BAR_MAX_DP`` thick. Nothing else matches: on API 29 the shade is the status-bar
-    window grown to full screen, a volume panel does not span the edge, and a dialog is thicker.
-    Window titles are not used: the status bar has none and the others are translated. Empty when
-    the snapshot does not report the display."""
-    width, height, density = snapshot.display_width, snapshot.display_height, snapshot.density_dpi
-    if width <= 0 or height <= 0 or density <= 0:
-        return {}
-    bars: dict[int, str] = {}
-    window, first = 0, True
-    for node in snapshot.nodes:
-        if node.depth != 0 and not first:
-            continue
-        first = False
-        window = node.window_index or window + 1
-        if node.window_type != 3 or node.window_package != SYSTEM_UI or node.bounds is None:
-            continue
-        b = node.bounds
-        across = b.left <= 1 and b.right >= width - 1
-        down = b.top <= 1 and b.bottom >= height - 1
-        if across and (b.top <= 0 or b.bottom >= height):
-            thickness, name = b.bottom - b.top, "status bar" if b.top <= 0 else "navigation bar"
-        elif down and (b.left <= 0 or b.right >= width):
-            thickness, name = b.right - b.left, "navigation bar"
-        else:
-            continue
-        if 0 < thickness * 160 <= BAR_MAX_DP * density:
-            bars[window] = name
-    return bars
+    ordinal, as the server classified them (``WindowKind``)."""
+    return {node.window_index: _BARS[node.window_kind] for node in snapshot.nodes if node.window_kind in _BARS}
 
 
 @dataclass(frozen=True)
@@ -164,7 +133,7 @@ class SnapshotFilter:
         ``navigation bar``), or None when it is shown in full. ``--window N`` naming it shows it."""
         if self.window is not None:
             return None
-        if node.window_type == 2 and not self.keyboard:
+        if node.window_kind is WindowKind.INPUT_METHOD and not self.keyboard:
             return "keyboard"
         if window in bars and not self.system_bars:
             return bars[window]
@@ -174,7 +143,7 @@ class SnapshotFilter:
         return (
             (self.package is None or node.window_package == self.package)
             and (self.window is None or window == self.window)
-            and not (self.hide_keyboard and node.window_type == 2)
+            and not (self.hide_keyboard and node.window_kind is WindowKind.INPUT_METHOD)
             and not (self.hide_system_chrome and bars is not None and window in bars)
         )
 
@@ -362,7 +331,7 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
     # Removed is a partial forest: never reconstruct descendant context from it.
     # A removed node's ordinal is the previous snapshot's; a bar's node is matched by where it was.
     removed = [n for n in snapshot.removed if shown(n, level) and filters.accepts(n, n.window_index)
-               and not (filters.window is None and not filters.system_bars and _in_bar(n, snapshot, bars))]
+               and not (filters.window is None and not filters.system_bars and _in_bar(n))]
     gone_keys = [n for n in removed if filters.collapsed(n, n.window_index, {}) == "keyboard"]
     removed = [n for n in removed if n not in gone_keys]
     if removed or gone_keys:
@@ -376,17 +345,9 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
     return "\n".join(lines) if lines else "(no change)"
 
 
-def _in_bar(node: ScreenNode, snapshot: ScreenSnapshot, bars: dict[int, str]) -> bool:
-    """A SystemUI node that lay inside one of the bars this snapshot has."""
-    if node.window_type != 3 or node.window_package != SYSTEM_UI or node.bounds is None:
-        return False
-    b = node.bounds
-    for root in snapshot.nodes:
-        if root.depth == 0 and root.window_index in bars and root.bounds is not None:
-            r = root.bounds
-            if r.left <= b.left and b.right <= r.right and r.top <= b.top and b.bottom <= r.bottom:
-                return True
-    return False
+def _in_bar(node: ScreenNode) -> bool:
+    """A node of a status or navigation bar (a removed one carries its window's kind too)."""
+    return node.window_kind in _BARS
 
 
 def local_time(iso: str | None) -> str:

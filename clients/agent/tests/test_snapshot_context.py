@@ -4,6 +4,7 @@ from dataclasses import replace
 
 import pytest  # type: ignore[import-not-found]
 from tap_e2e import Bounds, NodeChange, NodeFlag, ScreenSnapshot
+from tap_e2e import _gen as pb
 
 from tap_agent import render
 from tap_agent.core import AgentError
@@ -20,10 +21,10 @@ PHONE = (1080, 2400, 420)  # the API 34 emulator: its status bar is 63 px = 24 d
 
 def settings():
     return (
-        _node("e1", depth=0, window_index=1, window_type=1, window_package="com.android.settings"),
-        _node("e2", depth=1, window_index=1, window_type=1, window_package="com.android.settings", interactive=True),
-        _node("e3", depth=2, window_index=1, window_type=1, window_package="com.android.settings", text="Network & internet"),
-        _node("e4", depth=2, window_index=1, window_type=1, window_package="com.android.settings", text="Wi-Fi, mobile, data"),
+        _node("e1", depth=0, window_index=1, window_kind=1, window_package="com.android.settings"),
+        _node("e2", depth=1, window_index=1, window_kind=1, window_package="com.android.settings", interactive=True),
+        _node("e3", depth=2, window_index=1, window_kind=1, window_package="com.android.settings", text="Network & internet"),
+        _node("e4", depth=2, window_index=1, window_kind=1, window_package="com.android.settings", text="Wi-Fi, mobile, data"),
     )
 
 
@@ -90,15 +91,15 @@ def test_labeled_groups_survive_collapsed_wrappers():
 
 def test_same_package_windows_and_filters_do_not_cross_roots():
     nodes = (
-        _node("e1", depth=0, window_index=1, window_type=1, interactive=True),
-        _node("e2", depth=1, window_index=1, window_type=1, text="Settings"),
-        _node("e3", depth=0, window_index=2, window_type=2, interactive=True, text="Keyboard"),
-        _node("e4", depth=0, window_index=3, window_type=3, interactive=True, text="Status bar",
+        _node("e1", depth=0, window_index=1, window_kind=1, interactive=True),
+        _node("e2", depth=1, window_index=1, window_kind=1, text="Settings"),
+        _node("e3", depth=0, window_index=2, window_kind=2, interactive=True, text="Keyboard"),
+        _node("e4", depth=0, window_index=3, window_kind=7, interactive=True, text="Status bar",
               window_package="com.android.systemui", bounds=Bounds(0, 0, 1080, 63)),
-        _node("e5", depth=0, window_index=4, window_type=0, interactive=True, text="Unknown"),
-        _node("e6", depth=0, window_index=5, window_type=1, interactive=True,
+        _node("e5", depth=0, window_index=4, window_kind=0, interactive=True, text="Unknown"),
+        _node("e6", depth=0, window_index=5, window_kind=1, interactive=True,
               window_package="com.android.permissioncontroller", text="Allow"),
-        _node("e7", depth=0, window_index=6, window_type=3, interactive=True, text="Shade",
+        _node("e7", depth=0, window_index=6, window_kind=3, interactive=True, text="Shade",
               window_package="com.android.systemui", bounds=Bounds(0, 0, 1080, 2400)),
     )
     result = render.snapshot_text(screen(*nodes, display=PHONE), render.INTERACTIVE,
@@ -141,9 +142,9 @@ def test_candidates_cannot_silently_ignore_filters(agent, kwargs):
 def _keyboard_screen():
     from tap_e2e import _gen as pb
     from tap_e2e._proto import screen_snapshot
-    app = pb.ScreenNode(ref="e1", window_package="com.shop", window_index=1, window_type=1, text="Search",
+    app = pb.ScreenNode(ref="e1", window_package="com.shop", window_index=1, window_kind=1, text="Search",
                         editable=True, interactive=True, flags=[pb.FLAG_ENABLED], change=pb.NODE_UNCHANGED)
-    keys = [pb.ScreenNode(ref=f"e{i}", window_package="com.android.inputmethod", window_index=2, window_type=2, depth=1 if i > 2 else 0,
+    keys = [pb.ScreenNode(ref=f"e{i}", window_package="com.android.inputmethod", window_index=2, window_kind=2, depth=1 if i > 2 else 0,
                           text=key, interactive=True, flags=[pb.FLAG_ENABLED, pb.FLAG_CLICKABLE], change=pb.NODE_ADDED)
             for i, key in enumerate(["", "q", "w", "e"], start=2)]
     return screen_snapshot(pb.ScreenSnapshotResponse(nodes=[app, *keys], removed=[]))
@@ -174,45 +175,24 @@ SYSTEM_UI = "com.android.systemui"
 
 
 def _window(ref, index, bounds, *, package=SYSTEM_UI, kind=3, text=None, change=NodeChange.NONE):
-    return _node(ref, change, depth=0, window_index=index, window_type=kind, window_package=package,
+    return _node(ref, change, depth=0, window_index=index, window_kind=kind, window_package=package,
                  bounds=Bounds(*bounds), interactive=True, text=text or ref)
 
 
-def test_system_bars_are_found_by_geometry_as_measured_on_both_devices():
-    # API 34 emulator, portrait: status bar only (gesture navigation has no bar window).
-    assert render.system_bars(screen(_window("app", 1, (0, 0, 1080, 2400), package="p", kind=1),
-                                     _window("bar", 2, (0, 0, 1080, 63)), display=PHONE)) == {2: "status bar"}
-    # API 29 Samsung, 720x1480 at 280 dpi: nav bar 84 px = 48 dp at the bottom, the Samsung Pay
-    # handle (another package, not full width) and the volume panel (a 27 dp top strip, not full
-    # width) are not bars.
-    samsung = (720, 1480, 280)
-    portrait = screen(
-        _window("app", 1, (0, 0, 720, 1480), package="p", kind=1),
-        _window("pay", 2, (186, 1438, 534, 1480), package="com.samsung.android.spaymini"),
-        _window("nav", 3, (0, 1396, 720, 1480)),
-        _window("volume", 4, (54, 0, 666, 77)),
-        _window("status", 5, (0, 0, 720, 42)),
-        display=samsung,
-    )
-    assert render.system_bars(portrait) == {3: "navigation bar", 5: "status bar"}
-    # Landscape: the nav bar is a full-height strip on the right.
-    landscape = screen(_window("nav", 1, (1396, 0, 1480, 720)), _window("status", 2, (0, 0, 1480, 42)),
-                       display=(1480, 720, 280))
-    assert render.system_bars(landscape) == {1: "navigation bar", 2: "status bar"}
-    # The expanded shade (API 29: the status-bar window itself), and the ANR dialog (package
-    # android, full width above the nav bar, 121 dp) are not bars.
-    assert render.system_bars(screen(_window("shade", 1, (0, 0, 720, 1480)),
-                                     _window("anr", 2, (0, 1057, 719, 1396), package="android"),
-                                     display=samsung)) == {}
-    # Without the display (an older driver), nothing is a bar.
-    assert render.system_bars(screen(_window("bar", 1, (0, 0, 1080, 63)))) == {}
+def test_system_bars_are_the_windows_the_server_calls_bars():
+    # The server decides (WindowKinds in the daemon, with the measured geometries); the agent reads it.
+    shot = screen(_window("app", 1, (0, 0, 1080, 2400), package="p", kind=pb.WINDOW_KIND_APPLICATION),
+                  _window("status", 2, (0, 0, 1080, 63), kind=pb.WINDOW_KIND_STATUS_BAR),
+                  _window("nav", 3, (0, 2274, 1080, 2400), kind=pb.WINDOW_KIND_NAVIGATION_BAR),
+                  _window("shade", 4, (0, 0, 1080, 2400), kind=pb.WINDOW_KIND_SYSTEM), display=PHONE)
+    assert render.system_bars(shot) == {2: "status bar", 3: "navigation bar"}
 
 
 def test_bars_collapse_to_a_header_and_stay_out_of_diffs():
     nodes = (
         _window("e1", 1, (0, 0, 1080, 2400), package="com.example", kind=1, text="Pay"),
-        _window("e2", 2, (0, 0, 1080, 63), text="12:01"),
-        _node("e3", depth=1, window_index=2, window_type=3, window_package=SYSTEM_UI, text="Wi-Fi",
+        _window("e2", 2, (0, 0, 1080, 63), kind=pb.WINDOW_KIND_STATUS_BAR, text="12:01"),
+        _node("e3", depth=1, window_index=2, window_kind=pb.WINDOW_KIND_STATUS_BAR, window_package=SYSTEM_UI, text="Wi-Fi",
               bounds=Bounds(900, 0, 960, 63)),
     )
     shot = screen(*nodes, display=PHONE)

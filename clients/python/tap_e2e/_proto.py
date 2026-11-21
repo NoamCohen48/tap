@@ -46,6 +46,7 @@ from .models import (
     ScreenSnapshot,
     SelectorCandidate,
     SelectorKind,
+    WindowKind,
     ConditionPart,
     SelectorNarrowing,
     NarrowingPart,
@@ -125,6 +126,10 @@ def node_flag(number: int) -> NodeFlag | None:
 
 def node_change(number: int) -> NodeChange:
     return _named(NodeChange, pb.NodeChange, number, "NODE_", NodeChange.NONE)
+
+
+def window_kind(number: int) -> WindowKind:
+    return _named(WindowKind, pb.WindowKind, number, "WINDOW_KIND_", WindowKind.UNKNOWN)
 
 
 def selector_kind(number: int) -> SelectorKind:
@@ -500,7 +505,7 @@ def screen_node(node: pb.ScreenNode) -> ScreenNode:
         depth=node.depth,
         window_package=node.window_package,
         window_index=node.window_index,
-        window_type=node.window_type,
+        window_kind=window_kind(node.window_kind),
         class_name=_optional(node, "class_name"),
         resource_name=_optional(node, "resource_name"),
         text=_optional(node, "text"),

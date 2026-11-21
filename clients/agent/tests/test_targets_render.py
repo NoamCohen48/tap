@@ -89,6 +89,10 @@ def _node(ref: str, change: NodeChange = NodeChange.NONE, **fields) -> ScreenNod
         "by_index": False,
     }
     values.update(fields)
+    if isinstance(values.get("window_kind"), int):  # a pb.WindowKind number, as the server sends it
+        from tap_e2e._proto import window_kind
+
+        values["window_kind"] = window_kind(values["window_kind"])
     return ScreenNode(ref=ref, change=change, **values)  # type: ignore[arg-type]
 
 
