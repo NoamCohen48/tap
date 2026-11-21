@@ -8,6 +8,11 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent event commands read by default and wait with `--wait`: `toast` reads retained toasts
+  (was `toast --history`) and `toast --wait` waits (was plain `toast`); `notification` lists and
+  `notification --wait` waits (was `notification await`); MCP `await_toast` is now `toast` with
+  `wait`. `wait-event KIND [TEXT]` (MCP `wait_event`) is now `watch KIND --until-first [--text
+  TEXT]` (MCP `watch` with `until_first`).
 - tap-agent `swipe` takes the finger's direction as `--finger up|down|left|right` (MCP `finger`)
   instead of a positional direction, which read like `scroll`'s opposite content direction.
   `scroll`, `swipe` and `fling` print both, e.g. `scrolled down (finger up)`.

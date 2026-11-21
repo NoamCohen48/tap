@@ -14,6 +14,7 @@ from .core import (
     APP_ACTIONS,
     APP_DATA_ACTIONS,
     CONDITIONS,
+    DEFAULT_WAIT,
     EXIT_OK,
     EXIT_USAGE,
     KEYBOARD_ACTIONS,
@@ -295,18 +296,19 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="dialog wait/action budget, at most 120s (default 10s)")
     p.add_argument("--accuracy", choices=ACCURACIES, help="pick Precise or Approximate first (location dialog, Android 12+)")
 
-    p = verb("toast", "wait for a toast, or read retained toast history", on_device)
+    p = verb("toast", "read retained toasts (oldest first, never consumes), or --wait for one", on_device)
     p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
     p.add_argument("--contains", action="store_true", help="text is only part of the toast")
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
-    p.add_argument("--history", action="store_true", help="read retained toasts immediately, oldest first; never consumes")
-    p.add_argument("--after-seq", type=int, default=0, help="history: exclusive sequence cursor (default 0)")
-    p.add_argument("--stream", default="", help="history: stream ID from the previous read")
-    p.add_argument("--json", dest="as_json", action="store_true", help="history: structured observations and cursor metadata")
-    p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
+    p.add_argument("--wait", action="store_true", help="wait for a matching toast (one shown in the last 3.5 s counts)")
+    p.add_argument("--after-seq", type=int, default=0, help="read: exclusive sequence cursor (default 0)")
+    p.add_argument("--stream", default="", help="read: stream ID from the previous read")
+    p.add_argument("--json", dest="as_json", action="store_true", help="read: structured observations and cursor metadata")
+    p.add_argument("--timeout", type=_command_duration, default=10.0, help="with --wait: at most 120s; default 10s")
 
-    p = verb("notification", "list the device's notifications, or wait for, open or dismiss one (read as data; the shade stays closed)", on_device, settle)
-    p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", default="list")
+    p = verb("notification", "list the device's notifications, --wait for one, or open or dismiss one (read as data; the shade stays closed)", on_device, settle)
+    p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", help="omit to list (or --wait)")
+    p.add_argument("--wait", action="store_true", help="wait until one matches and print it")
     p.add_argument("--title", help="the notification's title")
     p.add_argument("--text", help="the notification's text")
     p.add_argument("--contains", action="store_true", help="title/text are only part of it")
@@ -314,17 +316,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--button", help="open: press the action button with this title instead")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="command/wait budget, at most 120s; default 10s")
 
-    p = verb("wait-event", "wait for the next device event of a kind (from now on) and print it", on_device)
-    p.add_argument("kind", choices=EVENT_KINDS)
-    p.add_argument("text", nargs="?", help="part of the event's text, any case: a toast's message, a window's title or class, a click's label, an edit's text")
-    p.add_argument("--package", help="only this package's events (default: any app's)")
-    p.add_argument("--timeout", type=_command_duration, default=10.0, help="at most 120s; default 10s")
-
-    p = verb("watch", "print device events as they happen, one per line, until stopped (Ctrl-C), --for ends or the device is detached", on_device)
+    p = verb("watch", "print device events as they happen, one per line, until stopped (Ctrl-C), --for ends or the device is detached; or --until-first", on_device)
     p.add_argument("kinds", nargs="+", metavar="KIND", help=f"event kinds, each or comma lists: {', '.join(EVENT_KINDS)}")
     p.add_argument("--package", help="only this package's events (default: any app's)")
     p.add_argument("--for", dest="duration", type=_duration, default=None, metavar="DURATION", help="stop after this long (default: until stopped)")
     p.add_argument("--json", dest="as_json", action="store_true", help="one JSON object per line")
+    p.add_argument("--until-first", action="store_true", help="wait for the first event of one KIND from now on, print it and stop (exit 1 on --timeout)")
+    p.add_argument("--text", help="with --until-first: part of the event's text, any case: a toast's message, a window's title or class, a click's label, an edit's text")
+    p.add_argument("--timeout", type=_command_duration, default=None, help="with --until-first: at most 120s; default 10s")
 
     p = verb("wait", "wait until a target is visible (or gone, or exactly one node)", on_device)
     p.add_argument("target", help=TARGET_HELP)
@@ -352,7 +351,7 @@ def parser() -> argparse.ArgumentParser:
     p = verb("capture", "save current screen, hierarchy, device/driver logs and activity/window state; index external history references", on_device)
     p.add_argument("-o", "--out", help="new private directory, never overwrite (default .tap/agent/capture-<serial>-<time>)")
 
-    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device, expect)
+    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS) + " (visible waits until the app owns the focused window)", on_device, expect)
     p.add_argument("action", choices=APP_ACTIONS)
     p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
@@ -491,11 +490,11 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "notification":
         return agent.notification(
             args.action, args.title, args.text, device, contains=args.contains, package=args.package,
-            button=args.button, timeout=args.timeout, settle=settle,
+            button=args.button, timeout=args.timeout, settle=settle, wait=args.wait,
         )
     if v == "toast":
         return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout,
-                           history=args.history, after_seq=args.after_seq, stream=args.stream, as_json=args.as_json)
+                           wait=args.wait, after_seq=args.after_seq, stream=args.stream, as_json=args.as_json)
     if v == "scroll":
         return agent.scroll(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "swipe":
@@ -522,8 +521,11 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value, until=args.until)
-    if v == "wait-event":
-        return agent.wait_event(args.kind, args.text, device, package=args.package, timeout=args.timeout)
+    if v == "watch":  # --until-first; a plain watch streams from main
+        if args.duration is not None or args.as_json:
+            raise UsageError("--until-first prints one event: it takes no --for or --json")
+        return agent.watch_first(args.kinds, args.text, device, package=args.package,
+                                 timeout=DEFAULT_WAIT if args.timeout is None else args.timeout)
     if v == "settle":
         return agent.settle(device, full=args.full, timeout=args.timeout, package=args.package, stable_for=args.stable_for, signal=args.signal)
     if v == "screenshot":
@@ -569,7 +571,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
     agent = Agent(args.session)
     try:
-        if args.verb == "watch":
+        if args.verb == "watch" and not args.until_first:
+            if args.text is not None or args.timeout is not None:
+                raise UsageError("--text and --timeout go with --until-first")
             for line in agent.watch(args.kinds, getattr(args, "device", None), package=args.package, duration=args.duration, as_json=args.as_json):
                 print(line, flush=True)
             return EXIT_OK
