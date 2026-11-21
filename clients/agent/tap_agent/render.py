@@ -113,6 +113,13 @@ class SnapshotFilter:
     window: int | None = None
     hide_keyboard: bool = False
     hide_system_chrome: bool = False
+    keyboard: bool = False
+    """Show an input-method window's nodes; by default it is one header line with a count."""
+
+    def collapsed(self, node: ScreenNode) -> bool:
+        """The node is in a keyboard window that prints as its header only (``--window N``
+        naming it shows it in full)."""
+        return node.window_type == 2 and not self.keyboard and self.window is None
 
     def accepts(self, node: ScreenNode, window: int) -> bool:
         return (
@@ -215,16 +222,34 @@ def _header(row: _Row) -> str:
     return f"# {row.node.window_package}{suffix}"
 
 
+def _keyboard_header(row: _Row, count: int) -> str:
+    """A collapsed keyboard window: it is up (it covers the screen's bottom), its keys are not shown."""
+    nodes = f"{count} node{'s' if count != 1 else ''}"
+    return f"{_header(row)} · keyboard ({nodes}, --keyboard to show)"
+
+
+def _keyboard_counts(rows: list[_Row]) -> dict[int, int]:
+    counts: dict[int, int] = {}
+    for row in rows:
+        if row.visible and row.node.window_type == 2:
+            counts[row.window] = counts.get(row.window, 0) + 1
+    return counts
+
+
 def snapshot_text(snapshot: ScreenSnapshot, level: str = DEFAULT, *, filters: SnapshotFilter = SnapshotFilter()) -> str:
     """Ref-addressed outline. ``context`` describes a control, never its selector."""
     lines: list[str] = []
     window = None
-    for row in _rows(snapshot.nodes, level, filters):
+    rows = _rows(snapshot.nodes, level, filters)
+    keys = _keyboard_counts(rows)
+    for row in rows:
         if not row.visible:
             continue
         if row.window != window:
             window = row.window
-            lines.append(_header(row))
+            lines.append(_keyboard_header(row, keys[row.window]) if filters.collapsed(row.node) else _header(row))
+        if filters.collapsed(row.node):
+            continue
         group = "  (group)" if level == INTERACTIVE and not row.node.interactive else ""
         lines.append("  " * row.indent + node_line(row.node, row.context) + group)
     return "\n".join(lines) if lines else "(no visible nodes)"
@@ -242,6 +267,7 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
     lines: list[str] = []
     window = None
     rows = _rows(snapshot.nodes, level, filters)
+    keys = _keyboard_counts(rows)
     selected: set[int] = set()
     for i, row in enumerate(rows):
         node = row.node
@@ -262,6 +288,11 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         if i not in selected:
             continue
         node = row.node
+        if filters.collapsed(node):
+            if row.window != window:  # the keyboard changed: say it is up, not each key
+                window = row.window
+                lines.append(_keyboard_header(row, keys[row.window]))
+            continue
         if row.window != window:
             window = row.window
             lines.append(_header(row))
@@ -270,10 +301,14 @@ def diff_text(snapshot: ScreenSnapshot, level: str = DEFAULT, full: bool = False
         lines.append(f"{mark} " + "  " * row.indent + node_line(node, row.context) + group)
     # Removed is a partial forest: never reconstruct descendant context from it.
     removed = [n for n in snapshot.removed if shown(n, level) and filters.accepts(n, n.window_index)]
-    if removed:
+    gone_keys = [n for n in removed if filters.collapsed(n)]
+    removed = [n for n in removed if not filters.collapsed(n)]
+    if removed or gone_keys:
         lines.append("# removed")
         listed = removed if full else removed[:MAX_REMOVED]
         lines.extend(f"- {node_line(n)}" for n in listed)
+        if gone_keys:
+            lines.append(f"- keyboard ({len(gone_keys)} node{'s' if len(gone_keys) != 1 else ''})")
         if len(listed) < len(removed):
             lines.append(f"- … and {len(removed) - len(listed)} more")
     return "\n".join(lines) if lines else "(no change)"

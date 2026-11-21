@@ -91,6 +91,8 @@ Do:
 
 ## Snapshot: collapse the keyboard window by default
 
+Status: done (`--hide-keyboard` kept; `--window N` naming the keyboard expands it).
+
 Today `snapshot` shows every window unless `--hide-keyboard` / `--hide-system-chrome` is given.
 The keyboard's key nodes are noise for almost every task (agents type with `fill` and `type`), but
 the fact that a keyboard is up matters: it covers the bottom of the screen, and a tap behind it is

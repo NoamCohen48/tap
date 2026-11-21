@@ -56,6 +56,9 @@ container's @ref, not a text selector inferred from context. `(by index)` means 
 Window headers include a one-based `window N` ordinal (not a persistent ID). Narrow snapshots
 with `--package PACKAGE` (window-root package), `--window N`, `--hide-keyboard` or
 `--hide-system-chrome`. MCP uses `package`, `window`, `hide_keyboard`, `hide_system_chrome`.
+A keyboard window is one header line (`· keyboard (24 nodes, --keyboard to show)`) unless
+`--keyboard` (MCP `keyboard`) or `--window N` asks for its keys; it means the keyboard is up and
+covers the screen's bottom.
 Suppression uses Android window types, never package guesses; Settings and permission dialogs
 remain application windows. Unknown types remain visible. Filters affect presentation only,
 not refs, and cannot be combined with `--json`. Settle/action diffs also show context.

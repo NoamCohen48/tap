@@ -130,3 +130,35 @@ def test_invalid_window_is_rejected_before_rpc(agent, window):
 def test_candidates_cannot_silently_ignore_filters(agent, kwargs):
     with pytest.raises(AgentError, match="no view level or filter"):
         agent.snapshot(as_json=True, **kwargs)
+
+
+def _keyboard_screen():
+    from tap_e2e import _gen as pb
+    from tap_e2e._proto import screen_snapshot
+    app = pb.ScreenNode(ref="e1", window_package="com.shop", window_index=1, window_type=1, text="Search",
+                        editable=True, interactive=True, flags=[pb.FLAG_ENABLED], change=pb.NODE_UNCHANGED)
+    keys = [pb.ScreenNode(ref=f"e{i}", window_package="com.android.inputmethod", window_index=2, window_type=2, depth=1 if i > 2 else 0,
+                          text=key, interactive=True, flags=[pb.FLAG_ENABLED, pb.FLAG_CLICKABLE], change=pb.NODE_ADDED)
+            for i, key in enumerate(["", "q", "w", "e"], start=2)]
+    return screen_snapshot(pb.ScreenSnapshotResponse(nodes=[app, *keys], removed=[]))
+
+
+def test_the_keyboard_window_collapses_to_its_header_unless_asked():
+    from tap_agent import render
+    shot = _keyboard_screen()
+    collapsed = render.snapshot_text(shot, render.ALL)
+    assert "# com.android.inputmethod · window 2 · keyboard (4 nodes, --keyboard to show)" in collapsed
+    assert '"q"' not in collapsed and '"Search"' in collapsed
+    shown = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(keyboard=True))
+    assert '"q"' in shown and "--keyboard to show" not in shown
+    hidden = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(hide_keyboard=True))
+    assert "inputmethod" not in hidden
+    named = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(window=2))
+    assert '"q"' in named
+    diff = render.diff_text(shot, render.ALL)
+    assert diff.splitlines() == ["# com.android.inputmethod · window 2 · keyboard (4 nodes, --keyboard to show)"]
+
+
+def test_keyboard_and_hide_keyboard_together_are_refused(agent):
+    with pytest.raises(AgentError, match="choose one"):
+        agent.snapshot(keyboard=True, hide_keyboard=True)

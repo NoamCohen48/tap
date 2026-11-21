@@ -119,11 +119,18 @@ Narrow the output without changing refs:
 tap-agent snapshot -i --package com.android.settings
 tap-agent snapshot --window 1
 tap-agent snapshot -i --hide-keyboard --hide-system-chrome
+tap-agent snapshot --keyboard      # the keyboard's keys too
 ```
+
+A keyboard window prints as one line by default, `# <ime package> · window N · keyboard (24 nodes,
+--keyboard to show)`: it says the keyboard is up (it covers the bottom of the screen, and a tap
+behind it is refused as covered) without listing its keys. `--keyboard` (MCP `keyboard`) or
+`--window N` naming it shows its nodes; `--hide-keyboard` drops even the header. `--settle`
+diffs collapse it the same way.
 
 `--package` matches the window-root package. `--window` uses the one-based ordinal in the
 header, valid only for that dump (not a persistent Android window ID). The MCP tool exposes
-`package`, `window`, `hide_keyboard` and `hide_system_chrome` with the same behavior.
+`package`, `window`, `keyboard`, `hide_keyboard` and `hide_system_chrome` with the same behavior.
 Suppression uses Android accessibility window types, not package-name guesses: application
 windows such as Settings and permission dialogs remain visible. System-type windows (including
 system panels) are hidden only when requested. Unknown types, including older drivers' dumps,

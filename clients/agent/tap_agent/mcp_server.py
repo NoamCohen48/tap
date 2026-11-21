@@ -321,7 +321,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         as_json: Annotated[bool, Field(description="The complete structured SDK snapshot with selector candidates; use the default view without filters.")] = False,
         package: Annotated[str, Field(description="Only windows rooted in this package.")] = "",
         window: Annotated[StrictInt | None, Field(ge=1, description="One-based window ordinal from the snapshot header, not a persistent ID.")] = None,
-        hide_keyboard: Annotated[bool, Field(description="Hide input-method windows. Unknown window types remain visible.")] = False,
+        keyboard: Annotated[bool, Field(description="Show the keyboard window's nodes; by default it is one header line with a count.")] = False,
+        hide_keyboard: Annotated[bool, Field(description="Hide input-method windows, header included. Unknown window types remain visible.")] = False,
         hide_system_chrome: Annotated[bool, Field(description="Hide system-type windows, not system-owned apps such as Settings.")] = False,
         session: Session = "",
         device: Device = "",
@@ -334,7 +335,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         level = {"default": render.DEFAULT, "interactive": render.INTERACTIVE, "all": render.ALL}[view]
         return await call(session, lambda a: a.snapshot(device or None, level, as_json=as_json,
                                                        package=package or None, window=window,
-                                                       hide_keyboard=hide_keyboard, hide_system_chrome=hide_system_chrome))
+                                                       hide_keyboard=hide_keyboard, hide_system_chrome=hide_system_chrome, keyboard=keyboard))
 
     @mcp.tool(name="inspect", annotations=READ_ONLY)
     async def inspect(
