@@ -459,9 +459,6 @@ class RecordStore:
 
     def device(self, identifier: str, sequence: int, serial: str, attached_device_id: str | None = None) -> None:
         with self._db(write=True) as connection:
-            recording = connection.execute("SELECT protected,log_devices FROM records WHERE id=?", (identifier,)).fetchone()
-            if recording is not None and recording["protected"] and _decode(recording["log_devices"]).get(serial) != attached_device_id:
-                raise RecordError("device is not in this recording's start set; stop/start a recording with that device attached; no input was sent")
             previous = connection.execute("SELECT serial FROM steps WHERE record_id=? AND seq=?", (identifier, sequence)).fetchone()
             if previous is None or (previous[0] is not None and previous[0] != serial):
                 raise RecordError("one recorded agent step cannot span devices; no new input was sent")
@@ -560,6 +557,17 @@ class RecordStore:
         return {"format": FORMAT, "artifacts": artifacts, "recording": recording.get("protected"), **({"log_capture": log_status} if log_status is not None else {}), "markers": markers, **({"range": {key: {"name": marker["name"], "cursor": marker["cursor"]} for key, marker in bounds.items()}} if bounds else {}), **{key: recording[key] for key in ("name", "session", "connection_id", "started_at", "stopped_at", "stop_reason")},
             "state": "live" if recording["state"] == "recording" else "stopped",
             "complete": recording["state"] == "stopped" and (log_status is None or log_status.get("complete") is True) and all(s["outcome"]["status"] not in ("running", "unknown", "interrupted") for s in steps), "steps": steps}
+
+    def connections(self, session: str) -> list[str]:
+        """The server connections this session's histories were kept for, newest first."""
+        if not self._exists():
+            return []
+        try:
+            with self._db() as connection:
+                return list(dict.fromkeys(row[0] for row in connection.execute(
+                    "SELECT connection_id FROM records WHERE session=? ORDER BY rowid DESC", (session,))))
+        except _NoCatalog:
+            return []
 
     def marker_anchor(self, name: str, devices: tuple[str, ...] = ()) -> list[dict[str, Any]]:
         if not self._exists():

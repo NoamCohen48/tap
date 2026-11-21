@@ -4,25 +4,29 @@ import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpc
 import io.github.noamcohen48.tap.api.v1.ClientConnectionServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
-import io.github.noamcohen48.tap.api.v1.DeleteLogRecordingRequest
+import io.github.noamcohen48.tap.api.v1.DeleteHistoryRecordingRequest
 import io.github.noamcohen48.tap.api.v1.DeviceCall
 import io.github.noamcohen48.tap.api.v1.DeviceLogsRequest
 import io.github.noamcohen48.tap.api.v1.Done
 import io.github.noamcohen48.tap.api.v1.FailureReason
+import io.github.noamcohen48.tap.api.v1.HistoryLogFilter
+import io.github.noamcohen48.tap.api.v1.HistorySelection
 import io.github.noamcohen48.tap.api.v1.InfoRequest
 import io.github.noamcohen48.tap.api.v1.InfoResponse
-import io.github.noamcohen48.tap.api.v1.ListLogRecordingsRequest
+import io.github.noamcohen48.tap.api.v1.ListHistoryRecordingsRequest
 import io.github.noamcohen48.tap.api.v1.LogEntry
 import io.github.noamcohen48.tap.api.v1.LogPriority
 import io.github.noamcohen48.tap.api.v1.MarkLogRequest
+import io.github.noamcohen48.tap.api.v1.StartHistoryRecordingRequest
+import io.github.noamcohen48.tap.api.v1.ReadHistoryRequest
 import io.github.noamcohen48.tap.api.v1.ReadLogRequest
 import io.github.noamcohen48.tap.api.v1.RedactLogRequest
-import io.github.noamcohen48.tap.api.v1.StartLogRecordingRequest
-import io.github.noamcohen48.tap.api.v1.StopLogRecordingRequest
+import io.github.noamcohen48.tap.api.v1.StopHistoryRecordingRequest
 import io.github.noamcohen48.tap.api.v1.TypeText
 import io.github.noamcohen48.tap.api.v1.WatchLogRequest
 import io.github.noamcohen48.tap.host.Adb
 import io.github.noamcohen48.tap.host.FakeProcess
+import io.github.noamcohen48.tap.host.LogcatCapture
 import io.github.noamcohen48.tap.host.LogcatLine
 import io.github.noamcohen48.tap.host.MediaClock
 import io.grpc.Context
@@ -55,31 +59,41 @@ import kotlin.test.assertTrue
 
 class DeviceLogServiceTest {
     @Test
-    fun `protected evidence remains readable through the original ids after release`(): Unit =
+    fun `protected history remains readable after release`(): Unit =
         runBlocking {
-            AttachedHarness.with(Device(), captureLogs = true) {
-                val log = attached.logs!!
+            val device = Device()
+            AttachedHarness.with(device, captureLogs = true) {
+                val log = attached.logs!!.also { device.echo = it }
                 log.line(line("before"))
-                logs.startLogRecording(
-                    StartLogRecordingRequest
-                        .newBuilder()
-                        .setClientConnectionId(connectionId)
-                        .setName("flow")
-                        .build(),
-                )
+                val id =
+                    history
+                        .startHistoryRecording(
+                            StartHistoryRecordingRequest
+                                .newBuilder()
+                                .setConnectionId(connectionId)
+                                .setName("flow")
+                                .build(),
+                        ).recording.id
                 log.line(line("inside"))
-                val saved = logs.stopLogRecording(StopLogRecordingRequest.newBuilder().setName("flow").build()).recording
-                assertTrue(saved.complete)
+                val saved = history.stopHistoryRecording(StopHistoryRecordingRequest.newBuilder().setRecordingId(id).build()).recording
+                assertTrue(saved.issuesList.isEmpty())
                 log.line(line("after"))
                 daemon.disconnectClient(connectionId, "test release")
-                val replies = logs.readLog(request().setRecording("flow").build()).toList()
-                assertEquals(listOf("inside"), messages(replies.flatMap { it.entriesList }))
-                assertTrue(replies.first().clockId.isNotEmpty())
-                assertEquals(0, replies.sumOf { it.dropped })
+                val response =
+                    history.readHistory(
+                        ReadHistoryRequest
+                            .newBuilder()
+                            .setSelection(HistorySelection.newBuilder().setRecordingId(id))
+                            .setIncludeLogs(true)
+                            .build(),
+                    )
+                assertEquals(listOf("inside"), response.entriesList.filter { it.hasLine() }.map { it.line.message })
+                assertTrue(response.sourcesList.all { it.clockId.isNotEmpty() })
+                assertTrue(response.issuesList.isEmpty())
                 assertEquals(
                     "flow",
-                    logs
-                        .listLogRecordings(ListLogRecordingsRequest.getDefaultInstance())
+                    history
+                        .listHistoryRecordings(ListHistoryRecordingsRequest.getDefaultInstance())
                         .recordingsList
                         .single()
                         .name,
@@ -88,16 +102,65 @@ class DeviceLogServiceTest {
         }
 
     @Test
-    fun `recording caller errors are typed rather than INTERNAL`(): Unit =
+    fun `a stop keeps the lines logged before it that the capture had not delivered yet`(): Unit =
+        runBlocking {
+            val device = Device()
+            AttachedHarness.with(device, captureLogs = true) {
+                val log = attached.logs!!.also { device.echo = it }
+                val id = startRecording("flow")
+                device.lagging += line("late") // logged before the stop, still in logcat's backlog
+                history.stopHistoryRecording(StopHistoryRecordingRequest.newBuilder().setRecordingId(id).build())
+                log.line(line("after"))
+
+                val response = readRecording(id)
+                assertEquals(listOf("late"), response.entriesList.filter { it.hasLine() }.map { it.line.message })
+                // The fake device has no crash log, so its crash follower may leave a gap on the connection's source.
+                assertEquals(emptyList<String>(), response.entriesList.filter { it.hasGap() && it.sourceId == attached.id }.map { it.gap })
+            }
+        }
+
+    @Test
+    fun `a device whose log could not catch up gets a gap inside the stopped recording`(): Unit =
+        runBlocking {
+            AttachedHarness.with(Device(), captureLogs = true) {
+                val id = startRecording("flow")
+                history.stopHistoryRecording(StopHistoryRecordingRequest.newBuilder().setRecordingId(id).build())
+
+                val gaps = readRecording(id).entriesList.filter { it.hasGap() && it.sourceId == attached.id }.map { it.gap }
+                assertTrue(gaps.single().contains("had not caught up"), gaps.toString())
+            }
+        }
+
+    private suspend fun AttachedHarness.startRecording(name: String): String =
+        history
+            .startHistoryRecording(
+                StartHistoryRecordingRequest
+                    .newBuilder()
+                    .setConnectionId(connectionId)
+                    .setName(name)
+                    .build(),
+            ).recording.id
+
+    private suspend fun AttachedHarness.readRecording(id: String) =
+        history.readHistory(
+            ReadHistoryRequest
+                .newBuilder()
+                .setSelection(HistorySelection.newBuilder().setRecordingId(id))
+                .setIncludeLogs(true)
+                .build(),
+        )
+
+    @Test
+    fun `protection caller errors are typed rather than INTERNAL`(): Unit =
         runBlocking {
             AttachedHarness.with(Device(), captureLogs = true) {
                 assertEquals(
                     Status.Code.INVALID_ARGUMENT,
                     status {
-                        logs.startLogRecording(
-                            StartLogRecordingRequest
+                        history.startHistoryRecording(
+                            StartHistoryRecordingRequest
                                 .newBuilder()
-                                .setClientConnectionId(connectionId)
+                                .setConnectionId(connectionId)
                                 .setName("../bad")
                                 .build(),
                         )
@@ -106,20 +169,22 @@ class DeviceLogServiceTest {
                 assertEquals(
                     Status.Code.NOT_FOUND,
                     status {
-                        logs.stopLogRecording(StopLogRecordingRequest.newBuilder().setName("absent").build())
+                        history.stopHistoryRecording(StopHistoryRecordingRequest.newBuilder().setRecordingId("absent").build())
                     }.status.code,
                 )
-                logs.startLogRecording(
-                    StartLogRecordingRequest
-                        .newBuilder()
-                        .setClientConnectionId(connectionId)
-                        .setName("flow")
-                        .build(),
-                )
+                val id =
+                    history
+                        .startHistoryRecording(
+                            StartHistoryRecordingRequest
+                                .newBuilder()
+                                .setConnectionId(connectionId)
+                                .setName("flow")
+                                .build(),
+                        ).recording.id
                 assertEquals(
                     Status.Code.FAILED_PRECONDITION,
                     status {
-                        logs.deleteLogRecording(DeleteLogRecordingRequest.newBuilder().setName("flow").build())
+                        history.deleteHistoryRecording(DeleteHistoryRecordingRequest.newBuilder().setRecordingId(id).build())
                     }.status.code,
                 )
             }
@@ -144,6 +209,23 @@ class DeviceLogServiceTest {
     /** A device whose logcat child prints nothing: the tests write the lines themselves. */
     private class Device : Adb("fake-adb") {
         val children = CopyOnWriteArrayList<FakeProcess>()
+
+        /** Where a line the daemon logs on the device arrives; null: logging it fails. */
+        var echo: LogcatCapture.Sink? = null
+
+        /** Lines the device logged before the daemon's, still on their way to the capture. */
+        val lagging = mutableListOf<LogcatLine>()
+
+        override suspend fun logLine(
+            serial: String,
+            tag: String,
+            message: String,
+        ) {
+            val sink = echo ?: throw java.io.IOException("device offline")
+            lagging.forEach(sink::line)
+            lagging.clear()
+            sink.line(LogcatLine(1_700_000_000_000, 2000, 10, 11, 'I', tag, message))
+        }
 
         override fun startLogcat(
             serial: String,
@@ -183,6 +265,79 @@ class DeviceLogServiceTest {
 
     private suspend fun AttachedHarness.read(configure: ReadLogRequest.Builder.() -> Unit = {}): List<LogEntry> =
         logs.readLog(request().apply(configure).build()).toList().flatMap { it.entriesList }
+
+    @Test
+    fun `history reads between markers newest first and pages on with the cursor alone`(): Unit =
+        runBlocking {
+            AttachedHarness.with(Device(), captureLogs = true) {
+                val log = attached.logs!!
+                log.line(line("before"))
+                mark("start")
+                log.line(line("one"))
+                log.line(line("two"))
+                log.line(line("three"))
+                mark("end")
+                log.line(line("after"))
+
+                suspend fun read(build: ReadHistoryRequest.Builder.() -> Unit) =
+                    history.readHistory(
+                        ReadHistoryRequest
+                            .newBuilder()
+                            .setSelection(HistorySelection.newBuilder().addSourceIds(attached.id))
+                            .setIncludeLogs(true)
+                            .apply(build)
+                            .build(),
+                    )
+
+                fun texts(response: io.github.noamcohen48.tap.api.v1.ReadHistoryResponse) =
+                    response.entriesList.map { if (it.hasMarker()) "marker:${it.marker}" else it.line.message }
+
+                // A marker bound is the marker's own position: lines received in its millisecond
+                // but before it stay out.
+                assertEquals(
+                    listOf("marker:start", "one", "two", "three", "marker:end"),
+                    texts(
+                        read {
+                            fromMarker = "start"
+                            untilMarker = "end"
+                        },
+                    ),
+                )
+                val newest =
+                    read {
+                        fromMarker = "start"
+                        untilMarker = "end"
+                        newestFirst = true
+                        limit = 2
+                    }
+                assertEquals(listOf("marker:end", "three"), texts(newest))
+                val rest = history.readHistory(ReadHistoryRequest.newBuilder().setCursor(newest.page.nextCursor).setLimit(10).build())
+                assertEquals(listOf("two", "one", "marker:start"), texts(rest))
+                assertEquals("", rest.page.nextCursor)
+
+                assertEquals(
+                    Status.Code.INVALID_ARGUMENT,
+                    status {
+                        history.readHistory(
+                            ReadHistoryRequest
+                                .newBuilder()
+                                .setCursor(newest.page.nextCursor)
+                                .setFromMarker("end")
+                                .build(),
+                        )
+                    }.status.code,
+                )
+                assertEquals(Status.Code.NOT_FOUND, status { read { fromMarker = "absent" } }.status.code)
+                assertEquals(
+                    Status.Code.INVALID_ARGUMENT,
+                    status {
+                        history.readHistory(
+                            ReadHistoryRequest.newBuilder().setLogFilter(HistoryLogFilter.newBuilder().addTags("App")).build(),
+                        )
+                    }.status.code,
+                )
+            }
+        }
 
     private suspend fun AttachedHarness.mark(name: String): Long =
         logs

@@ -1,9 +1,8 @@
 # Device logs
 
 For the agent's merged reader use `tap-agent history --logs` (not a separate `log` command).
-Repeated `--device` filters apply before step pagination. Log filters imply logs but never
-remove independent crashes/ANRs or capture gaps; `--tail N` reports omitted rows, while
-`--limit` limits only agent intent. `history mark NAME` / `history redact REGEX` control this
+Repeated `--device` filters select devices. Log filters imply logs but never remove
+crashes/ANRs, calls or capture gaps; `--limit` counts entries of the merged timeline. `history mark NAME` / `history redact REGEX` control this
 session's held attachments. See [the agent guide](../agent/session.md#one-history-reader).
 `tap logs` is daemon.log; `tap logs driver --serial SERIAL` reads the current driver buffer.
 
@@ -125,59 +124,63 @@ Add `--state-dir DIR` to either command for a separate daemon. Settings work whi
 a running daemon applies them on its next append/read or maintenance pass (within a minute),
 without restarting logcat. See [Server configuration](server.md#device-log-retention).
 
-For an intentional reproduction, protect a named range instead of hoping it stays in rolling
-history. Using an open `client`, its `connection` and an attached `app`:
+## History after the script
+
+The server keeps every connection's calls, the crashes and ANRs on its devices and each
+attachment's device log, after release and after a restart, within the retention policy above.
+`client.history` reads them; it needs no live connection or attachment. Using an open `client`,
+its `connection` and an attached `app`:
 
 ```python
-client.log_recordings.start(connection, "checkout")
+recording = client.history.start_recording(connection, "checkout")
 app.element(text("Pay")).tap()
 app.wait(text("Paid")).visible()
-client.log_recordings.stop("checkout")
+client.history.stop_recording(recording)
 connection.close()
 
-# The daemon still runs; the original connection no longer needs to exist.
-evidence = client.log_recordings.export("checkout", logs=True)
-print(evidence.text)  # durable RPC events and device logs
-json_text = evidence.to_json()  # tap-history/1; no implicit file
-for serial, entries in client.log_recordings.read("checkout").items():
-    print(serial, entries.capture_error, entries.text)
-client.log_recordings.delete("checkout")  # explicitly remove protection
+# The server still runs; the connection no longer needs to exist.
+page = client.history.read(recording=recording, logs=True)
+print(page.text)        # calls, crashes/ANRs, gaps and device-log lines, oldest first
+json_text = page.to_json()  # tap-history/2; no implicit file
+client.history.delete_recording(recording)  # its range may now expire like the rest
 ```
 
-Kotlin exposes the same operations through `client.logRecordings`, including
-`export("checkout", logs = true)` returning `.text` / `.toJson()`. For ordinary post-script
-evidence use Python `history(original_connection_id, logs=True)` or Kotlin
-`history(originalConnectionId, logs = true)`; no device reattachment or CLI is needed. See
-[history and recordings](../agent/export.md#sdk-exports).
+A read returns one page (`limit` entries, default 200) of one timeline merged across sources,
+ordered by the time the server received each entry. `page.next_page()` reads the next page
+with the same bounds and filters; `client.history.pages(...)` iterates all of them. Select with
+`connections=`, `sources=`, `serials=` or `recording=` (every list given must match). Bound it
+by time with `since=` / `until=` (Unix seconds, an aware `datetime` or an ISO 8601 string with
+its zone; `since` included, `until` not), or by marker with `since_marker=` / `until_marker=`:
+each selected device's newest marker with that name, the marker included. Select the
+connection too, so another connection's marker of the same name does not move the bound.
+`newest_first=True` reads backwards from the end, for "what just happened". `step=` keeps one
+SDK step: its calls, the crashes and gaps while they ran, and the device log from its first
+action to its last.
 
-Crashes/ANRs are independently retained, including between calls, and are included in SDK
-exports even when `logs=False`. Redacted messages and available stacks are in JSON;
-`evidence.render_text(details=True)` / `evidence.renderText(details = true)` expands text.
-Time bounds (`from_time`/`until_time`, or Kotlin `fromTime`/`untilTime`) select the full host
-receipt window, not only step durations. The agent offers `history --last 30s --logs --details`.
-No flag can retrieve an uncaptured historical screen, full inaccessible ANR dump or expired log.
+Device-log lines are only included with `logs=True`; log filters (`packages`, `min_priority`,
+`tags`, `grep`, `actions=False`, `driver_lines=True`) need it and never hide calls, crashes or
+gaps. A **gap** is an entry: the capture was interrupted at that point. What the server cannot
+place in time is an **issue** on the page (`page.issues`: entries of the range that retention
+removed, a source that cannot be read, a recording whose capture failed, a package filter the
+server cannot resolve), printed as a `WARNING:` line. A read without `since` starts at the
+oldest kept entry, so it reports no removed entries for that. `page.render_text(details=True)` adds crash stacks.
+Kotlin has no `client.history` yet; read history from Python or `tap-agent history`.
 
-A recording protects the attachment set present at start. It does not restart capture, record video or automatically
-replay a flow. Boundaries are receipt cursors: a logcat line delivered after stop may fall
-outside the range even if the app emitted it earlier. Complete capture is not a passing test.
+A recording belongs to its connection (two connections may use the same name) and keeps every
+source of that connection from start to stop, including devices attached after it started,
+past rolling eviction, and stops by itself when the connection closes.
+`client.history.recordings(connections=[connection])` lists them. It does not record
+video or replay a flow, and its bounds are receipt times: a logcat line delivered after stop may
+fall outside it even if the app logged it earlier.
 
-After an unexpected failure, ordinary retained logs can be discovered without reattaching:
+`client.history.sources()` lists what is kept: one source per attachment's device log and one
+per connection, with `closed`, `retained_bytes` and per-source issues. Package-name filters
+need the server to know the attachment's app UIDs.
 
-```python
-for archive in client.log_recordings.archives():
-    entries = client.log_recordings.read_archive(archive, min_priority="warn")
-    print(archive.serial, entries.dropped, entries.capture_error, entries.text)
-```
-
-Pass the original connection id to `archives(connection_id)` to narrow discovery. Retained
-reads support tag, priority and message filters; package-name filtering needs a live
-attachment. SDK `read` methods collect their results, so narrow filters for large recordings.
-
-Protected ranges bypass rolling eviction, not hard disk limits. Storage failures preserve
-older evidence and report `capture_error`; missing entries are counted in `dropped` before
-user filtering. A stopped recording stays protected until explicitly deleted. An interrupted
-open recording becomes stopped and incomplete on daemon restart. Reattach to resume durable
-capture after a storage failure; raising a limit does not recover the missing interval.
+Recordings bypass rolling eviction, not hard disk limits. A storage failure keeps older
+evidence and is reported as an `incomplete` issue. A stopped recording is kept until deleted;
+an open one becomes stopped on a server restart. Reattach to resume capture after a storage
+failure; raising a limit does not recover the missing interval.
 
 ## Secrets
 

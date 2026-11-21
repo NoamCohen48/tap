@@ -1,141 +1,159 @@
-"""Post-script SDK exports preserve actual calls, uncertainty, gaps and original identities."""
+"""``client.history``: typed reads of the server's kept history and history recordings."""
+import datetime
 import json
 
-from tap_e2e import HistoryExport, TapClient
+import pytest
+
+from tap_e2e import HistoryIssueKind, HistoryPage, ServerError, TapClient, text
 from tap_e2e import _gen as pb
 
 from .conftest import TOKEN
 
 
-def event(cursor=1, *, unknown=False):
-    return pb.LogEntry(cursor=cursor, host_time_ms=1000 + cursor, event=pb.LoggedEvent(seq=cursor,
-        at_epoch_ms=1000 + cursor, duration_ms=20, serial="device", clock_id="original-clock", attached_device_id="original-attachment",
-        started_monotonic_ns=9_007_199_254_740_993, finished_monotonic_ns=9_007_199_254_740_994,
-        device=pb.DeviceCall(operation="set_dark_mode", enabled=True), indeterminate=unknown))
+def line(cursor: int, message: str, *, at: int, priority=pb.LOG_PRIORITY_INFO, tag="App") -> pb.LogEntry:
+    return pb.LogEntry(cursor=cursor, host_time_ms=at, line=pb.LogLine(priority=priority, tag=tag, message=message, pid=7))
 
 
-def archive(fake, connection_id="original"):
-    fake.device_log.clock_id = "original-clock"
-    fake.device_log.archives = [pb.RetainedLog(client_connection_id=connection_id,
-        attached_device_id="original-events", events=True, closed=True, clock_id="original-clock")]
+@pytest.fixture
+def client(fake):
+    with TapClient.create(fake.address, TOKEN) as tap:
+        yield tap
 
 
-def test_history_uses_original_ids_without_creating_a_connection(fake):
-    archive(fake)
-    fake.device_log.entries = [event()]
-    with TapClient.create(fake.address, TOKEN) as client:
-        result = client.log_recordings.history("original")
-        assert result.data["complete"]
-        saved = result.data["events"][0]
-        assert saved["device"] == {"operation": "set_dark_mode", "enabled": True}
-        assert saved["started_monotonic_ns"] == "9007199254740993"
-        assert saved["clock_id"] == "original-clock"
-        assert saved["attached_device_id"] == "original-attachment"
-        assert "set_dark_mode" in result.text
-        assert json.loads(result.to_json()) == result.data
-        assert result.data["event_capture"][0]["clock_id"] == "original-clock"
-        assert not client.log_recordings.archives("original")  # Device-log discovery excludes event streams.
-        assert all(r.client_connection_id == "original" for r in fake.device_log.requests)
+def test_a_read_after_release_has_typed_calls_deaths_and_log_lines(fake, client):
+    connection = client.connect("script")
+    device = connection.attach_device("emulator-5554")
+    device.app("com.shop").launch()
+    fake.history.logs["attached-emulator-5554"] = [line(1, "starting", at=1_790_000_000_001)]  # before the call
+    fake.history.death(connection.id, "emulator-5554", sequence=1, kind=pb.AppDeath.KIND_CRASH,
+        package_name="com.shop", pid=42, exception_class="java.lang.IllegalStateException", message="Out of stock",
+        stack_trace="at Shop.pay\nat Shop.main")
+    connection.close()
+
+    page = client.history.read(connections=[connection.id], logs=True)
+
+    kinds = [entry.kind for entry in page]
+    assert kinds == ["line", "call", "death"]
+    call = page.entries[1].call
+    assert call is not None and call.app == {"operation": "launch", "package_name": "com.shop"}
+    death = page.entries[2].death
+    assert death is not None and death.package_name == "com.shop" and death.serial == "emulator-5554"
+    assert page.entries[2].attached_device_id == "attached-emulator-5554"
+    assert {s.id: s.is_device_log for s in page.sources} == {connection.id: False, "attached-emulator-5554": True}
+    assert "CRASH com.shop (pid 42): java.lang.IllegalStateException: Out of stock" in page.text
+    assert "at Shop.pay" not in page.text and "| at Shop.pay" in page.render_text(details=True)
+    document = json.loads(page.to_json())
+    assert document["format"] == "tap-history/2"
+    assert [e["kind"] for e in document["entries"]] == kinds
+    assert document["entries"][2]["death"]["stack_trace"] == "at Shop.pay\nat Shop.main"
+    assert page.bytes == page.to_json().encode() and page.media_type == "application/json"
 
 
-def test_receipt_time_bounds_also_apply_to_matching_step_ids_and_deaths(fake):
-    archive(fake)
-    fake.device_log.entries = [event(i) for i in (1, 2, 3)]
-    for entry in fake.device_log.entries:
-        entry.host_time_ms = entry.cursor * 1000
-        entry.event.step = "same-step"
-    fake.device_log.entries.append(pb.LogEntry(cursor=4, host_time_ms=2500,
-        death=pb.RecordedAppDeath(attached_device_id="attachment", serial="device", death=pb.AppDeath(
-            sequence=1, kind=pb.AppDeath.KIND_ANR, package_name="com.shop", message="diagnostic", stack_trace="Frame"))))
-    with TapClient.create(fake.address, TOKEN) as client:
-        result = client.log_recordings.history("original", step_ids=["same-step"], from_time=2, until_time=3)
-        assert [e["seq"] for e in result.data["events"]] == [2]
-        assert [d["kind"] for d in result.data["deaths"]] == ["anr"]
-        assert "ANR com.shop" in result.text
-        assert "Frame" in result.to_json() and "Frame" in result.render_text(details=True)
-        assert not client.log_recordings.history("original", step_ids=[]).data["events"]
-        assert client.log_recordings.history("original", step_ids=[]).data["deaths"]
+def test_read_sends_bounds_filters_and_order_to_the_server(fake, client):
+    connection = client.connect("script")
+    connection.attach_device("emulator-5554")
+    fake.history.logs["attached-emulator-5554"] = [pb.LogEntry(cursor=1, host_time_ms=1_790_000_000_000, marker="checkout")]
+    page = client.history.read(serials=["emulator-5554"], since_marker="checkout", until=1_790_000_000.5, step="s-1",
+        logs=True, min_priority="warn", tags=["Pay"], grep="declined", actions=False, newest_first=True, limit=10)
+    assert isinstance(page, HistoryPage)
+    request = fake.history.requests[-1]
+    assert request.selection.serials == ["emulator-5554"]
+    assert request.from_marker == "checkout" and request.until_time_ms == 1_790_000_000_500
+    assert request.step == "s-1" and request.include_logs and request.newest_first and request.limit == 10
+    assert request.log_filter.min_priority == pb.LOG_PRIORITY_WARN and request.log_filter.tags == ["Pay"]
+    assert request.log_filter.message_regex == "declined" and request.log_filter.exclude_actions
+    client.history.read(since="2026-11-21T12:00:00Z", until=datetime.datetime(2026, 11, 21, 12, 0, 30, tzinfo=datetime.timezone.utc))
+    request = fake.history.requests[-1]
+    assert (request.from_time_ms, request.until_time_ms) == (1_795_262_400_000, 1_795_262_430_000)
 
 
-def test_unrepresentable_device_clock_does_not_discard_host_timed_death(fake):
-    archive(fake)
-    fake.device_log.entries = [pb.LogEntry(cursor=1, host_time_ms=2000,
-        death=pb.RecordedAppDeath(attached_device_id="attachment", serial="device", death=pb.AppDeath(
-            sequence=1, kind=pb.AppDeath.KIND_CRASH, at_epoch_ms=2**63 - 1)))]
-    with TapClient.create(fake.address, TOKEN) as client:
-        death = client.log_recordings.history("original").to_dict()["deaths"][0]
-        assert death["device_time_ms"] == str(2**63 - 1)
-        assert death["device_time_unavailable"] and death["at"] == "1970-01-01T00:00:02.000Z"
+def test_a_time_bound_is_never_taken_for_a_marker_name(fake, client):
+    with pytest.raises(ValueError, match="since_marker"):
+        client.history.read(since="checkout")
+    with pytest.raises(ValueError, match="time zone"):
+        client.history.read(until="2026-11-21T12:00:00")
+    with pytest.raises(ValueError, match="not both"):
+        client.history.read(since=1.0, since_marker="checkout")
+    assert not fake.history.requests
 
 
-def test_named_export_does_not_stop_and_works_after_release(fake):
-    with TapClient.create(fake.address, TOKEN) as client:
-        connection = client.connect("script")
-        archive(fake, connection.id)
-        client.log_recordings.start(connection, "flow")
-        fake.device_log.entries = [event()]
-        live = client.log_recordings.export("flow")
-        assert not live.data["complete"]
-        assert not fake.device_log.recordings["flow"].HasField("stopped_at_ms")
-        client.log_recordings.stop("flow")
-        assert client.log_recordings.export("flow").data["complete"]  # The stopped range is final while its owner remains live.
-        connection.close()
-        fake.device_log.entries.append(event(2))
-        saved = client.log_recordings.export("flow")
-        assert saved.data["complete"]
-        assert [e["seq"] for e in saved.data["events"]] == [1]
+def test_a_marker_bound_starts_at_each_device_s_newest_marker(fake, client):
+    connection = client.connect("script")
+    connection.attach_device("emulator-5554")
+    fake.history.logs["attached-emulator-5554"] = [
+        pb.LogEntry(cursor=1, host_time_ms=1_790_000_000_000, marker="checkout"),
+        line(2, "first try", at=1_790_000_000_001),
+        pb.LogEntry(cursor=3, host_time_ms=1_790_000_000_002, marker="checkout"),
+        line(4, "paid", at=1_790_000_000_003)]
+    page = client.history.read(since_marker="checkout", logs=True)
+    assert [e.marker or e.line.message for e in page if e.marker or e.line] == ["checkout", "paid"]
 
 
-def test_sdk_export_cannot_claim_missing_agent_intent_is_complete(fake):
-    with TapClient.create(fake.address, TOKEN) as client:
-        connection = client.connect("agent")
-        archive(fake, connection.id)
-        client.log_recordings.start(connection, "agent-flow", agent_steps_expected=True)
-        fake.device_log.entries = [event()]
-        client.log_recordings.stop("agent-flow")
-        saved = client.log_recordings.export("agent-flow")
-        assert saved.data["evidence_complete"]
-        assert not saved.data["complete"]
-        assert saved.data["step_history_unavailable"] and "WARNING" in saved.text
-        connection.close()
+def test_log_filters_without_logs_are_refused_before_any_call(fake, client):
+    with pytest.raises(ValueError, match="logs=True"):
+        client.history.read(tags=["Pay"])
+    with pytest.raises(ValueError, match="limit"):
+        client.history.read(limit=0)
+    assert not fake.history.requests
 
 
-def test_indeterminate_and_missing_evidence_cannot_become_success(fake):
-    archive(fake)
-    fake.device_log.entries = [event(unknown=True), pb.LogEntry(cursor=2, gap="capture interrupted")]
-    fake.device_log.dropped = 3
-    fake.device_log.capture_error = "storage full"
-    with TapClient.create(fake.address, TOKEN) as client:
-        saved = client.log_recordings.history("original")
-        assert not saved.data["complete"]
-        assert not saved.data["events"][0]["ok"]
-        assert saved.data["events"][0]["indeterminate"]
-        assert saved.data["event_capture"][0]["dropped"] == 3
-        assert "unknown" in saved.text and "storage full" in saved.text and "capture interrupted" in saved.text
-        missing = client.log_recordings.history("missing")
-        assert not missing.data["complete"] and "events_unavailable" in missing.data
-        assert "WARNING" in missing.text
+def test_pages_continue_with_the_cursor_alone(fake, client):
+    connection = client.connect("script")
+    connection.attach_device("emulator-5554")
+    fake.history.logs["attached-emulator-5554"] = [line(i, f"line {i}", at=1_790_000_000_000 + i) for i in range(1, 6)]
+
+    pages = list(client.history.pages(sources=["attached-emulator-5554"], logs=True, limit=2))
+
+    assert [[e.line.message for e in p if e.line] for p in pages] == [["line 1", "line 2"], ["line 3", "line 4"], ["line 5"]]
+    assert pages[-1].next_cursor is None and pages[-1].next_page() is None
+    continuation = fake.history.requests[1]
+    assert continuation.HasField("cursor") and not continuation.include_logs and not continuation.HasField("selection")
 
 
-def test_recording_reported_death_is_not_duplicated_without_per_step_connection_id():
-    saved = HistoryExport({"connection_id": "owner", "deaths": [{"connection_id": "owner", "attached_device_id": "attachment",
-        "serial": "phone", "sequence": 1, "kind": "crash", "package_name": "com.shop", "at": "2026-11-20T00:00:00Z"}],
-        "steps": [{"id": "step", "app_deaths": [{"serial": "phone", "sequence": 1, "kind": "crash", "expected": True}]}]})
-    assert len(saved.to_dict()["deaths"]) == 1
-    assert saved.to_dict()["deaths"][0]["reported_by_step"] == "step"
-    assert saved.to_dict()["deaths"][0]["expected"]
-    assert saved.text.count("CRASH com.shop") == 1
+def test_a_missing_marker_is_a_server_error(fake, client):
+    with pytest.raises(ServerError):
+        client.history.read(since_marker="never-written")
 
 
-def test_text_uses_resolved_targets_avoids_duplicate_calls_and_escapes_terminal_controls():
-    saved = HistoryExport({"steps": [{"seq": 1, "id": "step", "action": "tap", "serial": "device",
-        "parameters": {"target": {"selector_ref": "target"}}, "targets": {"target": {"node": {"resource": {"name": "login"}}}},
-        "outcome": {"status": "unknown", "error": "INDETERMINATE"}}],
-        "events": [{"step": "step", "command": {"hidden_duplicate": True}}],
-        "log": {"device": {"entries": [{"line": {"message": "\x1b[31muntrusted", "tag": "App"}}]}}})
-    assert "login" in saved.text and "unknown" in saved.text
-    assert "hidden_duplicate" not in saved.text and "\x1b" not in saved.text
-    assert "\\u001b" in saved.text
-    copied = saved.to_dict()
-    copied["steps"].clear()
-    assert len(saved.data["steps"]) == 1
+def test_issues_are_typed_and_shown_as_warnings(fake, client):
+    fake.history.issues = [pb.HistoryIssue(source_id="s", kind=pb.HISTORY_ISSUE_KIND_EXPIRED, message="older entries expired", missing_entries=3)]
+    page = client.history.read()
+    assert page.issues[0].kind is HistoryIssueKind.EXPIRED and page.issues[0].missing_entries == 3
+    assert "WARNING: expired: older entries expired" in page.text
+
+
+def test_recordings_are_per_connection_and_follow_later_attachments(fake, client):
+    first, second = client.connect("one"), client.connect("two")
+    first.attach_device("emulator-5554")
+    one = client.history.start_recording(first, "checkout")
+    two = client.history.start_recording(second, "checkout")  # the same name on another connection
+    assert one.active and one.id != two.id
+    first.attach_device("85e49002")
+
+    stopped = client.history.stop_recording(one)
+
+    assert not stopped.active and stopped.stopped_at is not None
+    assert {span.source_id for span in stopped.spans} >= {first.id, "attached-emulator-5554", "attached-85e49002"}
+    assert [r.name for r in client.history.recordings(connections=[first])] == ["checkout"]
+    with pytest.raises(ServerError):
+        client.history.delete_recording(two)  # still recording
+    client.history.delete_recording(stopped)
+    assert [r.id for r in client.history.recordings()] == [two.id]
+    read = client.history.read(recording=two)
+    assert fake.history.requests[-1].selection.recording_id == two.id and not read.entries
+
+
+def test_text_hides_control_characters_from_the_terminal(fake, client):
+    connection = client.connect("script")
+    connection.attach_device("emulator-5554")
+    fake.history.logs["attached-emulator-5554"] = [line(1, "\x1b[31mred", at=1_790_000_000_001)]
+    assert "\\u001b[31mred" in client.history.read(logs=True).text
+
+
+def test_calls_read_as_their_operation_and_target(fake, client):
+    connection = client.connect("script")
+    device = connection.attach_device("emulator-5554")
+    device.app("com.shop").launch()
+    device.app("com.shop").element(text("Pay")).exists()
+    page = client.history.read(connections=[connection.id])
+    assert [e.summary for e in page if e.call] == ["call app launch com.shop → ok", 'call exists text("Pay") & app("com.shop") → ok']

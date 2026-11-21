@@ -10,6 +10,7 @@ import java.util.UUID
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertNotEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
@@ -18,6 +19,8 @@ class RetainedLogsTest {
     private var now = 10_000L
 
     private fun store(free: Long = Long.MAX_VALUE) = RetainedLogs(root, { now }, { free })
+
+    private fun RetainedLogs.named(name: String): String = list().single { it.name == name }.id
 
     private fun policy(
         age: Long = 1_000,
@@ -92,11 +95,11 @@ class RetainedLogsTest {
         store.start("checkout", "owner", listOf(pinned.id))
         append(store, pinned, 2)
         append(store, ordinary, 1)
-        store.stop("checkout")
+        store.stop(store.named("checkout"))
         now += 2_000
         assertTrue(store.entries(ordinary).isEmpty())
-        assertEquals(listOf(2L), store.entries(pinned, "checkout").map { it.cursor })
-        store.delete("checkout")
+        assertEquals(listOf(2L), store.entries(pinned, store.named("checkout")).map { it.cursor })
+        store.delete(store.named("checkout"))
         assertTrue(store.entries(pinned).isEmpty())
     }
 
@@ -122,19 +125,19 @@ class RetainedLogsTest {
             1,
             store
                 .start("r", "owner", listOf(a.id))
-                .rangesList
+                .spansList
                 .single()
                 .afterCursor,
         )
         append(store, a, 2)
-        val stopped = store.stop("r")
-        assertTrue(stopped.complete)
+        val stopped = store.stop(store.named("r"))
+        assertEquals("", stopped.captureError)
         append(store, a, 3)
-        val repeated = store.stop("r")
+        val repeated = store.stop(store.named("r"))
         assertEquals(stopped.toBuilder().clearRetainedBytes().build(), repeated.toBuilder().clearRetainedBytes().build())
         assertTrue(stopped.retainedBytes > 0)
         assertTrue(repeated.retainedBytes >= stopped.retainedBytes) // Shared segment tails can grow after stop.
-        assertEquals(listOf(2L), store.entries(a, "r").map { it.cursor })
+        assertEquals(listOf(2L), store.entries(a, store.named("r")).map { it.cursor })
         assertEquals(listOf(1L, 2L, 3L), store.entries(a).map { it.cursor })
     }
 
@@ -146,22 +149,16 @@ class RetainedLogsTest {
         append(store, a, 1, "a".repeat(1000))
         append(store, a, 2, "b".repeat(1000))
         assertTrue(a.error.contains("hard storage"))
-        assertEquals(1, store.entries(a, "r").size)
-        assertFalse(store.stop("r").complete)
-        assertTrue(
-            store
-                .list()
-                .single()
-                .captureError
-                .isNotEmpty(),
-        )
+        assertEquals(1, store.entries(a, store.named("r")).size)
+        assertNotEquals("", store.errors(store.stop(store.named("r"))))
+        assertTrue(store.errors(store.list().single()).isNotEmpty())
     }
 
     @Test fun `free space reserve refuses recording start`() {
         policy(free = 100)
         val store = store(free = 99)
         val a = store.open(UUID.randomUUID().toString(), "owner", "a")
-        assertFailsWith<LogRecordingStateException> { store.start("r", "owner", listOf(a.id)) }
+        assertFailsWith<HistoryRecordingStateException> { store.start("r", "owner", listOf(a.id)) }
         assertTrue(store.list().isEmpty())
     }
 
@@ -187,9 +184,9 @@ class RetainedLogsTest {
         val restarted = store()
         val recording = restarted.list().single()
         assertTrue(recording.hasStoppedAtMs())
-        assertFalse(recording.complete)
+        assertNotEquals("", recording.captureError)
         assertTrue(recording.captureError.contains("restart"))
-        assertEquals(1, restarted.entries(restarted.archive(a.id, "owner"), "r").size)
+        assertEquals(1, restarted.entries(restarted.archive(a.id, "owner"), recording.id).size)
     }
 
     @Test fun `a torn tail keeps committed evidence and marks the recording incomplete`() {
@@ -207,8 +204,8 @@ class RetainedLogsTest {
                 true,
             ).use { it.write(byteArrayOf(0, 0, 1)) }
         val recovered = store()
-        assertEquals(listOf(1L), recovered.entries(recovered.archive(a.id, "owner"), "r").map { it.cursor })
-        assertFalse(recovered.list().single().complete)
+        assertEquals(listOf(1L), recovered.entries(recovered.archive(a.id, "owner"), recovered.named("r")).map { it.cursor })
+        assertNotEquals("", recovered.list().single().captureError)
     }
 
     @Test fun `a torn first frame leaves no undeletable archive or startup failure`() {
@@ -233,7 +230,7 @@ class RetainedLogsTest {
         store.start("r", "owner", listOf(a.id))
         now += 60_000
         append(store, a, 1001)
-        assertTrue(store.stop("r").complete)
+        assertEquals("", store.stop(store.named("r")).captureError)
         store.close(a)
         java.io
             .RandomAccessFile(
@@ -247,9 +244,8 @@ class RetainedLogsTest {
                 it.fd.sync()
             }
         val recovered = store()
-        assertFalse(recovered.list().single().complete)
-        assertFalse(recovered.stop("r").complete)
-        assertTrue(recovered.stop("r").captureError.isNotEmpty())
+        assertNotEquals("", recovered.errors(recovered.list().single()))
+        assertNotEquals("", recovered.errors(recovered.stop(recovered.named("r"))))
     }
 
     @Test fun `markers are not acknowledged as durable after storage exhaustion`() {
@@ -282,7 +278,7 @@ class RetainedLogsTest {
         append(store, a, 1)
         store.start("r", "owner", listOf(a.id))
         append(store, a, 2)
-        store.stop("r")
+        store.stop(store.named("r"))
         now += 2_000
         assertEquals(listOf(2L), store.entries(a).map { it.cursor })
     }
@@ -293,21 +289,22 @@ class RetainedLogsTest {
         val a = store.open(UUID.randomUUID().toString(), "owner", "a")
         store.start("r", "owner", listOf(a.id))
         append(store, a, 1)
-        store.stop("r")
+        store.stop(store.named("r"))
         policy(size = 1, hard = 1)
         append(store, a, 2)
-        assertTrue(store.list().single().complete)
-        assertEquals("", store.captureError(a, "r"))
+        assertEquals("", store.list().single().captureError)
+        assertEquals("", store.captureError(a, store.named("r")))
     }
 
-    @Test fun `capture gaps prevent a protected range from claiming complete evidence`() {
+    @Test fun `a capture gap is an entry in the recording, not a recording error`() {
         policy()
         val store = store()
         val a = store.open(UUID.randomUUID().toString(), "owner", "a")
         val log = DeviceLog(retained = store, archive = a)
-        store.start("r", "owner", listOf(a.id))
+        val recording = store.start("r", "owner", listOf(a.id))
         log.interrupted("device disconnected")
-        assertFalse(store.stop("r").complete)
+        assertEquals("", store.stop(recording.id).captureError)
+        assertEquals(listOf("device disconnected"), store.entries(a, recording.id).filter { it.hasGap() }.map { it.gap })
     }
 
     @Test fun `names cannot escape storage and active recordings cannot be deleted`() {
@@ -316,7 +313,14 @@ class RetainedLogsTest {
         val a = store.open(UUID.randomUUID().toString(), "owner", "a")
         assertFailsWith<IllegalArgumentException> { store.start("../outside", "owner", listOf(a.id)) }
         store.start("r", "owner", listOf(a.id))
-        assertFailsWith<LogRecordingStateException> { store.start("r", "owner", listOf(a.id)) }
-        assertFailsWith<LogRecordingStateException> { store.delete("r") }
+        assertFailsWith<HistoryRecordingStateException> { store.start("r", "owner", listOf(a.id)) }
+        assertFailsWith<HistoryRecordingStateException> { store.delete(store.named("r")) }
     }
 }
+
+/** The id of the recording named [name]; recordings are addressed by id. */
+internal fun RetainedLogs.named(name: String): String = list().single { it.name == name }.id
+
+/** What a recording reports missing, as one string (empty: nothing). */
+internal fun RetainedLogs.errors(recording: io.github.noamcohen48.tap.daemon.storage.StoredRecording): String =
+    issues(recording).joinToString("; ") { it.second }

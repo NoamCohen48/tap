@@ -1,0 +1,264 @@
+// tap.v1 — what happened on this daemon: the calls each connection made, the crashes and ANRs
+// seen on its devices and those devices' logs. The daemon keeps them after detach and restart
+// under its retention policy (`tap config logging-policy`); a history recording keeps one
+// connection's range past that policy until it is deleted. DeviceLogService reads, follows,
+// marks and redacts the log of a device that is attached now; this service reads what was kept.
+//
+// Access: the daemon token grants all history in this daemon. A connection id says whose
+// activity to read; it is not the caller's identity and not a security boundary.
+//
+// Missing evidence is always reported, in one of two forms:
+// - a `gap` entry, in time order, where capture stopped and later resumed (the device
+//   disconnected, logcat restarted, a recording stopped while calls were running);
+// - a `HistoryIssue`, for loss that has no position in time (entries removed by retention, a
+//   source that could not be read or stored, lines whose app was not known).
+syntax = "proto3";
+
+package tap.v1;
+
+import "command.proto";
+import "device_log.proto";
+import "event_log.proto";
+
+option java_package = "io.github.noamcohen48.tap.api.v1";
+option java_multiple_files = true;
+option java_outer_classname = "HistoryProto";
+
+service HistoryService {
+  // The kept sources, including those of ended connections and detached devices.
+  rpc ListHistorySources(ListHistorySourcesRequest) returns (ListHistorySourcesResponse);
+  // One page of entries, oldest first unless `newest_first`. The daemon applies every bound and
+  // filter, so a short window reads only the stored files that overlap it.
+  rpc ReadHistory(ReadHistoryRequest) returns (ReadHistoryResponse);
+  // Keeps a connection's activity from now on, including devices it attaches later, until the
+  // recording is stopped and deleted. It stops by itself when the connection closes. A device
+  // whose capture already failed joins too, with an INCOMPLETE issue. NOT_FOUND when the
+  // connection is not open.
+  rpc StartHistoryRecording(StartHistoryRecordingRequest) returns (StartHistoryRecordingResponse);
+  // Ends the recording's range. Stopping a stopped recording returns it unchanged.
+  rpc StopHistoryRecording(StopHistoryRecordingRequest) returns (StopHistoryRecordingResponse);
+  rpc ListHistoryRecordings(ListHistoryRecordingsRequest) returns (ListHistoryRecordingsResponse);
+  // Deletes a stopped recording, so retention may remove its entries. Files saved separately
+  // (screenshots, captures) are not touched. FAILED_PRECONDITION while it is recording.
+  rpc DeleteHistoryRecording(DeleteHistoryRecordingRequest) returns (DeleteHistoryRecordingResponse);
+}
+
+// One attachment's device log: logcat lines, Tap's actions on the device and markers.
+message HistoryDeviceSource {
+  string connection_id = 1;
+  string attached_device_id = 2;
+  string serial = 3;
+}
+
+// One connection's calls and the crashes and ANRs seen on its devices.
+message HistoryConnectionSource { string connection_id = 1; }
+
+message HistorySource {
+  // Names the source in entries, spans and issues.
+  string id = 1;
+  oneof kind {
+    HistoryDeviceSource device_log = 2;
+    HistoryConnectionSource connection = 3;
+  }
+  // The daemon run that captured the source: `received_monotonic_ns` values compare only
+  // between entries with the same clock id.
+  string clock_id = 4;
+  // The connection ended or the device was detached; nothing more will be added.
+  bool closed = 5;
+  // In ListHistorySources, the newest entry's sequence. In a read, the newest sequence the read
+  // covers, fixed by its first page.
+  uint64 last_sequence = 6;
+  // Bytes on disk, some of which may be shared with other sources' files.
+  uint64 retained_bytes = 7;
+  // In ListHistorySources only; a read reports every issue once, in ReadHistoryResponse.issues.
+  repeated HistoryIssue issues = 8;
+}
+
+// Every nonempty list must match (AND across lists); within a list any value matches (OR).
+// Nothing set selects every kept source.
+message HistorySelection {
+  repeated string connection_ids = 1;
+  repeated string source_ids = 2;
+  // The device logs of these serials, and only the calls and deaths on these serials.
+  repeated string serials = 3;
+  // Only this recording's range, also after its connection ended.
+  optional string recording_id = 4;
+}
+
+// Which device-log lines to return. Actions, markers and gaps are kept by every line filter;
+// calls and deaths are never filtered by it.
+message HistoryLogFilter {
+  // Lines of these apps, by the package names saved with each line while its device was
+  // attached. Lines saved without them are returned and reported as an issue, never matched
+  // against a later attachment's packages.
+  repeated string packages = 1;
+  // Lines of this priority or higher; absent = all.
+  LogPriority min_priority = 2;
+  repeated string tags = 3;
+  // Java regular expression, matched against the redacted message.
+  optional string message_regex = 4;
+  // Leave Tap's own action entries out.
+  bool exclude_actions = 5;
+  // Keep the Tap driver's own logcat lines, left out by default.
+  bool include_driver_lines = 6;
+}
+
+message ReadHistoryRequest {
+  HistorySelection selection = 1;
+  // Where the read starts; absent = the oldest kept entry.
+  oneof start {
+    // Entries the daemon received at or after this time, in Unix milliseconds.
+    int64 from_time_ms = 2;
+    // From the newest marker with this name in the selection, the marker included. Each selected
+    // device (serial) contributes its newest such marker, across its attachments; with several
+    // devices the read starts at the earliest of them (`history mark` writes one per device).
+    // Select a connection to leave out markers of other connections. NOT_FOUND when no selected
+    // device has one. Entries received in the marker's millisecond are ordered by source id,
+    // then sequence, so some of them may fall before it.
+    string from_marker = 3;
+  }
+  // Where the read ends; absent = the time of the first page's request, so paging never runs
+  // into entries that arrive while it pages.
+  oneof end {
+    // Entries the daemon received before this time, in Unix milliseconds.
+    int64 until_time_ms = 4;
+    // Through the newest marker with this name in the selection, the marker included: with
+    // several devices, through the latest of each device's newest such marker. NOT_FOUND when
+    // none has one.
+    string until_marker = 5;
+  }
+  // Only what happened in this step (`LoggedEvent.step`): its calls; the deaths and gaps
+  // received between the start of its first call and the end of its last; and device-log
+  // entries from its first action to its last. A step name used again after another step makes
+  // a second such run; the steps between them are left out. The read's bounds still apply.
+  optional string step = 6;
+  // Add device logs. Without it a read returns calls, deaths and gaps only.
+  bool include_logs = 7;
+  // Only with `include_logs`; INVALID_ARGUMENT otherwise.
+  HistoryLogFilter log_filter = 8;
+  // Newest entries first: with `limit`, the most recent ones in the range.
+  bool newest_first = 9;
+  // 1 to 5000 entries per page; 0 = 200. A page is also cut at a few MiB.
+  uint32 limit = 10;
+  // `page.next_cursor` of the previous page. Send it alone, or with the first page's request
+  // unchanged; only `limit` may differ. Anything else is INVALID_ARGUMENT.
+  optional string cursor = 11;
+}
+
+// A crash or ANR, with the attachment it happened in. `AppDeath.at_epoch_ms` is the device's
+// clock; `HistoryEntry.received_at_ms` is when the daemon saw it.
+message HistoryDeath {
+  string attached_device_id = 1;
+  string serial = 2;
+  AppDeath death = 3;
+}
+
+message HistoryEntry {
+  string source_id = 1;
+  // 1, 2, 3, … per source, in the order the daemon received the entries.
+  uint64 sequence = 2;
+  // When the daemon received the entry. For a call that is when it ended; the call's own
+  // `started_at_ms` is when it began. Entries are ordered by this, then source, then sequence.
+  int64 received_at_ms = 3;
+  // The daemon's monotonic clock at receipt; compare only within one `HistorySource.clock_id`.
+  int64 received_monotonic_ns = 4;
+  oneof kind {
+    // Device-log sources: the source's serial is the device.
+    LogLine line = 6;
+    LogAction action = 7;
+    // The name given to `MarkLog`.
+    string marker = 8;
+    // Connection sources.
+    LoggedEvent call = 9;
+    HistoryDeath death = 10;
+    // Either kind: capture stopped here and entries may be missing until the next one: why.
+    string gap = 11;
+  }
+}
+
+enum HistoryIssueKind {
+  HISTORY_ISSUE_KIND_UNSPECIFIED = 0;
+  // Retention removed entries the read asked for: the range starts before what is kept, entries
+  // in it passed the retention age, or entries went while paging. A read without a start begins
+  // at the oldest kept entry and so reports none for that.
+  HISTORY_ISSUE_KIND_EXPIRED = 1;
+  // A requested or recorded source is not kept or could not be read.
+  HISTORY_ISSUE_KIND_UNAVAILABLE = 2;
+  // The daemon could not keep all of the source's evidence (storage limit or failure), or
+  // withholds its kept entries because a redaction could not be applied to them: the message
+  // says what.
+  HISTORY_ISSUE_KIND_INCOMPLETE = 3;
+  // Some lines were saved without their app; a package filter returned them unfiltered.
+  HISTORY_ISSUE_KIND_PACKAGE_UNKNOWN = 4;
+}
+
+message HistoryIssue {
+  // Empty when the issue is not about one source (a recording's own storage error).
+  string source_id = 1;
+  HistoryIssueKind kind = 2;
+  // Redacted, short and readable; never an exception trace or a command's output.
+  string message = 3;
+  // EXPIRED: how many of the source's entries were removed, counted before filters; 0 when not
+  // known.
+  uint64 missing_entries = 4;
+}
+
+message HistoryPageInfo {
+  // Pass as `ReadHistoryRequest.cursor` for the next page; empty when there is none.
+  string next_cursor = 2;
+  // The read's end in Unix milliseconds (exclusive), fixed by its first page.
+  int64 through_time_ms = 3;
+}
+
+message ReadHistoryResponse {
+  // The sources this read covers, entries or not.
+  repeated HistorySource sources = 1;
+  repeated HistoryEntry entries = 2;
+  repeated HistoryIssue issues = 3;
+  HistoryPageInfo page = 4;
+}
+
+message ListHistorySourcesRequest { HistorySelection selection = 1; }
+message ListHistorySourcesResponse { repeated HistorySource sources = 1; }
+
+// The part of one source a recording keeps: after `after_sequence`, through `through_sequence`
+// (absent while recording).
+message HistorySpan {
+  string source_id = 1;
+  uint64 after_sequence = 2;
+  optional uint64 through_sequence = 3;
+}
+
+message HistoryRecording {
+  // Names the recording in reads and controls; stays valid after its connection ends.
+  string id = 1;
+  string connection_id = 2;
+  // Unique among this connection's recordings, not across the daemon.
+  string name = 3;
+  int64 started_at_ms = 4;
+  // Absent while recording.
+  optional int64 stopped_at_ms = 5;
+  // One per source; a device attached during the recording adds its span then.
+  repeated HistorySpan spans = 6;
+  repeated HistoryIssue issues = 7;
+  // Bytes on disk the spans need. Other sources may share them, so deleting the recording can
+  // free less.
+  uint64 retained_bytes = 8;
+}
+
+message StartHistoryRecordingRequest {
+  string connection_id = 1;
+  // 1 to 80 ASCII letters, digits, dots, dashes and underscores. FAILED_PRECONDITION when this
+  // connection already has a recording with the name, or storage is too full to keep it.
+  string name = 2;
+}
+message StartHistoryRecordingResponse { HistoryRecording recording = 1; }
+message StopHistoryRecordingRequest { string recording_id = 1; }
+message StopHistoryRecordingResponse { HistoryRecording recording = 1; }
+message ListHistoryRecordingsRequest {
+  // Only these connections' recordings; empty = all.
+  repeated string connection_ids = 1;
+}
+message ListHistoryRecordingsResponse { repeated HistoryRecording recordings = 1; }
+message DeleteHistoryRecordingRequest { string recording_id = 1; }
+message DeleteHistoryRecordingResponse {}

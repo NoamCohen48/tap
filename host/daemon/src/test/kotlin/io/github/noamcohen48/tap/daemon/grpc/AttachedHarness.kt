@@ -4,9 +4,10 @@ import io.github.noamcohen48.tap.api.v1.AppServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.Command
 import io.github.noamcohen48.tap.api.v1.CommandResult
 import io.github.noamcohen48.tap.api.v1.DeviceLogServiceGrpcKt
-import io.github.noamcohen48.tap.api.v1.WatchServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.DeviceServiceGrpcKt
 import io.github.noamcohen48.tap.api.v1.ExecuteRequest
+import io.github.noamcohen48.tap.api.v1.HistoryServiceGrpcKt
+import io.github.noamcohen48.tap.api.v1.WatchServiceGrpcKt
 import io.github.noamcohen48.tap.daemon.core.AttachedDevice
 import io.github.noamcohen48.tap.daemon.core.DaemonConfig
 import io.github.noamcohen48.tap.daemon.core.DaemonDeviceSession
@@ -46,6 +47,7 @@ internal class AttachedHarness private constructor(
     val devices = DeviceServiceGrpcKt.DeviceServiceCoroutineStub(channel)
     val apps = AppServiceGrpcKt.AppServiceCoroutineStub(channel)
     val logs = DeviceLogServiceGrpcKt.DeviceLogServiceCoroutineStub(channel)
+    val history = HistoryServiceGrpcKt.HistoryServiceCoroutineStub(channel)
     val watch = WatchServiceGrpcKt.WatchServiceCoroutineStub(channel)
 
     /** Sends [command], with the `tap-step` header when [step] is given, and answers it, as the driver would, with [result]. */
@@ -59,7 +61,9 @@ internal class AttachedHarness private constructor(
                 if (step == null) {
                     devices
                 } else {
-                    devices.withInterceptors(MetadataUtils.newAttachHeadersInterceptor(Metadata().apply { put(StepInterceptor.HEADER, step) }))
+                    devices.withInterceptors(
+                        MetadataUtils.newAttachHeadersInterceptor(Metadata().apply { put(StepInterceptor.HEADER, step) }),
+                    )
                 }
             val call =
                 async {
@@ -81,7 +85,10 @@ internal class AttachedHarness private constructor(
     fun respond(
         requestId: Long,
         result: CommandResult.Builder,
-    ) = driver.respond(requestId, Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = requestId, generation = GENERATION))
+    ) = driver.respond(
+        requestId,
+        Responses.of(result, durationMs = 1).stamped(durationMs = 1, requestId = requestId, generation = GENERATION),
+    )
 
     /** The request id of the next `CANCEL` the driver receives. */
     fun FakeDriverServer.nextCancel(): Long {
@@ -125,7 +132,15 @@ internal class AttachedHarness private constructor(
         ): T {
             val secret = ByteArray(32).also(SecureRandom()::nextBytes)
             return FakeDriverServer("harness-session", GENERATION, secret).use { driver ->
-                val client = DriverClient.connect(driver.port, "harness-session", GENERATION, secret, serial = SERIAL, heartbeatIntervalMs = 0)
+                val client =
+                    DriverClient.connect(
+                        driver.port,
+                        "harness-session",
+                        GENERATION,
+                        secret,
+                        serial = SERIAL,
+                        heartbeatIntervalMs = 0,
+                    )
                 val config = DaemonConfig(adb = adb, stateDir = Files.createTempDirectory("tap-harness"), driver = null, log = {})
                 val opener =
                     object : DeviceSessionOpener {
@@ -139,7 +154,12 @@ internal class AttachedHarness private constructor(
                         daemon.attachDevice(
                             connection.id,
                             SERIAL,
-                            TapDaemon.AttachDeviceOptions(skipDriverInstall = true, defaultTimeoutMs = 5_000, leaseTimeoutMs = 0, captureLogs = captureLogs),
+                            TapDaemon.AttachDeviceOptions(
+                                skipDriverInstall = true,
+                                defaultTimeoutMs = 5_000,
+                                leaseTimeoutMs = 0,
+                                captureLogs = captureLogs,
+                            ),
                         )
                     }
                 val name = InProcessServerBuilder.generateName()
@@ -150,6 +170,7 @@ internal class AttachedHarness private constructor(
                         .addService(DeviceService(daemon))
                         .addService(AppService(daemon))
                         .addService(DeviceLogService(daemon))
+                        .addService(HistoryService(daemon))
                         .addService(WatchService(daemon))
                         .intercept(StepInterceptor())
                         .build()

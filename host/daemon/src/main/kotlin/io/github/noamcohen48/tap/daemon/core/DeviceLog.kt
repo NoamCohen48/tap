@@ -9,14 +9,26 @@ import io.github.noamcohen48.tap.host.LogcatLine
 import io.github.noamcohen48.tap.host.MediaClock
 import io.github.noamcohen48.tap.protocol.ActionLog
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.withTimeoutOrNull
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 import java.util.regex.Pattern
 
 /** The attachment was opened without log capture (`AttachRequest.capture_logs` false). */
@@ -110,7 +122,7 @@ internal class DeviceLog(
 ) : LogcatCapture.Sink {
     val redactor =
         LogRedactor().apply {
-            changed = { archive?.let { retained?.redact(it, ::redacted) } }
+            changed = { archive?.let { retained?.redact(it) { entry -> entry.deviceLog()?.let(::redacted)?.stored() ?: entry } } }
         }
 
     /** The uid the driver logs as ([io.github.noamcohen48.tap.api.v1.DeviceInfo.getDriverUid]); its `Tap` lines are actions. */
@@ -118,8 +130,18 @@ internal class DeviceLog(
 
     private val packagesLock = Mutex()
 
-    /** Package names by app id (uid modulo the per-user range), as last read from the device. */
-    @Volatile private var packagesByAppId: Map<Int, List<String>> = emptyMap()
+    private data class PackageSnapshot(
+        val names: Map<Int, List<String>>,
+        val atMs: Long,
+        val atNs: Long,
+        val epoch: Long,
+    )
+
+    @Volatile private var packageSnapshot: PackageSnapshot? = null
+
+    @Volatile private var packageScope: CoroutineScope? = null
+    private val packageChanges = AtomicInteger()
+    private val packageEpoch = AtomicLong()
     private var packagesReadAtNs: Long? = null
 
     private val entries = ArrayDeque<LogEntry>()
@@ -130,7 +152,8 @@ internal class DeviceLog(
     private var bytes = 0L
     private var lastCursor = 0L
     private var dropped = 0L
-    private var closed = false
+
+    @Volatile private var closed = false
 
     /** What a read starts from, and for a follower the queue its live entries arrive on. */
     class Subscription(
@@ -139,7 +162,24 @@ internal class DeviceLog(
         internal val live: Channel<LogEntry>?,
     )
 
+    private val barriers = ConcurrentHashMap<String, CompletableDeferred<Unit>>()
+
+    /**
+     * A barrier for [token]: the caller logs it on the device under [BARRIER_TAG], and the result
+     * completes once the capture delivered that line. Logcat prints in time order, so every line
+     * logged before the barrier has then been stored. The barrier line itself is not kept.
+     */
+    internal fun barrier(token: String): CompletableDeferred<Unit> = CompletableDeferred<Unit>().also { barriers[token] = it }
+
+    internal fun forgetBarrier(token: String) {
+        barriers.remove(token)
+    }
+
     override fun line(line: LogcatLine) {
+        if (line.tag == BARRIER_TAG) {
+            barriers.remove(line.message.trim())?.complete(Unit)
+            return
+        }
         val action = if (line.tag == ActionLog.TAG && line.uid != null && line.uid == driverUid) ActionLog.parse(line.message) else null
         if (action != null) {
             append(
@@ -184,6 +224,7 @@ internal class DeviceLog(
         if (closed) throw DaemonPreconditionException("log capture closed before the marker could be retained")
         if (archive?.error.orEmpty().isNotEmpty()) throw DaemonPreconditionException("marker cannot be retained: ${archive?.error}")
         val cursor = append(LogEntry.newBuilder().setMarker(name))
+        archive?.let { retained?.sync(it) } // acknowledged only once it is on disk
         if (archive?.error.orEmpty().isNotEmpty()) throw DaemonPreconditionException("marker could not be retained: ${archive?.error}")
         return cursor
     }
@@ -203,7 +244,6 @@ internal class DeviceLog(
         if (closed) return
         steps.remove(requestId)
         steps[requestId] = step
-        archive?.let { retained?.sync(it) } // acknowledged only once it is on disk
         if (steps.size > MAX_PENDING_STEPS) steps.remove(steps.keys.first())
         for (index in entries.indices.reversed()) {
             val entry = entries[index]
@@ -251,6 +291,21 @@ internal class DeviceLog(
                 entry.setAction(entry.action.toBuilder().setStep(step))
                 if (entry.action.finished) steps.remove(requestId)
             }
+        }
+        if (entry.hasLine()) {
+            val value =
+                entry.line
+                    .toBuilder()
+                    .clearPackages()
+                    .clearPackagesObservedAtMs()
+            val snapshot = packageSnapshot
+            if (snapshot != null && packageChanges.get() == 0 && snapshot.epoch == packageEpoch.get() &&
+                System.nanoTime() - snapshot.atNs <= PACKAGES_REFRESH_NS && value.hasUid()
+            ) {
+                val names = snapshot.names[appId(value.uid)].orEmpty()
+                if (names.isNotEmpty()) value.addAllPackages(names).setPackagesObservedAtMs(snapshot.atMs)
+            }
+            entry.setLine(value)
         }
         val recorded =
             entry
@@ -306,9 +361,9 @@ internal class DeviceLog(
         val entries =
             try {
                 if (memoryOnly) {
-                    entries.filter { snapshot == null || snapshot.allows(it) }
+                    entries.filter { snapshot == null || snapshot.allows(it.stored()) }
                 } else {
-                    snapshot?.entries()?.toList()
+                    snapshot?.entries()?.mapNotNull { it.deviceLog() }?.toList()
                         ?: entries.toList()
                 }
             } finally {
@@ -376,46 +431,63 @@ internal class DeviceLog(
             }
         }
 
-    /**
-     * [entries] with each app line's [LogLine.getPackagesList] filled in: the packages installed
-     * under its uid. The list is read from the device once and again when a line of an app id it
-     * does not name arrives (an app installed since), at most every [PACKAGES_REFRESH_NS]; a read
-     * that fails keeps the last list. System processes (uid below 10000) name no package.
-     */
-    suspend fun withPackages(entries: List<LogEntry>): List<LogEntry> {
-        val resolve = installedPackages ?: return entries
-        val ids = entries.mapNotNullTo(HashSet()) { if (it.hasLine() && it.line.hasUid()) appId(it.line.uid) else null }
-        if (ids.isEmpty()) return entries
-        if (!packagesByAppId.keys.containsAll(ids)) refreshPackages(resolve)
-        val known = packagesByAppId
-        return entries.map { entry ->
-            val names = if (entry.hasLine() && entry.line.hasUid()) appId(entry.line.uid)?.let(known::get) else null
-            if (names == null) entry else entry.toBuilder().setLine(entry.line.toBuilder().addAllPackages(names)).build()
+    /** Start only after registration, so failed/orphaned attachments cannot leak a worker. */
+    @Synchronized
+    internal fun startPackageRefresh() {
+        if (closed || installedPackages == null || packageScope != null) return
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+        packageScope = scope
+        scope.launch {
+            while (isActive) {
+                delay(PACKAGES_REFRESH_NS / 1_000_000)
+                refreshPackageOwnership()
+            }
         }
     }
 
-    private suspend fun refreshPackages(resolve: suspend () -> Map<String, Int>) =
+    /** Sample before logcat starts, then periodically; reads never reattribute saved lines. */
+    internal suspend fun refreshPackageOwnership(force: Boolean = false) =
         packagesLock.withLock {
+            val resolve = installedPackages ?: return@withLock
+            if (closed || packageChanges.get() != 0) return@withLock
             val now = System.nanoTime()
             val last = packagesReadAtNs
-            if (last != null && now - last < PACKAGES_REFRESH_NS) return@withLock
+            if (!force && last != null && now - last < PACKAGES_REFRESH_NS) return@withLock
             packagesReadAtNs = now
+            val epoch = packageEpoch.get()
             try {
-                packagesByAppId =
-                    resolve()
-                        .entries
-                        .mapNotNull { (name, uid) -> appId(uid)?.let { it to name } }
-                        .groupBy({ it.first }, { it.second })
-                        .mapValues { (_, names) -> names.sorted() }
+                val packages = withTimeoutOrNull(1_000) { resolve() }
+                if (packages == null) {
+                    packageSnapshot = null
+                    return@withLock
+                }
+                val names = packages.entries.groupBy({ appId(it.value) }, { it.key }).mapValues { (_, names) -> names.sorted() }
+                if (!closed && packageChanges.get() == 0 && packageEpoch.get() == epoch) {
+                    packageSnapshot = PackageSnapshot(names, System.currentTimeMillis(), System.nanoTime(), epoch)
+                }
             } catch (error: Exception) {
                 if (error is CancellationException) throw error
+                packageSnapshot = null
             }
         }
+
+    internal fun beginPackageChange() {
+        packageEpoch.incrementAndGet()
+        packageChanges.incrementAndGet()
+        packageSnapshot = null
+    }
+
+    internal fun endPackageChange() {
+        if (packageChanges.decrementAndGet() == 0) packageScope?.launch { refreshPackageOwnership(force = true) }
+    }
 
     /** The device is detached: followers finish what is queued, then complete; the entries are forgotten. */
     @Synchronized
     fun close() {
         closed = true
+        packageScope?.cancel()
+        packageScope = null
+        packageSnapshot = null
         readers.keys.forEach { it.close() }
         readers.clear()
         steps.clear()
@@ -457,7 +529,7 @@ internal class DeviceLog(
     private fun size(entry: LogEntry): Long =
         ENTRY_OVERHEAD_BYTES +
             when (entry.kindCase) {
-                LogEntry.KindCase.LINE -> entry.line.tag.length + entry.line.message.length
+                LogEntry.KindCase.LINE -> entry.line.tag.length + entry.line.message.length + entry.line.packagesList.sumOf { it.length }
                 LogEntry.KindCase.MARKER -> entry.marker.length
                 LogEntry.KindCase.GAP -> entry.gap.length
                 LogEntry.KindCase.ACTION -> entry.action.operation.length + entry.action.target.length + entry.action.step.length
@@ -554,14 +626,20 @@ internal class DeviceLog(
 /** How much log text an attachment keeps; older entries are dropped. */
 const val LOG_BUFFER_BYTES = 16L * 1024 * 1024
 
-/** The shortest time between two reads of the installed packages ([DeviceLog.withPackages]). */
+/** Sampling interval and maximum age for package attribution saved with a line. */
 const val PACKAGES_REFRESH_NS = 5_000_000_000L
 
-/** An app's id across users (`UserHandle.getAppId`), for an app uid (10000–19999); null otherwise. */
-internal fun appId(uid: Int): Int? = (uid % 100_000).takeIf { it in 10_000..19_999 }
+/** UID within one Android user, including shared system UIDs when the package map names them. */
+internal fun appId(uid: Int): Int = Math.floorMod(uid, 100_000)
 
 /** Queued entries per follower before it is ended as too slow. */
 const val LOG_READER_CAPACITY = 8_192
+
+/** The tag of the line the daemon logs on a device to learn that its capture caught up ([DeviceLog.barrier]). */
+const val BARRIER_TAG = "TapLogBarrier"
+
+/** How long a history recording's stop waits for each device's capture to catch up. */
+const val LOG_CATCH_UP_MS = 5_000L
 
 /** Most entries in one `ReadLogResponse`. */
 const val LOG_BATCH_ENTRIES = 1_000

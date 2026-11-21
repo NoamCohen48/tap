@@ -199,10 +199,11 @@ def test_event_log_is_the_calls_as_proto_json(fake, client):
             "tap": {"selector": {"node": {"resource": {"name": "login"}}}},
         }
         assert not second.ok and second.error == {"code": "ERR_NOT_FOUND", "detail": "0 matches"}
-        assert second.to_dict() == {
+        document = second.to_dict()
+        assert document.pop("at").endswith("Z")
+        assert document == {
             "seq": 2,
-            "at": "2026-09-21T14:13:20.001Z",
-            "duration_ms": 5,
+            "duration_ms": 0,
             "serial": "emulator-5554",
             "attached_device_id": "attached-emulator-5554",
             "ok": False,

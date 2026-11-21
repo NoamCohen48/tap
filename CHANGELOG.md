@@ -12,24 +12,26 @@ name the components affected. Earlier releases used independent version lines. T
   log filters, explicit marker/step/action/opaque-cursor bounds and omission-reporting log tails.
   `history mark/redact` control only held attachments and report partial acknowledgements.
   Driver diagnostics move to `tap logs driver --serial SERIAL`. Explicit `capture` creates
-  new private bundles and indexes external references in history/protected exports; historical
+  new private bundles and indexes external references in history; historical
   reads never collect fresh device state or embed file contents.
-- Incident history now supports `tap-agent history --last 30s` and full timestamp windows,
-  including background logs/calls with no agent steps or live connection. Independent crashes
-  and ANRs survive release/restart and appear in every history/recording text and JSON mode.
-  Known messages and available stacks are retained after redaction; `--details` expands text,
-  while JSON includes available details by default. Source gaps/missing traces stay explicit.
-  Python/Kotlin SDK history accepts inclusive/exclusive host-receipt time bounds.
-- Redacted device logs and RPC events survive release/daemon restart under one retention
-  policy: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve
-  (`tap config logging-policy`). Python `client.log_recordings` and Kotlin
-  `client.logRecordings` protect named ranges and export `tap-history/1` directly after a
-  script, without a CLI or a live original connection. `tap-agent history` reads paginated
-  activity; `record start|stop|list|export|clean` protects and reads the same evidence plus
-  high-level intent. Default output is readable stdout text; `--json` selects JSON, `--logs`
-  adds device logs. Stable step/time bounds, shared disk usage, missing intent, capture gaps
-  and unknown outcomes stay explicit. No standalone agent export, release-time file export,
-  mutation replay or inferred assertions. See [history and recordings](docs/agent/export.md).
+- The server keeps redacted calls, crashes/ANRs, capture gaps and device logs after release and
+  restart under one retention policy: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB
+  free-space reserve (`tap config logging-policy`). `HistoryService` reads them as one timeline
+  merged across sources, page by page with an opaque cursor, bounded by time or marker, with
+  optional device-log lines and log filters; what cannot be placed in time is reported as typed
+  issues. Named recordings belong to a connection, follow devices attached later, keep their
+  range past rolling eviction and stop when the connection closes. Python `client.history`
+  (`read`, `pages`, `sources`, `start_recording` / `stop_recording` / `recordings` /
+  `delete_recording`) returns
+  `HistoryPage` artifacts (`tap-history/2`). The Kotlin SDK has no history reader yet.
+- `tap-agent history` reads the same pages merged with the agent's own steps: the newest
+  first for a window ending now, `--from`/`--until`/`--last` times, marker bounds (this
+  session's markers), `--step`, `--recording NAME` and `--after` positions; `--limit` counts
+  server entries. `record start|stop|list|clean`
+  manages recordings. Crashes/ANRs appear in every mode; `--details` expands stacks. Default
+  output is readable stdout text, `--json` selects JSON, `--logs` adds device logs. No
+  standalone export, release-time file export, mutation replay or inferred assertions. See
+  [history and recordings](docs/agent/export.md).
 
 ## 0.2.0
 

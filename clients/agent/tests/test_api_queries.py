@@ -196,25 +196,22 @@ def _entry(cursor: int, **kind) -> pb.LogEntry:
     return pb.LogEntry(cursor=cursor, host_time_ms=HOST_MS + cursor, **kind)
 
 
-def test_history_keeps_full_window_logs_and_reports_explicit_tail(fake, agent):
+def test_history_shows_logs_gaps_and_issues_and_sends_log_filters(fake, agent):
     agent.attach("emulator-5554")
-    owner = next(iter(fake.connections.live))
-    fake.device_log.archives.append(pb.RetainedLog(client_connection_id=owner,
-        attached_device_id="attached-emulator-5554", serial="emulator-5554"))
-    fake.device_log.dropped = 4
-    fake.device_log.entries = [_log_line(7, "old"), _entry(8, action=pb.LogAction(operation="tap")),
+    fake.history.logs["attached-emulator-5554"] = [_log_line(7, "old"), _entry(8, action=pb.LogAction(operation="tap")),
         _log_line(9, "paying", pb.LOG_PRIORITY_WARN), _entry(10, gap="capture interrupted")]
-    saved = json.loads(agent.history(logs=True, limit=1, as_json=True))
-    assert len(saved["log"]["emulator-5554"]["entries"]) == 4
-    tail = json.loads(agent.history(tail=1, as_json=True))
-    assert tail["log_omitted"] == 3 and not tail["complete"]
-    assert tail["log"]["emulator-5554"]["entries"][0]["gap"] == "capture interrupted"
-    assert "4 entries are unavailable" in agent.history(logs=True)
-    assert "--tail omitted 3" in agent.history(tail=1)
+    fake.history.issues = [pb.HistoryIssue(source_id="attached-emulator-5554", kind=pb.HISTORY_ISSUE_KIND_EXPIRED,
+        message="4 older entries expired", missing_entries=4)]
+    saved = json.loads(agent.history(logs=True, as_json=True))
+    assert [e["kind"] for e in saved["entries"]] == ["line", "action", "line", "gap"]
+    assert saved["issues"][0]["missing_entries"] == 4
+    assert "GAP: capture interrupted" in agent.history()  # gaps without --logs too
+    assert "WARNING: expired: 4 older entries expired" in agent.history(logs=True)
     agent.history(packages=["com.shop"], priority="W", tags=["Shop"], grep="pay", actions=False)
-    request = next(r for r in reversed(fake.device_log.requests) if getattr(r, "attached_device_id", "") == "attached-emulator-5554")
-    assert (list(request.packages), request.min_priority) == (["com.shop"], pb.LOG_PRIORITY_WARN)
-    assert (list(request.tags), request.message_regex, request.exclude_actions) == (["Shop"], "pay", True)
+    request = fake.history.requests[-1]
+    assert request.include_logs
+    assert (list(request.log_filter.packages), request.log_filter.min_priority) == (["com.shop"], pb.LOG_PRIORITY_WARN)
+    assert (list(request.log_filter.tags), request.log_filter.message_regex, request.log_filter.exclude_actions) == (["Shop"], "pay", True)
 
 
 def test_history_marks_redacts_and_refuses_mixed_arguments(fake, agent):
@@ -223,8 +220,8 @@ def test_history_marks_redacts_and_refuses_mixed_arguments(fake, agent):
     assert saved["devices"][0]["cursor"] == "attached-emulator-5554:1"
     agent.history("redact", r"session=(\w+)")
     assert list(fake.device_log.requests[-1].patterns) == [r"session=(\w+)"]
-    for kwargs in ({"action": "mark"}, {"action": "mark", "value": "x", "tail": 3},
-                   {"action": "read", "value": "x"}, {"start": 1, "last_action": True},
+    for kwargs in ({"action": "mark"}, {"action": "mark", "value": "x", "limit": 3},
+                   {"action": "read", "value": "x"}, {"start": "2026-01-01T00:00:00Z", "last_action": True},
                    {"priority": "loud"}, {"limit": 0}, {"action": "driver"}):
         with pytest.raises(AgentError):
             agent.history(**kwargs)

@@ -773,32 +773,29 @@ class Agent:
 
         return self._run(step)
 
-    def record(self, action: str, name: str | None = None, *, long: bool = False, logs: bool = False, as_json: bool = False, details: bool = False) -> str:
-        """List, start, stop, export or clean a named protected recording."""
+    def record(self, action: str, name: str | None = None, *, long: bool = False) -> str:
+        """Start, stop, list or clean a named recording of this session's history."""
         from .history import record
-        return record(self, action, name, long=long, logs=logs, as_json=as_json, details=details)
+        return record(self, action, name, long=long)
 
-    def history(self, action: str = "read", value: str | None = None, *, start: str | int | None = None, until: str | int | None = None,
+    def history(self, action: str = "read", value: str | None = None, *, start: str | None = None, until: str | None = None,
                 last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False, details: bool = False,
                 devices: Sequence[str] = (), packages: Sequence[str] = (), priority: str | None = None, tags: Sequence[str] = (),
                 grep: str | None = None, actions: bool = True, driver_lines: bool = False, since_marker: str | None = None,
                 until_marker: str | None = None, step: str | int | None = None, last_action: bool = False,
-                tail: int | None = None, after: str | None = None) -> str:
-        """Read retained activity and independent deaths; time bounds cover idle periods too.
+                recording: str | None = None, after: str | None = None) -> str:
+        """What happened: the server's calls, crashes, ANRs and gaps (``logs`` or any log filter
+        adds device logs), merged with this agent's steps and capture bundles, oldest first.
 
-        ``last`` accepts a positive duration such as ``30s`` and excludes explicit bounds.
-        ``limit`` only paginates agent intent; ``details`` prints available redacted death stacks.
-        ``devices`` filters before pagination. Log filters imply logs, never filter independent
-        deaths or RPC outcomes; package filters require original live ownership. ``step`` is a
-        global cursor or ID, ``after`` an original ARCHIVE_UUID:CURSOR receipt. ``tail`` limits
-        displayed log rows and reports omissions. ``mark``/``redact`` with ``value`` control only
-        selected held attachments; partial acknowledgements are explicit. Capture references
-        describe explicit current-state bundles, never reconstructed historical screens.
-        """
+        One start: ``start`` (ISO time), ``last`` (a duration such as ``30s``), ``since_marker``,
+        ``step`` (a cursor or id), ``last_action`` or ``after`` (the position a previous page
+        printed); without one, the newest ``limit`` entries. ``until`` / ``until_marker`` end it.
+        ``recording`` reads a named recording's range. ``mark``/``redact`` with ``value`` act on
+        this session's held devices instead."""
         from .history import history
         return history(self, action, value, start=start, until=until, last=last, limit=limit, logs=logs, as_json=as_json, details=details,
             devices=devices, packages=packages, priority=priority, tags=tags, grep=grep, actions=actions, driver_lines=driver_lines,
-            since_marker=since_marker, until_marker=until_marker, step=step, last_action=last_action, tail=tail, after=after)
+            since_marker=since_marker, until_marker=until_marker, step=step, last_action=last_action, recording=recording, after=after)
 
     def _end_ended_histories(self) -> bool:
         """Stops each live step history whose held connection the server no longer has (an idle

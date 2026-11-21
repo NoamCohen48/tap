@@ -14,7 +14,7 @@ from tap_e2e import (
     Device,
     Element,
     Elements,
-    LogRecordings,
+    History,
     Selector,
     TapClient,
     TapConnection,
@@ -30,7 +30,7 @@ from .test_reference import _generator
 
 ROOT = Path(__file__).resolve().parents[3]
 REGISTRY = json.loads((ROOT / "clients/agent/api-coverage.json").read_text())
-SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector, LogRecordings)
+SDK = (TapClient, TapConnection, Device, App, AppData, Element, Elements, ElementWait, Screen, Selector, History)
 
 
 @pytest.fixture(scope="module")

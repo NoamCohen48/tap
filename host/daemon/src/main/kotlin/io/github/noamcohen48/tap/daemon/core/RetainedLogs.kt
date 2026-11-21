@@ -1,23 +1,27 @@
 package io.github.noamcohen48.tap.daemon.core
 
-import io.github.noamcohen48.tap.api.v1.LogEntry
-import io.github.noamcohen48.tap.api.v1.LogRecording
-import io.github.noamcohen48.tap.api.v1.LogRecordingRange
 import java.nio.file.Files
 import java.nio.file.LinkOption.NOFOLLOW_LINKS
 import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermissions
 import java.util.Properties
+import io.github.noamcohen48.tap.daemon.storage.StoredEntry as LogEntry
+import io.github.noamcohen48.tap.daemon.storage.StoredRecording as LogRecording
+import io.github.noamcohen48.tap.daemon.storage.StoredSpan as LogRecordingRange
 
 /** A named retained range that does not exist. */
-internal class UnknownLogRecordingException(
+internal class UnknownHistoryRecordingException(
     name: String,
-) : NoSuchElementException("No log recording named '$name'")
+) : NoSuchElementException("No history recording '$name'")
 
 /** A valid recording request that cannot be satisfied in the current retention state. */
-internal class LogRecordingStateException(
+internal class HistoryRecordingStateException(
     message: String,
 ) : DaemonPreconditionException(message)
+
+/** A source whose kept entries are withheld because a redaction could not be applied to them. */
+internal class RedactionFailedException :
+    DaemonPreconditionException("retained log redaction failed; inspect private storage before sharing")
 
 /** Redacted, private segmented protobuf logs. All index and retention transitions share one lock. */
 internal class RetainedLogs(
@@ -47,6 +51,8 @@ internal class RetainedLogs(
         var lastAt: Long = 0,
         val persisted: Boolean = true,
         val events: Boolean = false,
+        /** The newest receipt time retention removed from this source; 0 when nothing was removed. */
+        var removedAt: Long = 0,
     ) {
         val segments = mutableListOf<Segment>()
 
@@ -64,8 +70,7 @@ internal class RetainedLogs(
         var last: Long,
         var at: Long,
         var bytes: Long,
-        val firstAt: Long,
-        val gaps: MutableList<Long> = mutableListOf(),
+        var firstAt: Long,
     )
 
     init {
@@ -95,6 +100,7 @@ internal class RetainedLogs(
                         p.getProperty("clock_id", ""),
                         p.getProperty("last_at", "0").toLong(),
                         events = p.getProperty("events", "false").toBooleanStrict(),
+                        removedAt = p.getProperty("removed_at", "0").toLong(),
                     )
                 if (!archive.closed) {
                     archive.closed = true
@@ -118,10 +124,9 @@ internal class RetainedLogs(
                                         path,
                                         entries.first().cursor,
                                         entries.last().cursor,
-                                        entries.last().hostTimeMs,
+                                        entries.maxOf { it.hostTimeMs },
                                         Files.size(path),
-                                        entries.first().hostTimeMs,
-                                        entries.filter { it.hasGap() }.mapTo(mutableListOf()) { it.cursor },
+                                        entries.minOf { it.hostTimeMs },
                                     )
                                 archive.cursor = maxOf(archive.cursor, entries.last().cursor)
                             } else {
@@ -139,12 +144,27 @@ internal class RetainedLogs(
         Files.list(recordingsDir).use { files ->
             files.filter { it.fileName.toString().endsWith(".pb") }.forEach { path ->
                 privateFile(path)
-                val recording = Files.newInputStream(path).use(LogRecording::parseFrom)
-                validName(recording.name)
-                require(path.fileName.toString() == "${recording.name}.pb") { "recording name mismatch" }
-                val recovered = if (!recording.hasStoppedAtMs()) finalize(recording, "daemon restarted during recording") else recording
-                recordings[recording.name] = recovered
+                val decoded = Files.newInputStream(path).use(LogRecording::parseFrom)
+                validName(decoded.name)
+                val recording =
+                    if (decoded.id.isNotEmpty()) {
+                        decoded
+                    } else {
+                        decoded
+                            .toBuilder()
+                            .setId(
+                                java.util.UUID
+                                    .nameUUIDFromBytes((decoded.connectionId + "\u0000" + decoded.name).toByteArray())
+                                    .toString(),
+                            ).build()
+                    }
+                require(
+                    path.fileName.toString() in setOf("${recording.name}.pb", "${recording.id}.pb"),
+                ) { "history recording file identity mismatch" }
+                val recovered = if (!recording.hasStoppedAtMs()) finalize(recording, "the daemon restarted while recording") else recording
+                recordings[recording.id] = recovered
                 save(recovered)
+                if (path.fileName.toString() != "${recording.id}.pb") Files.delete(path)
             }
         }
         evict()
@@ -174,6 +194,7 @@ internal class RetainedLogs(
                 events = events,
             ).also {
                 archives[id] = it
+                joinActiveProtections(it)
                 warning("$serial: ${it.error}")
             }
         }
@@ -181,6 +202,34 @@ internal class RetainedLogs(
         return Archive(id, owner, serial, directory, lastAt = now(), events = events).also {
             save(it)
             archives[id] = it
+            joinActiveProtections(it)
+        }
+    }
+
+    /** Registration and joining active ranges share the same storage lock. */
+    private fun joinActiveProtections(archive: Archive) {
+        recordings.values.toList().filter { it.connectionId == archive.owner && !it.hasStoppedAtMs() }.forEach { saved ->
+            if (saved.spansList.any { it.sourceId == archive.id }) return@forEach
+            var updated =
+                saved
+                    .toBuilder()
+                    .addSpans(
+                        LogRecordingRange
+                            .newBuilder()
+                            .setSourceId(archive.id)
+                            .setSerial(archive.serial)
+                            .setAfterCursor(0),
+                    ).build()
+            try {
+                val reserve = maxOf(metadataReserve(), updated.serializedSize.toLong() * 3 + METADATA_RESERVE)
+                check(diskBytes() + reserve < policy.hardBytes && freeBytes(root) >= policy.minFreeBytes + reserve)
+                save(updated)
+            } catch (_: Exception) {
+                // Reported as this source's issue (rangeErrors), like any capture failure.
+                fail(archive, "could not extend the recording to this attachment")
+                runCatching { save(updated) }
+            }
+            recordings[saved.id] = updated
         }
     }
 
@@ -212,7 +261,7 @@ internal class RetainedLogs(
     @Synchronized
     fun appendDeath(
         archive: Archive,
-        death: io.github.noamcohen48.tap.api.v1.RecordedAppDeath,
+        death: io.github.noamcohen48.tap.api.v1.HistoryDeath,
     ) {
         append(
             archive,
@@ -263,6 +312,11 @@ internal class RetainedLogs(
         )
     }
 
+    fun append(
+        archive: Archive,
+        entry: io.github.noamcohen48.tap.api.v1.LogEntry,
+    ) = append(archive, LogEntry.parseFrom(entry.toByteArray()))
+
     @Synchronized
     fun append(
         archive: Archive,
@@ -307,8 +361,8 @@ internal class RetainedLogs(
             java.io.FileOutputStream(segment.path.toFile(), true).use { it.write(frame) }
             segment.bytes += frame.size
             segment.last = entry.cursor
-            segment.at = entry.hostTimeMs
-            if (entry.hasGap()) segment.gaps += entry.cursor
+            segment.at = maxOf(segment.at, entry.hostTimeMs)
+            segment.firstAt = minOf(segment.firstAt, entry.hostTimeMs)
             archive.unsynced.add(segment.path)
             markDirty(archive)
             evict()
@@ -413,7 +467,7 @@ internal class RetainedLogs(
             }
         } catch (_: Exception) {
             // Fail closed: the caller must not believe its new rule reached durable evidence.
-            fail(archive, "could not apply redaction to retained logs")
+            fail(archive, REDACTION_FAILED)
             throw DaemonPreconditionException("could not apply redaction to retained logs; inspect private storage before sharing")
         }
     }
@@ -482,9 +536,16 @@ internal class RetainedLogs(
         val last: Long,
         val error: String,
         private val segments: List<Segment>,
+        private val aged: LongArray,
         private val visible: (LogEntry) -> Boolean,
     ) : AutoCloseable {
         private var released = false
+
+        /** Entries in the bounds that the age limit hides although their file is still kept, counted as read. */
+        val expired: Long get() = aged[0]
+
+        /** The first sequence still kept, and when it was received; null when nothing is kept. */
+        val firstKept: Pair<Long, Long>? = segments.firstOrNull()?.let { it.first to it.firstAt }
 
         fun allows(entry: LogEntry): Boolean = entry.cursor in first..last && visible(entry)
 
@@ -513,30 +574,51 @@ internal class RetainedLogs(
     fun snapshot(
         archive: Archive,
         recording: String? = null,
+        fromTimeMs: Long? = null,
+        untilTimeMs: Long? = null,
+        throughSequence: Long? = null,
     ): Snapshot {
-        if (archive.error ==
-            "could not apply redaction to retained logs"
-        ) {
-            throw DaemonPreconditionException("retained log redaction failed; inspect private storage before sharing")
-        }
+        if (archive.error == REDACTION_FAILED) throw RedactionFailedException()
         refreshPolicy()
         evict()
         val range =
             recording?.let { name ->
-                val saved = recordings[name] ?: throw UnknownLogRecordingException(name)
-                if (saved.clientConnectionId != archive.owner) throw NotOwnerException(archive.id, saved.clientConnectionId)
-                saved.rangesList.firstOrNull { it.attachedDeviceId == archive.id }
-                    ?: throw LogRecordingStateException("attachment is not in this recording")
+                val saved = recordings[name] ?: throw UnknownHistoryRecordingException(name)
+                if (saved.connectionId != archive.owner) throw NotOwnerException(archive.id, saved.connectionId)
+                saved.spansList.firstOrNull { it.sourceId == archive.id }
+                    ?: throw HistoryRecordingStateException("attachment is not in this recording")
             }
         val first = (range?.afterCursor ?: 0) + 1
-        val last = if (range != null && range.hasThroughCursor()) range.throughCursor else archive.cursor
-        val segments = archive.segments.filter { it.last >= first && it.first <= last }.map { it.copy(gaps = mutableListOf()) }
+        val last =
+            minOf(
+                if (range != null &&
+                    range.hasThroughCursor()
+                ) {
+                    range.throughCursor
+                } else {
+                    archive.cursor
+                },
+                throughSequence ?: Long.MAX_VALUE,
+            )
+        val segments =
+            archive.segments
+                .filter {
+                    it.last >= first && it.first <= last &&
+                        (fromTimeMs == null || it.at >= fromTimeMs) && (untilTimeMs == null || it.firstAt < untilTimeMs)
+                }.map { it.copy() }
         segments.forEach { readPins[it.path] = (readPins[it.path] ?: 0) + 1 }
         val cutoff = now() - policy.maxAgeMs
-        val protectedRanges = recordings.values.flatMap { it.rangesList }.filter { it.attachedDeviceId == archive.id }
-        return Snapshot(first, last, captureError(archive, recording), segments) { entry ->
-            recording != null || entry.hostTimeMs >= cutoff ||
-                protectedRanges.any { entry.cursor > it.afterCursor && (!it.hasThroughCursor() || entry.cursor <= it.throughCursor) }
+        val protectedRanges = recordings.values.flatMap { it.spansList }.filter { it.sourceId == archive.id }
+        val aged = longArrayOf(0)
+        return Snapshot(first, last, captureError(archive, recording), segments, aged) { entry ->
+            (fromTimeMs == null || entry.hostTimeMs >= fromTimeMs) && (untilTimeMs == null || entry.hostTimeMs < untilTimeMs) &&
+                (
+                    recording != null || entry.hostTimeMs >= cutoff ||
+                        protectedRanges.any {
+                            entry.cursor > it.afterCursor && (!it.hasThroughCursor() || entry.cursor <= it.throughCursor)
+                        } ||
+                        false.also { aged[0]++ }
+                )
         }
     }
 
@@ -545,58 +627,56 @@ internal class RetainedLogs(
         name: String,
         owner: String,
         ids: List<String>,
-        agentStepsExpected: Boolean = false,
     ): LogRecording {
         validName(name)
-        if (name in recordings) throw LogRecordingStateException("log recording '$name' already exists")
-        if (ids.isEmpty()) throw LogRecordingStateException("attach a device before starting a recording")
+        if (recordings.values.any { it.connectionId == owner && it.name == name }) {
+            throw HistoryRecordingStateException("this connection already has a history recording named '$name'")
+        }
         refreshPolicy()
         evict()
         if (diskBytes() + metadataReserve() >= policy.hardBytes ||
             freeBytes(root) < policy.minFreeBytes + metadataReserve()
         ) {
-            throw LogRecordingStateException("insufficient storage to protect a recording")
+            throw HistoryRecordingStateException("not enough storage to keep a history recording")
         }
+        // A source whose capture already failed joins too: its error is the recording's issue for
+        // that source, as for a device that fails after the recording started.
         val ranges =
             ids.map { id ->
                 val archive = archive(id, owner)
-                if (archive.closed ||
-                    archive.error.isNotEmpty()
-                ) {
-                    throw LogRecordingStateException("log capture unavailable for ${archive.serial}: ${archive.error}")
-                }
                 LogRecordingRange
                     .newBuilder()
-                    .setAttachedDeviceId(id)
+                    .setSourceId(id)
                     .setSerial(archive.serial)
-                    .setEvents(archive.events)
                     .setAfterCursor(archive.cursor)
                     .build()
             }
         return LogRecording
             .newBuilder()
-            .setName(
-                name,
-            ).setClientConnectionId(owner)
-            .setAgentStepsExpected(agentStepsExpected)
+            .setId(
+                java.util.UUID
+                    .randomUUID()
+                    .toString(),
+            ).setName(name)
+            .setConnectionId(owner)
             .setStartedAtMs(now())
-            .addAllRanges(ranges)
+            .addAllSpans(ranges)
             .build()
             .also { saved ->
                 val reserve = maxOf(metadataReserve(), saved.serializedSize.toLong() * 3 + METADATA_RESERVE)
                 if (diskBytes() + reserve >= policy.hardBytes ||
                     freeBytes(root) < policy.minFreeBytes + reserve
                 ) {
-                    throw LogRecordingStateException("insufficient storage to protect a recording")
+                    throw HistoryRecordingStateException("not enough storage to keep a history recording")
                 }
                 save(saved)
-                recordings[name] = saved
+                recordings[saved.id] = saved
             }
     }
 
     @Synchronized
     fun stop(name: String): LogRecording {
-        val recording = recordings[name] ?: throw UnknownLogRecordingException(name)
+        val recording = recordings[name] ?: throw UnknownHistoryRecordingException(name)
         if (recording.hasStoppedAtMs()) return currentStatus(recording)
         return currentStatus(
             finalize(recording).also {
@@ -609,26 +689,36 @@ internal class RetainedLogs(
     @Synchronized
     fun list(): List<LogRecording> = recordings.values.map(::currentStatus)
 
-    private fun currentStatus(recording: LogRecording): LogRecording {
-        val errors = rangeErrors(recording)
-        val measured = recording.toBuilder().setRetainedBytes(recordingBytes(recording)).build()
-        return if (errors.isEmpty()) {
-            measured
-        } else {
-            measured
-                .toBuilder()
-                .setComplete(false)
-                .setCaptureError((listOf(recording.captureError).filter(String::isNotEmpty) + errors).distinct().joinToString("; "))
-                .build()
+    @Synchronized
+    fun get(id: String): LogRecording = currentStatus(recordings[id] ?: throw UnknownHistoryRecordingException(id))
+
+    private fun currentStatus(recording: LogRecording): LogRecording =
+        recording.toBuilder().setRetainedBytes(recordingBytes(recording)).build()
+
+    /** What the recording may be missing, as (source id, message); the source id is empty for the recording's own. */
+    @Synchronized
+    fun issues(recording: LogRecording): List<Pair<String, String>> =
+        (listOfNotNull(recording.captureError.takeIf(String::isNotEmpty)?.let { "" to it }) + rangeErrors(recording)).distinct()
+
+    /**
+     * Ends the open recordings of connection [owner], once it closed and its devices detached:
+     * nothing more can join them, and they must not stay open (and undeletable) forever.
+     */
+    @Synchronized
+    fun endConnection(owner: String) {
+        recordings.values.filter { it.connectionId == owner && !it.hasStoppedAtMs() }.forEach { recording ->
+            val ended = finalize(recording)
+            runCatching { save(ended) }.onFailure { warning("could not save the end of history recording ${recording.id}") }
+            recordings[recording.id] = ended
         }
     }
 
     /** Physical segment bytes backing a range, including shared segment tails. */
     @Synchronized
     fun recordingBytes(recording: LogRecording): Long =
-        recording.rangesList
+        recording.spansList
             .flatMap { range ->
-                archives[range.attachedDeviceId]?.segments.orEmpty().filter {
+                archives[range.sourceId]?.segments.orEmpty().filter {
                     it.last > range.afterCursor && (!range.hasThroughCursor() || it.first <= range.throughCursor)
                 }
             }.distinctBy { it.path }
@@ -636,8 +726,8 @@ internal class RetainedLogs(
 
     @Synchronized
     fun delete(name: String) {
-        val recording = recordings[name] ?: throw UnknownLogRecordingException(name)
-        if (!recording.hasStoppedAtMs()) throw LogRecordingStateException("stop the log recording before deleting it")
+        val recording = recordings[name] ?: throw UnknownHistoryRecordingException(name)
+        if (!recording.hasStoppedAtMs()) throw HistoryRecordingStateException("stop the history recording before deleting it")
         Files.delete(recordingsDir.resolve("$name.pb"))
         recordings.remove(name)
         evict()
@@ -648,19 +738,18 @@ internal class RetainedLogs(
         reason: String = "",
     ): LogRecording {
         // The range ends at what its sources received, and that must be on disk before the end is.
-        recording.rangesList.forEach { range -> archives[range.attachedDeviceId]?.let(::sync) }
-        val errors = rangeErrors(recording).toMutableList()
-        if (reason.isNotEmpty()) errors += reason
+        recording.spansList.forEach { range -> archives[range.sourceId]?.let(::sync) }
+        // Source errors stay on their sources (rangeErrors); only the recording's own is stored.
+        val errors = listOf(recording.captureError, reason).filter(String::isNotEmpty)
         return recording
             .toBuilder()
             .setStoppedAtMs(
                 now(),
-            ).setComplete(errors.isEmpty())
-            .setCaptureError(errors.distinct().joinToString("; "))
-            .clearRanges()
-            .addAllRanges(
-                recording.rangesList.map { range ->
-                    range.toBuilder().setThroughCursor(archives[range.attachedDeviceId]?.cursor ?: range.afterCursor).build()
+            ).setCaptureError(errors.distinct().joinToString("; "))
+            .clearSpans()
+            .addAllSpans(
+                recording.spansList.map { range ->
+                    range.toBuilder().setThroughCursor(archives[range.sourceId]?.cursor ?: range.afterCursor).build()
                 },
             ).build()
     }
@@ -670,8 +759,8 @@ internal class RetainedLogs(
         segment: Segment,
     ): Boolean =
         recordings.values.any { recording ->
-            recording.rangesList.any {
-                it.attachedDeviceId == archive.id && segment.last > it.afterCursor &&
+            recording.spansList.any {
+                it.sourceId == archive.id && segment.last > it.afterCursor &&
                     (!it.hasThroughCursor() || segment.first <= it.throughCursor)
             }
         }
@@ -682,27 +771,22 @@ internal class RetainedLogs(
         name: String?,
     ): String {
         if (name == null) return archive.error
-        val recording = recordings[name] ?: throw UnknownLogRecordingException(name)
-        return (listOf(recording.captureError).filter(String::isNotEmpty) + rangeErrors(recording)).distinct().joinToString("; ")
+        val recording = recordings[name] ?: throw UnknownHistoryRecordingException(name)
+        return issues(recording).map { it.second }.distinct().joinToString("; ")
     }
 
-    private fun rangeErrors(recording: LogRecording): List<String> =
-        recording.rangesList.flatMap { range ->
-            val archive = archives[range.attachedDeviceId] ?: return@flatMap listOf("recorded attachment metadata is missing")
+    /**
+     * Loss with no position in the recording, per source. Capture stops at a source's first error,
+     * so an error from before the recording started also leaves its span incomplete. Capture gaps
+     * are not here: they are entries in its range.
+     */
+    private fun rangeErrors(recording: LogRecording): List<Pair<String, String>> =
+        recording.spansList.mapNotNull { range ->
+            val archive = archives[range.sourceId] ?: return@mapNotNull range.sourceId to "recorded source metadata is missing"
             val through = if (range.hasThroughCursor()) range.throughCursor else archive.cursor
-            val errors = mutableListOf<String>()
-            if (archive.error.isNotEmpty() &&
-                (archive.errorAt == 0L || (archive.errorAt > range.afterCursor && archive.errorAt <= through))
-            ) {
-                errors += archive.error
+            (range.sourceId to archive.error).takeIf {
+                archive.error.isNotEmpty() && (archive.errorAt == 0L || archive.errorAt <= through)
             }
-            archive.segments.filter { it.last > range.afterCursor && it.first <= through }.forEach { segment ->
-                segment.gaps.filter { it > range.afterCursor && it <= through }.forEach {
-                    errors +=
-                        "logcat capture interrupted"
-                }
-            }
-            errors
         }
 
     private fun diskBytes(): Long =
@@ -710,7 +794,7 @@ internal class RetainedLogs(
             it.segments.sumOf(Segment::bytes) +
                 if (it.persisted) Files.size(it.directory.resolve("archive.properties")) else 0
         } +
-            recordings.values.sumOf { Files.size(recordingsDir.resolve("${it.name}.pb")) }
+            recordings.values.sumOf { Files.size(recordingsDir.resolve("${it.id}.pb")) }
 
     private fun metadataReserve(): Long = METADATA_RESERVE + (recordings.values.maxOfOrNull { it.serializedSize.toLong() * 2 } ?: 0)
 
@@ -726,12 +810,14 @@ internal class RetainedLogs(
             if ((segment.at >= cutoff && total <= policy.maxBytes) || segment.path in readPins) continue
             Files.deleteIfExists(segment.path)
             archive.segments.remove(segment)
+            archive.removedAt = maxOf(archive.removedAt, segment.at)
+            runCatching { save(archive) }
             total -= segment.bytes
         }
         val expired =
             archives.values.filter { archive ->
                 archive.closed && archive.segments.isEmpty() && archive.lastAt < cutoff &&
-                    recordings.values.none { recording -> recording.rangesList.any { it.attachedDeviceId == archive.id } }
+                    recordings.values.none { recording -> recording.spansList.any { it.sourceId == archive.id } }
             }
         expired.forEach { archive ->
             Files.deleteIfExists(archive.directory.resolve("archive.properties"))
@@ -778,11 +864,12 @@ internal class RetainedLogs(
                     setProperty("clock_id", archive.clockId)
                     setProperty("last_at", archive.lastAt.toString())
                     setProperty("events", archive.events.toString())
+                    setProperty("removed_at", archive.removedAt.toString())
                 },
             )
         }
 
-    private fun save(recording: LogRecording) = atomicPrivateFile(recordingsDir.resolve("${recording.name}.pb")) { recording.writeTo(it) }
+    private fun save(recording: LogRecording) = atomicPrivateFile(recordingsDir.resolve("${recording.id}.pb")) { recording.writeTo(it) }
 
     private fun purgePending(directory: Path) {
         Files.list(directory).use { paths ->
@@ -840,6 +927,8 @@ internal class RetainedLogs(
     }
 
     companion object {
+        /** The source error after a failed redaction: its kept entries are withheld from every read. */
+        const val REDACTION_FAILED = "a redaction could not be applied to the kept entries; they are withheld"
         private const val SEGMENT_BYTES = 256 * 1024L
         private const val MAX_ENTRY_BYTES = 1024 * 1024
         private const val METADATA_RESERVE = 4096L

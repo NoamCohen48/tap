@@ -1,7 +1,9 @@
 # History and recordings
 
-Tap retains redacted activity automatically. A **recording** protects a named range of that
-same activity; an **export** reads it. Neither starts a second capture or replays anything.
+The server keeps what every session did automatically: its calls, the crashes and ANRs on its
+devices, capture gaps and each attachment's device log. `tap-agent history` reads it, merged with
+the agent's own steps. A **recording** keeps a named range of it past rolling eviction. Neither
+starts a second capture or replays anything.
 
 ## Read history
 
@@ -10,60 +12,59 @@ tap-agent history
 tap-agent history --logs
 tap-agent history --last 30s --logs
 tap-agent history --last 5m --details --json > incident.json
-tap-agent history --json > history.json
-tap-agent history --from 120 --until 180 --limit 50
 tap-agent history --from 2026-11-17T09:00:00Z --until 2026-11-17T10:00:00Z --logs
+tap-agent history --since-marker checkout --until-marker paid --logs
+tap-agent history --step 3
 ```
 
-The default is the latest 200 retained agent steps, printed oldest first as readable text.
-`--json` returns `tap-history/1`. `--logs` includes retained device logs; durable RPC events
-are included without an extra flag when available. Nothing writes an implicit export file.
-Use shell redirection if you want a file, and protect it appropriately.
+A window that ends now (no start, `--last`, `--last-action`) shows its newest entries first
+(up to `--limit`, default 200), printed oldest first as readable text; its last line
+`older: --after POSITION` reads the page before, so the crash at the end of a busy window is on
+the first page. An explicit start (`--from`, `--since-marker`, `--step`) reads forward and
+prints `next: --after POSITION`. `--after` takes no other bound or filter: the position carries
+them, `--device` included. In `--json` the position is `next`. `--json` returns `tap-history/2` on stdout; nothing writes an implicit file.
 
-Bounds accept a positive step cursor or an ISO timestamp with a timezone. `--from` is
-inclusive; `--until` is exclusive. Cursors are stable across sessions and pruning, not page
-row numbers or transient snapshot refs. Follow the returned `next` cursor with `--from`, or
-`older` with `--until`. A page is a bounded view, not proof that omitted activity never happened.
-Only actions and explicit waits are high-level steps; internal polls and diagnostic snapshots
-are not promoted into invented user intent.
+`--limit` counts the server's entries of one timeline merged across devices and the connection,
+ordered by the time the server received them. A step replaces its calls with one line, such as
+`step 2: tap text("Pay") & app("com.shop") count=2 → succeeded` (the target as a test would
+write it, options only when they differ from the default), on the page that has its first call.
+A step that made no call (refused before input) and capture bundles are placed by time, on the
+one page whose time slice holds them, so a page can show a few lines more or fewer than
+`--limit`. Markers you wrote with `history mark` are shown without `--logs`. Only actions and
+explicit waits are steps; internal polls and diagnostic snapshots are not promoted into
+invented intent. A page is a bounded view, not proof that nothing else happened.
 
-## Full time windows and background incidents
+## Bounds and time windows
 
-`--last 30s` selects a fixed window ending when the command starts. It accepts durations such
-as `500ms`, `30s` or `5m`, and cannot be combined with `--from` or `--until`. Timestamp bounds
-and `--last` read **all retained activity in that window**, discovering original archives even
-when no agent step ran, no local history exists, or the original connection has been released.
-`--logs` reads the entire requested log window, including idle periods between or after steps.
-`--limit` paginates agent intent only; it does not shorten the requested background evidence
-window. A truncated intent page is explicitly marked, not called a complete whole-window export.
+`--from` and `--until` take ISO 8601 times with a zone; `--from` is inclusive, `--until`
+exclusive. `--last 30s` is the window ending when the command starts (`500ms`, `30s`, `5m`) and
+takes no other start or `--until`. Markers (`history mark NAME`) are resolved by the server
+among this session's connections: each device's newest marker with that name, the marker
+included by `--since-marker` and by `--until-marker`. `--step` reads one step: its calls, the
+crashes and gaps while they ran and, with `--logs`, its device-log span.
 
-Window selection uses the host's **receipt clock**, inclusive from/exclusive until. An RPC may
-have started before the window but completed inside it: JSON preserves its original `at` plus
-`received_at` and receipt monotonic time. Death entries preserve host observation time and
-original device time separately; delayed Android delivery is not guessed to be instantaneous.
-Step-cursor bounds resolve to the retained step's start time; an expired boundary is reported
-as unavailable rather than inventing its time. Without time bounds, default RPC presentation
-follows the step page; retained independent deaths are still included.
+Time bounds read **everything the server kept in the window**, also when no agent step ran, no
+local history exists or the session was released. Windows use the server's **receipt clock**:
+an RPC that started before the window but finished inside it is included, and JSON keeps its
+own `at` next to the entry's receipt time. Crashes keep the device's time separately; delayed
+Android delivery is not guessed to be instantaneous.
 
 ## Crashes and ANRs
 
 Crashes and ANRs are independent durable observations, including background deaths with no
 active step and deaths of unwatched apps. They appear as explicit **CRASH** / **ANR** entries
-in text and a `deaths` array in JSON for history and named recording exports—with or without
-`--logs`, time filters or other presentation flags. Named range boundaries and retention still
-apply. The original attachment ID disambiguates reattachments of the same serial.
+in text and `death` entries in JSON for every history read, recordings included, with or
+without `--logs` or log filters. The read's bounds (times, markers, `--step`) and retention
+still apply. The original attachment ID disambiguates reattachments of the same serial.
 
 Known diagnostic messages and available Java/native stacks are redacted before storage.
 Default text shows a compact summary; `--details` adds retained stack traces. JSON always
 contains available redacted details, so no verbose-capture mode had to be enabled before an
-unexpected incident. SDK equivalents are `render_text(details=True)` and
-`renderText(details = true)`. `stack_trace_available: false` means the source supplied no
-stack; full ANR thread dumps are not promised by the public logcat source. Interrupted death
+unexpected incident. The SDK equivalent is `page.render_text(details=True)`. An empty `stack_trace` means the
+source supplied no stack; full ANR thread dumps are not promised by the public logcat source. Interrupted death
 followers and failed catch-up reads leave explicit evidence gaps.
 
-## Protect a range
-
-Attach every device you want included before starting:
+## Recordings
 
 ```sh
 tap-agent record start checkout
@@ -71,16 +72,16 @@ tap-agent tap text=Pay,pkg=com.shop
 tap-agent wait text=Receipt,pkg=com.shop
 tap-agent record stop checkout
 tap-agent release
-tap-agent record export checkout
-tap-agent record export checkout --details
-tap-agent record export checkout --logs --json > checkout.json
+tap-agent history --recording checkout
+tap-agent history --recording checkout --details
+tap-agent history --recording checkout --logs --json > checkout.json
 ```
 
-`record start NAME` protects subsequent agent steps, durable RPC events and the attached
-devices' logs from ordinary rolling eviction. `record stop NAME` freezes the range; it does
-not release devices. Exporting a live range is allowed and does not stop it, but it is an
-incomplete snapshot. Stopping while calls are in flight leaves an explicit evidence gap;
-their later receipts cannot silently enter the stopped range.
+`record start NAME` keeps the session's history from now on: its calls, crashes and the device
+logs of every device attached to it, including devices attached after the start. `record stop
+NAME` ends the range; it does not release devices, and `release` stops an open recording.
+Reading a live recording is allowed and shows what it has so far. `history --recording NAME`
+takes every other flag, including bounds inside the range.
 
 ```sh
 tap-agent record list
@@ -88,33 +89,27 @@ tap-agent record list -L
 tap-agent record clean checkout
 ```
 
-The short list prints names. `-L` adds state, timestamps and retained backing-segment disk
-usage. Segments can be shared by overlapping ranges: these bytes are not a promise of how
-much cleaning one recording will reclaim. `record clean NAME` explicitly removes a stopped
-recording's protection and local history; ordinary retention then applies. Active recordings
-must be stopped first. Protection does not override hard storage/free-space limits.
-
-New attachments cannot receive recorded input while a recording protects an older fixed
-device set. Stop it and start a new range with the desired set. `media-record` is separate
-video/audio capture, not history protection.
+Names are per session: another session may use the same name. Outside the session that made it,
+`--recording` needs the recording's id (printed by `record list -L`) when the name is not unique.
+`-L` adds state, times, the id and retained disk bytes; ranges can share stored segments, so the
+bytes are not what cleaning one will reclaim. `record clean NAME` deletes a stopped recording;
+its range then expires like the rest. Recordings bypass rolling eviction, not hard storage or
+free-space limits. `media-record` is separate video/audio capture.
 
 ## What survives release and restart
 
-The daemon stores redacted RPC events alongside device logs, under the same retention and
-protection budget. Exports use those archives, not a newly attached device or the live
-connection's bounded `Events` ring. SDK scripts and agent sessions can therefore be inspected
-after release or daemon restart while their evidence remains retained.
+The server stores redacted calls alongside device logs, under the same retention policy, and
+reads them back without a live connection or attachment. SDK scripts and agent sessions can be
+inspected after release or a server restart while their history is kept.
 
-Agent intent is stored privately in `$TAP_AGENT_DIR/records` (default
-`.tap/agent/records`); CLI and MCP processes must share it. If local intent is missing but the
-daemon acknowledged a named recording, it remains discoverable and exportable. Missing agent
-steps are reported, never reconstructed from RPCs. Offline local exports preserve the last
-acknowledged status and explicitly report unavailable daemon evidence. Named stop/clean needs
-the daemon so it can update protection.
+Agent steps are stored privately in `$TAP_AGENT_DIR/records` (default
+`.tap/agent/records`); CLI and MCP processes must share it. Missing agent steps are never
+reconstructed from calls. When the server cannot be reached, `history` still shows the local
+steps with an `unavailable` warning. `record` needs the server.
 
 ## Read the evidence honestly
 
-Exports preserve original connection, attachment, step, cursor and clock identities, resolved
+History keeps the original connection, attachment, step and clock identities, resolved
 selectors, actual input calls and known outcomes. Nested calls use proto3 JSON field names,
 enum names and string-encoded 64-bit values. Monotonic times only compare within their original
 clock ID. Device log observations are not assertions or a universal cross-device ordering.
@@ -128,11 +123,13 @@ High-level action outcomes distinguish:
 Cancellation and unclassified transport failures remain indeterminate. A command returning
 success is not proof of the app's intended result. Explicit waits retain their actual condition;
 count waits do not claim an atomic collection snapshot, and helper polls are not new assertions.
-No export generates tests or invents checks.
+History generates no tests and invents no checks.
 
-Check `complete`, `dropped`, `capture_error`, gaps and `log_capture`. `complete: true` means a
-finalized capture with known outcomes and no known missing requested evidence—not a passing
-test. It is false for live captures, known loss, unknown outcomes or missing expected intent.
+Check the gaps and the `issues`. A **gap** entry marks where capture was interrupted. An
+**issue** is missing evidence with no place in time, printed as `WARNING:`: `expired` (retention
+removed entries the read asked for; JSON has their count when the server knows it), `unavailable` (a source could not be read), `incomplete` (a
+recording's capture failed, such as a storage limit) or `package_unknown` (a package filter the
+server cannot resolve). No issues is not a passing test.
 
 ## Retention and privacy
 
@@ -152,37 +149,27 @@ This is not automatic secret discovery. Do not put secrets in names, IDs, select
 or unmarked text. Treat accessibility snapshots, artifacts, raw live diagnostic APIs and shell
 redirected exports as potentially sensitive.
 
-## SDK exports
+## From an SDK script
 
-SDKs call the underlying API directly; they do not invoke `tap-agent`. Start/stop a named
-range through `client.log_recordings` (Python) or `client.logRecordings` (Kotlin). After your
-script releases its connection, a fresh client can export its original connection ID or
-named recording without attaching a device:
+SDKs call the server directly; they do not invoke `tap-agent`. In Python, `client.history`
+starts and stops recordings and reads history after the script released its connection, with
+no device attached:
 
 ```python
 from tap_e2e import TapClient
 
 with TapClient.create() as client:
-    evidence = client.log_recordings.export("checkout", logs=True)
-    print(evidence.text)
-    document = evidence.to_dict()
-    json_text = evidence.to_json()
+    (recording,) = [r for r in client.history.recordings() if r.name == "checkout"]
+    page = client.history.read(recording=recording, logs=True)
+    print(page.text)
+    json_text = page.to_json()  # tap-history/2
 ```
 
-```kotlin
-val evidence = client.logRecordings.export("checkout", logs = true)
-println(evidence.text)
-val jsonText = evidence.toJson()
-```
-
-Use `history(original_connection_id, logs=True)` in Python or
-`history(originalConnectionId, logs = true)` in Kotlin for ordinary retained activity without
-a protected name. SDK-only recordings have RPC events but no fabricated agent steps. Both
-SDKs return `tap-history/1`; choosing text or JSON changes presentation, not capture fidelity.
-Python history accepts `from_time` / `until_time` as finite epoch seconds; Kotlin accepts
-`fromTime` / `untilTime` as `Instant` values. Both filter all entry kinds by host receipt time.
-Keep evidence/export failures separate from the script's original result, and never retry a
-mutation to repair a recording.
+`read(connections=[connection_id], logs=True)` reads a connection's history without a
+recording; `since=` / `until=` take times (epoch seconds, a `datetime` or an ISO 8601 string)
+and `since_marker=` / `until_marker=` marker names. SDK history has calls but no agent steps. The Kotlin SDK has no history reader yet.
+Keep history-read failures separate from the script's own result, and never retry a mutation
+to repair a recording.
 
 ## What cannot be recovered afterward
 
