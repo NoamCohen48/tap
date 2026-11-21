@@ -60,6 +60,7 @@ Log filters imply logs but never erase deaths, calls or capture gaps. Package fi
 original live attachment's UID mapping. capture explicitly collects current state and the
 device's history (history.txt, history.json) into new private files and indexes them in history;
 reads never take a fresh capture. When the screen matters, capture first: it does not wait.
+capture(action="list"|"show"|"clean") manages the bundles taken; clean deletes only their files.
 Driver infrastructure diagnostics belong to daemon `tap logs driver --serial SERIAL`, not an
 agent log tool. Every action and wait is
 recorded as a step without being asked. history(action="keep", value="start"|"stop", name=...)
@@ -909,15 +910,24 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="capture", annotations=WRITES_FILES)
     async def capture(
+        action: Annotated[Literal["", "list", "show", "clean"], Field(description="Omit to take a bundle; list, show or clean the ones taken.")] = "",
+        name: Annotated[str, Field(description="Taking: a label for the bundle; show/clean: its name or id.")] = "",
         session: Session = "", device: Device = "", path: str = "",
-        last: Annotated[str, Field(description="History: only the last duration, e.g. 5m (default: all of it that is kept).")] = "",
-        start: Annotated[str, Field(description="History: from this ISO time with a time zone.")] = "",
+        last: Annotated[str, Field(description="Taking: only the last duration of history, e.g. 5m (default: all that is kept); list: bundles taken in it.")] = "",
+        start: Annotated[str, Field(description="Taking: history from this ISO time with a time zone; list: bundles taken since.")] = "",
+        long: Annotated[bool, Field(description="list: id, folder, parts and failed parts.")] = False,
+        older_than: Annotated[str, Field(description="clean: every bundle taken longer ago than this duration, e.g. 2h.")] = "",
+        all_captures: Annotated[bool, Field(description="clean: every bundle.")] = False,
+        as_json: Annotated[bool, Field(description="list/show: structured JSON instead of text.")] = False,
     ) -> CallToolResult:
         """Save one evidence bundle to a new private directory: the screenshot, hierarchy,
         device/driver logs and activity/window state now, and the device's history (steps, calls,
-        crashes, ANRs, device log) as history.txt and history.json. Returns the paths; a part that
-        fails is listed and the rest are saved. Never a past screen."""
-        return await call(session, lambda a: a.capture(device or None, path or None, last=last or None, start=start or None))
+        crashes, ANRs, device log) as history.txt and history.json. Returns its name or id and the
+        paths; a part that fails is listed and the rest are saved. Never a past screen. list,
+        show and clean manage the bundles; clean deletes only files the agent saved."""
+        return await call(session, lambda a: a.capture(action or None, name or None, device or None, path or None,
+            last=last or None, start=start or None, long=long, older_than=older_than or None,
+            all_captures=all_captures, as_json=as_json))
 
     @mcp.tool(name="app_data")
     async def app_data(

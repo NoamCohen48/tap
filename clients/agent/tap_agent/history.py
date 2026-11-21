@@ -426,7 +426,10 @@ def _render(agent: Agent, page: HistoryPage, *, backward: bool, devices: tuple[s
     for artifact in artifacts:
         failures = artifact.get("failures", {})
         missing = f"; unavailable: {', '.join(sorted(failures))}" if failures else ""
-        rows.append((_seconds(artifact["at"]), -1, f"{artifact['at']}  {artifact['serial']}  CAPTURE saved to {artifact['directory']}{missing}"))
+        label = artifact.get("name") or artifact["id"][:8]
+        state = f" (cleaned {artifact['cleaned_at']})" if artifact.get("cleaned_at") else ""
+        rows.append((_seconds(artifact["at"]), -1,
+            f"{artifact['at']}  {artifact['serial']}  CAPTURE {label} saved to {artifact['directory']}{state}{missing}"))
     rows.sort(key=lambda row: (row[0], row[1]))
     lines = [text for _, _, text in rows]
     if recording is not None:

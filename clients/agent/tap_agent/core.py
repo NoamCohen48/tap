@@ -788,51 +788,22 @@ class Agent:
 
         return self._run(step)
 
-    def capture(self, device: str | None = None, out: str | os.PathLike[str] | None = None, *,
-                last: str | None = None, start: str | None = None) -> str:
-        """One evidence bundle in a new private directory: the device's state now (screenshot,
-        hierarchy, device info, driver log, logcat, crashes, activities, windows) and what
-        happened on it, as ``history.txt`` (``history --logs --details``) and ``history.json``
-        (``tap-history/2``): this session's whole kept history on the device, or from ``start``
-        (an ISO time) / the ``last`` duration. A part that fails is reported and the rest are
-        saved. The bundle is indexed in history."""
-        from .history import _time, complete
-        if last is not None and start is not None:
-            raise AgentError("capture takes --last or --from, not both", EXIT_USAGE)
-        try:
-            since = _time("--from", start) if start is not None else (time.time() - parse_duration(last) if last is not None else None)
-        except UsageError as error:
-            raise AgentError(str(error), EXIT_USAGE) from None
-
-        def step() -> str:
-            d = self._device(device)
-            directory = pathlib.Path(out) if out else self.out_dir / f"capture-{d.serial}-{_stamp()}"
-            directory.mkdir(mode=0o700, parents=True)
-            started = datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="milliseconds")
-            captured = d.capture()
-            stem = captured.serial.replace("/", "_").replace("\\", "_")
-            saved = [str(save_private(directory / f"{stem}.{name}.{artifact.extension}", artifact.bytes))
-                for name, artifact in captured.artifacts.items()]
-            failures: dict[str, BaseException] = dict(captured.failures)
-            try:  # what led up to now; reading it never fails the capture
-                text, document = complete(self, d.owner_connection.id, d.serial, since)
-            except Exception as error:  # noqa: BLE001 - reported as a failed part, like the others
-                failures["history"] = error
-            else:
-                saved.append(str(save_private(directory / f"{stem}.history.txt", text.encode())))
-                saved.append(str(save_private(directory / f"{stem}.history.json", (json_text(document) + "\n").encode())))
-            lines = saved + [f"{name} failed: {error}" for name, error in failures.items()]
-            try:
-                record = self.records.ensure(self.session, d.owner_connection.id)
-                with self.records.lease(record["id"]):
-                    self.records.artifact(record, serial=d.serial, attached_device_id=d.attached_device_id,
-                        started_at=started, directory=str(directory.absolute()), parts=[pathlib.Path(p).name for p in saved],
-                        failures={name: type(error).__name__ for name, error in failures.items()})
-            except RecordError:
-                lines.append("WARNING: capture files were saved, but their history reference could not be indexed; do not repeat capture to recover them")
-            return "\n".join(lines)
-
-        return self._run(step)
+    def capture(self, action: str | None = None, name: str | None = None, device: str | None = None,
+                out: str | os.PathLike[str] | None = None, *, last: str | None = None, start: str | None = None,
+                long: bool = False, older_than: str | None = None, all_captures: bool = False, as_json: bool = False) -> str:
+        """Without ``action``: one evidence bundle in a new private directory, labelled ``name``
+        when given: the device's state now (screenshot, hierarchy, device info, driver log,
+        logcat, crashes, activities, windows) and what happened on it, as ``history.txt``
+        (``history --logs --details``) and ``history.json`` (``tap-history/2``): this session's
+        whole kept history on the device, or from ``start`` (an ISO time) / the ``last``
+        duration. A part that fails is reported and the rest are saved; the bundle is indexed
+        in history. ``list`` (``long``, ``device``, ``last``/``start``, ``as_json``) shows the
+        bundles newest first; ``show NAME|ID`` its folder and files; ``clean NAME|ID`` (or
+        ``older_than`` a duration, or ``all_captures``) deletes their files, never a file the
+        agent did not save."""
+        from .captures import capture
+        return capture(self, action, name, device, None if out is None else str(out), last=last, start=start,
+            long=long, older_than=older_than, all_captures=all_captures, as_json=as_json)
 
     def history(self, action: str = "read", value: str | None = None, *, start: str | None = None, until: str | None = None,
                 last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False, details: bool = False,

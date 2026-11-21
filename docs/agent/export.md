@@ -187,6 +187,17 @@ document. A part that cannot be read (the history too) is listed as failed and t
 still saved. The current screen is perishable, so when it matters take a `capture` first;
 history stays readable afterward.
 
+```sh
+tap-agent capture checkout        # a named bundle; its first line says where it went
+tap-agent capture list -L         # newest first: time, name or id, device, size, folder
+tap-agent capture show checkout   # the folder and each file
+tap-agent capture clean checkout  # or --older-than 2h, or --all
+```
+
+`clean` deletes only the files the agent saved and then the folder; a folder that also holds
+something else is left as it is, with a message naming what is in the way. History keeps showing
+a cleaned capture, marked cleaned. A name labels one bundle until it is cleaned.
+
 ## What cannot be recovered afterward
 
 History is not an unrestricted transcript. Successful query return values and generic human
