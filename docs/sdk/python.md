@@ -256,6 +256,13 @@ is true, `text` is the displayed hint, not a typed value. `content_invalid` and 
 the validation state the app exposed to accessibility (for example, `TextView.setError`).
 These fields do not change a node's ref or its `change` value.
 
+Each node also says which window it is in: `window_index`, `window_package` and `window_kind`, a
+`WindowKind` the server decides for every client (`APPLICATION`, `INPUT_METHOD` for the soft
+keyboard, `STATUS_BAR` and `NAVIGATION_BAR` for the system bars, `SYSTEM` for the shade, the
+volume panel and system dialogs, …). Use it to leave the keyboard or the bars out of what you
+look at instead of guessing from a package or a size. The snapshot also carries the display's
+`display_width`, `display_height` and `density_dpi` as they were when it was taken.
+
 ## The event log
 
 `connection.event_log()` returns what the connection did on its devices, in order: every

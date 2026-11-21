@@ -35,14 +35,14 @@ def _node(ref: str, value: str, change=pb.NODE_CHANGE_UNSPECIFIED) -> pb.ScreenN
 
 
 def _context_screen(fake):
-    row = pb.ScreenNode(ref="e1", depth=0, window_index=1, window_type=1,
+    row = pb.ScreenNode(ref="e1", depth=0, window_index=1, window_kind=1,
                         window_package="com.android.settings", interactive=True,
                         selector=res("settings_row")._proto, flags=[pb.FLAG_ENABLED])
-    label = pb.ScreenNode(ref="e2", depth=1, window_index=1, window_type=1,
+    label = pb.ScreenNode(ref="e2", depth=1, window_index=1, window_kind=1,
                           window_package="com.android.settings", text="Network & internet")
-    keyboard = pb.ScreenNode(ref="e3", depth=0, window_index=2, window_type=2,
+    keyboard = pb.ScreenNode(ref="e3", depth=0, window_index=2, window_kind=2,
                              window_package="keyboard", text="Keyboard", interactive=True)
-    chrome = pb.ScreenNode(ref="e4", depth=0, window_index=3, window_type=3,
+    chrome = pb.ScreenNode(ref="e4", depth=0, window_index=3, window_kind=pb.WINDOW_KIND_STATUS_BAR,
                            window_package="com.android.systemui", text="Status bar", interactive=True,
                            bounds=pb.Bounds(left=0, top=0, right=1080, bottom=63))
     fake.devices.snapshot = pb.ScreenSnapshotResponse(snapshot_id=1, nodes=[row, label, keyboard, chrome],

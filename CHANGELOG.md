@@ -18,9 +18,12 @@ name the components affected. Earlier releases used independent version lines. T
   reads the state back once the window has gone (up to 2 s), and says so if it stays.
 - Screen snapshots report the display they were taken on: `ScreenSnapshotResponse` gains
   `display_width`, `display_height` and `density_dpi` (the dump's `<hierarchy>` writes `width`,
-  `height` and `density`), and Python `ScreenSnapshot` has the same fields. tap-agent uses them to
-  print the status and navigation bars as one header line each (`--system-bars` shows them) and to
-  leave them out of `--settle` diffs. `--hide-system-chrome` now drops only those bars; the shade,
+  `height` and `density`), and Python `ScreenSnapshot` has the same fields. With them the server
+  classifies every window: `ScreenNode.window_kind` (`WindowKind`, Python `WindowKind`) replaces
+  the bare `window_type` number and adds `STATUS_BAR` and `NAVIGATION_BAR` (a SystemUI window along
+  one whole display edge, at most 64 dp thick), so every client sees the same bars. tap-agent prints
+  the bars as one header line each (`--system-bars` shows them) and leaves them out of `--settle`
+  diffs. `--hide-system-chrome` now drops only those bars; the shade,
   quick settings, the volume panel and system dialogs always show.
 - A condition for Android's "show the on-screen keyboard with a hardware keyboard", named as
   Android names it: `DeviceService.SetShowImeWithHardKeyboard` sets `show_ime_with_hard_keyboard`

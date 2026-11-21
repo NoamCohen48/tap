@@ -422,9 +422,8 @@ message ScreenNode {
   optional string error = 19;
   // One-based window ordinal in this dump, not a persistent Android window ID.
   int32 window_index = 20;
-  // AccessibilityWindowInfo type: 1 application, 2 input method, 3 system, etc.
-  // Zero means unknown (including dumps from older drivers). Never infer from package name.
-  int32 window_type = 21;
+  // What the node's window is, decided by the server for every client alike.
+  WindowKind window_kind = 21;
   // The node is editable text (`AccessibilityNodeInfo.isEditable`), whatever its class.
   bool editable = 22;
   // The standard actions the node offers that Tap can perform (`Element.perform_action`), in
@@ -432,6 +431,25 @@ message ScreenNode {
   repeated StandardAction actions = 23;
   // The labels of the custom actions the node offers (`Element.perform_custom_action`).
   repeated string custom_actions = 24;
+}
+
+// What a window is. 1..6 are Android's AccessibilityWindowInfo types; STATUS_BAR and
+// NAVIGATION_BAR are the SYSTEM windows of com.android.systemui that run along one whole edge of
+// the display and are at most 64 dp thick (status bars are 24 dp, taller around a camera cutout;
+// navigation bars 48 dp). The shade, a volume panel or a system dialog stays SYSTEM: on API 29 the
+// shade is the status-bar window grown to full screen, a volume panel does not span the edge, and
+// a dialog is thicker. Window titles are not used: the status bar has none and the others are
+// translated. UNSPECIFIED: the driver did not say.
+enum WindowKind {
+  WINDOW_KIND_UNSPECIFIED = 0;
+  WINDOW_KIND_APPLICATION = 1;
+  WINDOW_KIND_INPUT_METHOD = 2;
+  WINDOW_KIND_SYSTEM = 3;
+  WINDOW_KIND_ACCESSIBILITY_OVERLAY = 4;
+  WINDOW_KIND_SPLIT_SCREEN_DIVIDER = 5;
+  WINDOW_KIND_MAGNIFICATION_OVERLAY = 6;
+  WINDOW_KIND_STATUS_BAR = 7;
+  WINDOW_KIND_NAVIGATION_BAR = 8;
 }
 
 message ScreenSnapshotResponse {

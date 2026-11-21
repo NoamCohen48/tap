@@ -409,6 +409,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
    Status: done (`ime-with-hard-keyboard`, `show_ime_with_hard_keyboard`).
 6. The server classifies each window (application, keyboard, status bar, navigation bar,
    system, …); tap-agent stops guessing bars from their size.
+   Status: done (`WindowKind`, daemon `WindowKinds`).
 7. Snapshot: `--keyboard collapse|show|omit` and `--system-bars collapse|show|omit` in place of
    four flags; collapsed headers name no CLI flag.
 8. `editable` is a node flag (selectable, and in element snapshots), not a separate bool.

@@ -11,6 +11,11 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 
+private const val APPLICATION = "APPLICATION"
+private const val INPUT_METHOD = "INPUT_METHOD"
+private const val SYSTEM = "SYSTEM"
+private const val UNSPECIFIED = "UNSPECIFIED"
+
 class HierarchyParserTest {
     @Test
     fun `recorded dumps parse into every node and window`() {
@@ -53,7 +58,10 @@ class HierarchyParserTest {
             )
         val nodes = ScreenSnapshots.screen(xml).nodes
         assertEquals(listOf(1, 1, 2, 2, 3, 4), nodes.map { it.windowIndex })
-        assertEquals(listOf(1, 1, 2, 2, 3, 0), nodes.map { it.windowType })
+        assertEquals(
+            listOf(APPLICATION, APPLICATION, INPUT_METHOD, INPUT_METHOD, SYSTEM, UNSPECIFIED).map { "WINDOW_KIND_$it" },
+            nodes.map { it.windowKind.name },
+        )
     }
 
     @Test
