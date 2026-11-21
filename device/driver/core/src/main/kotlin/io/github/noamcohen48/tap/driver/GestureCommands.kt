@@ -6,6 +6,7 @@ import android.graphics.Point
 import android.os.Build
 import android.os.SystemClock
 import android.view.Display
+import android.view.ViewConfiguration
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.UiObject2
 import io.github.noamcohen48.tap.api.v1.Direction
@@ -29,6 +30,8 @@ import io.github.noamcohen48.tap.protocol.CommandFailure
 import io.github.noamcohen48.tap.protocol.DEFAULT_GESTURE_PERCENT
 import io.github.noamcohen48.tap.protocol.DEFAULT_TAP_INTERVAL_MS
 import io.github.noamcohen48.tap.protocol.ScrollEvidence
+import io.github.noamcohen48.tap.protocol.keyPressPlan
+import io.github.noamcohen48.tap.protocol.keyPressesDurationMs
 import io.github.noamcohen48.tap.protocol.multiTapDurationMs
 
 /**
@@ -47,6 +50,7 @@ internal class GestureCommands(
     private val faults: FaultHooks,
     private val events: ToastWatcher,
 ) {
+    private val keys = KeyPresses { instrumentation.uiAutomation }
     private val pointer = PointerGestures({ instrumentation.uiAutomation }, instrumentation.context.resources.displayMetrics.density)
 
     /**
@@ -252,6 +256,10 @@ internal class GestureCommands(
      * first and report false when no window-content event follows within a second, which is
      * effect verification (a slow device got `ACTION_REJECTED` for a Back that happened). The
      * result is only whether the key events were injected; the test waits for the effect.
+     *
+     * A long, held or repeated press is a [keyPressPlan] that [KeyPresses] injects in real time,
+     * timed by this device's long-press timeout and key repeat delay. It must fit the remaining
+     * deadline before any input, like a timed touch.
      */
     fun pressKey(
         context: CommandContext,
@@ -259,9 +267,21 @@ internal class GestureCommands(
     ) {
         val keyCode = command.keyCode
         context.checkpoint()
+        if (!command.longPress && !command.hasHoldMs() && (!command.hasPresses() || command.presses == 1)) {
+            context.markMutationStarted()
+            val injected = device.pressKeyCode(keyCode)
+            if (!injected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Key $keyCode was not injected")
+            return
+        }
+        val longPressMs = ViewConfiguration.getLongPressTimeout().toLong()
+        if (keyPressesDurationMs(command, longPressMs) > context.remainingMs()) {
+            throw CommandFailure(
+                ErrorCode.ERR_DEADLINE_EXCEEDED,
+                message = "The key sequence does not fit in the remaining command deadline; no input was sent",
+            )
+        }
         context.markMutationStarted()
-        val injected = device.pressKeyCode(keyCode)
-        if (!injected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Key $keyCode was not injected")
+        keys.press(keyCode, keyPressPlan(command, longPressMs, ViewConfiguration.getKeyRepeatDelay().toLong()))
     }
 
     /**

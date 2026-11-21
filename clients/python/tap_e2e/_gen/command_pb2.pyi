@@ -235,10 +235,18 @@ class DeviceInfoQuery(_message.Message):
     def __init__(self) -> None: ...
 
 class PressKey(_message.Message):
-    __slots__ = ("key_code",)
+    __slots__ = ("key_code", "long_press", "hold_ms", "presses", "interval_ms")
     KEY_CODE_FIELD_NUMBER: _ClassVar[int]
+    LONG_PRESS_FIELD_NUMBER: _ClassVar[int]
+    HOLD_MS_FIELD_NUMBER: _ClassVar[int]
+    PRESSES_FIELD_NUMBER: _ClassVar[int]
+    INTERVAL_MS_FIELD_NUMBER: _ClassVar[int]
     key_code: int
-    def __init__(self, key_code: _Optional[int] = ...) -> None: ...
+    long_press: bool
+    hold_ms: int
+    presses: int
+    interval_ms: int
+    def __init__(self, key_code: _Optional[int] = ..., long_press: _Optional[bool] = ..., hold_ms: _Optional[int] = ..., presses: _Optional[int] = ..., interval_ms: _Optional[int] = ...) -> None: ...
 
 class OpenSystemPanel(_message.Message):
     __slots__ = ("panel",)

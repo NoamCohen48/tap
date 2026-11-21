@@ -471,7 +471,9 @@ wire types:
   `CommandResult.permission_prompt` = `PermissionPrompt{package_name, choices}`) and
   `ChoosePermission` (34, `PermissionChoice`). `DeviceInfo` gained `screen_on` (9),
   `keyguard_locked` (10) and `keyguard_secure` (11). Waking and sleeping the screen are
-  `PressKey` 224 / 223 (the SDKs' `wake`/`sleep`); there is no command for them. Errors:
+  `PressKey` 224 / 223 (the SDKs' `wake`/`sleep`); there is no command for them. (`PressKey` later
+  gained `long_press` (2), `hold_ms` (3), `presses` (4) and `interval_ms` (5), additive: long, held
+  and counted presses; `Execute` passes them through.) Errors:
   `ACTION_REJECTED`/`KEYGUARD_SECURE`, `WAIT_TIMEOUT`/`NO_PERMISSION_PROMPT`
   (`.docs/protocol-contract.md`).
 - Device actions groups 1–3 (also protocol 5.0, additive): `HideKeyboard` (35),

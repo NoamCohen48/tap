@@ -77,7 +77,7 @@
       {"methods": ["app_deaths", "death_sequence", "take_unhandled_deaths", "await_app_deaths", "guard", "allow_deaths"], "tools": ["deaths"], "reason": "A session is always guarded: every step takes and reports the watched deaths since the previous one (take_unhandled_deaths from the sequence the agent keeps); deaths looks back, and the CLI's deaths --wait (await_app_deaths) blocks until the next one."},
       {"methods": ["expect_death"], "tools": ["tap", "app"], "reason": "--expect-death / expect_death on any step that can send input."},
       {"methods": ["capabilities"], "tools": ["capabilities"]},
-      {"methods": ["app", "info", "press_back", "press_home", "press_key", "open_notifications", "open_quick_settings", "set_orientation", "set_display_rotation", "unfreeze_rotation", "wake", "sleep", "dismiss_keyguard"], "tools": ["app", "device_info", "press_key", "open_panel", "rotate", "screen"]},
+      {"methods": ["app", "info", "press_back", "press_home", "press_key", "long_press_key", "open_notifications", "open_quick_settings", "set_orientation", "set_display_rotation", "unfreeze_rotation", "wake", "sleep", "dismiss_keyguard"], "tools": ["app", "device_info", "press_key", "open_panel", "rotate", "screen"]},
       {"methods": ["await_permission_prompt", "choose_permission", "keyboard_shown", "hide_keyboard", "set_clipboard", "clipboard"], "tools": ["permission", "keyboard", "clipboard"]},
       {"methods": ["set_animations", "set_dark_mode", "set_font_scale", "set_density", "set_network", "set_system_locales", "set_stay_awake", "set_accessibility_display", "set_location"], "tools": ["condition", "set_location"]},
       {"methods": ["foreground_activity", "push_file", "pull_file", "add_media", "await_toast", "toast_history", "await_notification", "notifications", "open_notification", "dismiss_notification", "type_text"], "tools": ["foreground_activity", "push_file", "pull_file", "add_media", "toast", "notification", "type_text"]},
@@ -109,7 +109,7 @@
   },
   "cli_field_aliases": {
     "*": {"timeout": "timeout_seconds", "focus_timeout": "focus_timeout_seconds", "idle": "idle_minutes", "wait_for_device": "wait_for_device_seconds", "level": "view", "accuracy": "accuracy_m", "altitude": "altitude_m", "local": "local_path", "out": "path", "extra": "extras", "event_timeout": "event_timeout_seconds"},
-    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}, "media-record": {"max": "max_seconds"}, "history": {"history_devices": "devices"}
+    "tap": {"timeout": "timeout"}, "permission": {"accuracy": "accuracy"}, "pull": {"out": "out"}, "app-data": {"local": "local"}, "key": {"name": "key", "hold": "hold_seconds", "times": "presses", "interval": "interval_seconds"}, "panel": {"name": "panel"}, "watch": {"duration": "duration_seconds"}, "media-record": {"max": "max_seconds"}, "history": {"history_devices": "devices"}
   },
   "cli_only_fields": {"devices": ["session", "action", "serial"], "sessions": ["session"], "server-info": ["session"], "deaths": ["wait", "timeout"], "watch": ["as_json"]},
   "limitations": [

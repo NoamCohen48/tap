@@ -165,7 +165,17 @@ enum RangeType {
 }
 
 message DeviceInfoQuery {}
-message PressKey { int32 key_code = 1; } // an Android KeyEvent key code, ≥ 0
+// An Android KeyEvent key code (≥ 0), pressed `presses` times. Without long_press or hold_ms each
+// press is a down and an up at once. long_press holds each press for the device's long-press
+// timeout and sends the repeat Android marks as a long press (FLAG_LONG_PRESS); hold_ms holds it
+// that long, with the key repeats a held key sends. The whole sequence must fit in 30000 ms.
+message PressKey {
+  int32 key_code = 1;
+  bool long_press = 2; // not with hold_ms
+  optional int64 hold_ms = 3; // 1..30000
+  optional int32 presses = 4; // 1..100, default 1
+  optional int64 interval_ms = 5; // release to next press, 40..1000, default 100
+}
 // Opens `panel` (the accessibility global action); no target. Back or Home close it.
 message OpenSystemPanel { SystemPanel panel = 1; } // not UNSPECIFIED
 // Sets portable geometry or an exact natural-relative rotation and freezes sensor rotation.

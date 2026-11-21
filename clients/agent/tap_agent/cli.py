@@ -287,6 +287,13 @@ def parser() -> argparse.ArgumentParser:
     p = verb("key", "press a key: any Android key name (back, home, enter, volume-up, media-play-pause, …) or a key code", on_device, settle)
     p.add_argument("name", nargs="?", help="a key name (`--list` prints them all; digit keys are keycode-0 .. keycode-9) or a numeric key code")
     p.add_argument("--list", dest="list_keys", action="store_true", help="print every key name with its code (no device needed)")
+    press = p.add_mutually_exclusive_group()
+    press.add_argument("--long", action="store_true", help="hold each press for the device's long-press timeout (Android's long press)")
+    press.add_argument("--hold", type=_duration, metavar="DURATION", help="hold each press this long (up to 30s), repeating as a held key does")
+    count = p.add_mutually_exclusive_group()
+    count.add_argument("--times", type=int, default=1, metavar="N", help="press N times (1..100)")
+    count.add_argument("--double", dest="times", action="store_const", const=2, help="press twice (--times 2)")
+    p.add_argument("--interval", type=_duration, metavar="DURATION", help="release to next press with --times/--double (40ms..1s, default 100ms)")
 
     p = verb("panel", "open the notification shade or quick settings (key back closes it)", on_device, settle)
     p.add_argument("name", choices=PANELS)
@@ -526,7 +533,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "pinch":
         return agent.pinch(args.target, args.how, args.percent, device, settle=settle, timeout=args.timeout)
     if v == "key":
-        return agent.key(args.name, device, settle=settle, list_keys=args.list_keys)
+        return agent.key(args.name, device, settle=settle, list_keys=args.list_keys, long=args.long, hold=args.hold,
+                         times=args.times, interval=args.interval)
     if v == "panel":
         return agent.panel(args.name, device, settle=settle)
     if v == "rotate":

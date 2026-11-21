@@ -50,7 +50,7 @@ object ActionLog {
     ): String {
         val target =
             if (command.opCase == OpCase.PRESS_KEY) {
-                "key=" + (KEYS[command.pressKey.keyCode] ?: command.pressKey.keyCode.toString())
+                keyTarget(command.pressKey)
             } else {
                 command.selectors.joinToString(" -> ") { it.render() }.let(::printable)
             }
@@ -82,6 +82,15 @@ object ActionLog {
         }
         return null
     }
+
+    /** `key=VOLUME_DOWN`, then `long`, `hold=2000ms` and `x3` when the press has them. */
+    private fun keyTarget(key: io.github.noamcohen48.tap.api.v1.PressKey): String =
+        buildList {
+            add("key=" + (KEYS[key.keyCode] ?: key.keyCode.toString()))
+            if (key.longPress) add("long")
+            if (key.hasHoldMs()) add("hold=${key.holdMs}ms")
+            if (key.hasPresses() && key.presses != 1) add("x${key.presses}")
+        }.joinToString(" ")
 
     /** One line, no control characters (logcat splits a message at each newline), bounded. */
     private fun printable(text: String): String {

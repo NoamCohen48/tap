@@ -107,7 +107,17 @@ object CommandValidation {
         }
         when (command.opCase) {
             OpCase.PRESS_KEY -> {
-                if (command.pressKey.keyCode < 0) invalidRequest("key_code must not be negative")
+                val key = command.pressKey
+                if (key.keyCode < 0) invalidRequest("key_code must not be negative")
+                if (key.longPress && key.hasHoldMs()) invalidRequest("long_press and hold_ms exclude each other")
+                if (key.hasHoldMs() && key.holdMs !in 1..MAX_TOUCH_SEQUENCE_MS) {
+                    invalidRequest("hold_ms must be in 1..$MAX_TOUCH_SEQUENCE_MS")
+                }
+                if (key.hasPresses() && key.presses !in 1..MAX_TAP_COUNT) invalidRequest("presses must be in 1..$MAX_TAP_COUNT")
+                if (key.hasIntervalMs() && key.intervalMs !in 40..1_000) invalidRequest("interval_ms must be in 40..1000")
+                if (keyPressesDurationMs(key, longPressMs = 0) > MAX_TOUCH_SEQUENCE_MS) {
+                    invalidRequest("The key sequence must not exceed $MAX_TOUCH_SEQUENCE_MS ms")
+                }
             }
 
             OpCase.WAIT_APP_VISIBLE -> {

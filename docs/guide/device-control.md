@@ -12,6 +12,7 @@ These are on `Device`: they act on the device as a whole, not on an element.
 | Method | What happens on the device |
 |---|---|
 | `press_back()`, `press_home()`, `press_key(code)` | a key event (`press_key` takes an Android key code, such as `66` for Enter) |
+| `press_key(code, presses=2, interval=0.3)`, `press_key(code, hold=2)`, `long_press_key(code)` | a double or counted press; a press held for that long, repeating as a held key does (holding Volume Down steps the volume); a long press, held for the device's long-press timeout (Kotlin: `pressKey(code, presses, interval, hold)`, `longPressKey(code)`) |
 | `type_text(value)` | types into whatever has input focus ([Text](elements.md#text)) |
 | `keyboard_shown()` | whether any soft keyboard is on screen (also `info().keyboard_shown`) |
 | `hide_keyboard()` | hides it with one Back key. No keyboard: nothing is sent, so Back never reaches the app |

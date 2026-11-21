@@ -932,3 +932,24 @@ def test_key_list_needs_no_device_and_names_every_key(agent):
     with pytest.raises(AgentError):
         agent.key("back", list_keys=True)
     assert cli.run(cli.parser().parse_args(["key", "--list"]), agent) == listing
+
+
+def test_key_long_held_and_counted_presses(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.key("power", long=True) == "long-pressed power"
+    assert _last(fake, "press_key").press_key.long_press
+    assert agent.key("volume-down", hold=2.0) == "held volume-down for 2s"
+    assert _last(fake, "press_key").press_key.hold_ms == 2000
+    assert agent.key("back", times=2, interval=0.3) == "pressed back x2"
+    key = _last(fake, "press_key").press_key
+    assert (key.presses, key.interval_ms) == (2, 300)
+    sent = len(fake.devices.commands)
+    for bad in ({"long": True, "hold": 1.0}, {"times": 0}, {"interval": 0.3}, {"hold": 31.0},
+                {"times": 2, "interval": 2.0}, {"times": 100, "hold": 1.0}):
+        with pytest.raises(AgentError):
+            agent.key("back", **bad)
+    assert len(fake.devices.commands) == sent
+    args = cli.parser().parse_args(["key", "volume-up", "--double", "--interval", "250ms"])
+    assert (args.times, args.interval) == (2, 0.25)
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(["key", "power", "--long", "--hold", "1s"])

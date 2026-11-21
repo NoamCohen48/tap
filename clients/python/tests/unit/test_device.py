@@ -847,3 +847,28 @@ def test_a_narrowing_that_does_not_fit_the_selector_is_dropped(fake, device):
     with pytest.raises(CommandError) as info:
         device.screen.element(text("Pay").clickable()).tap()
     assert info.value.narrowing is None and "\n" not in str(info.value)
+
+
+def test_press_key_sends_long_held_and_counted_presses(fake, device):
+    commands: list[pb.Command] = []
+
+    def respond(command: pb.Command) -> pb.CommandResult | None:
+        if command.WhichOneof("op") != "press_key":
+            return None
+        commands.append(command)
+        return pb.CommandResult(done=pb.Done())
+
+    fake.devices.responder = respond
+    device.press_key(25)
+    device.press_key(25, presses=2, interval=0.3)
+    device.press_key(25, hold=2)
+    device.long_press_key(26)
+    keys = [c.press_key for c in commands]
+    assert not (keys[0].HasField("presses") or keys[0].HasField("hold_ms") or keys[0].long_press)
+    assert (keys[1].presses, keys[1].interval_ms) == (2, 300)
+    assert keys[2].hold_ms == 2000 and commands[2].timeout_ms > 2000
+    assert keys[3].long_press and keys[3].key_code == 26
+    for bad in ({"presses": 0}, {"presses": 101}, {"interval": 0.01}, {"hold": 0}, {"hold": 31}, {"presses": 100, "hold": 1}):
+        with pytest.raises(ValueError):
+            device.press_key(25, **bad)
+    assert len(commands) == 4
