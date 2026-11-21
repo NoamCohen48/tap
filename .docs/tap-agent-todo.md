@@ -235,6 +235,8 @@ Do:
 
 ## `capture`: manage captures (name, list, show, clean)
 
+Status: done.
+
 Today `capture` only takes a new bundle. Its folder is indexed in the agent's records
 (`records.py`, the `artifacts` table: time, serial, attachment, directory, parts, failures) and
 shown in `history`, but there is no way to name a capture, list the captures, find one again or

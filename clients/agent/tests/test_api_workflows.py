@@ -140,7 +140,9 @@ def test_scroll_until_has_count_and_deadline_bounds(fake, agent):
 def test_capture_saves_private_new_outputs_and_references_them(fake, agent, tmp_path):
     agent.attach("first")
     directory = tmp_path / "bundle"
-    paths = [pathlib.Path(path) for path in agent.capture(out=directory).splitlines()]
+    first, *rest = agent.capture(out=directory).splitlines()
+    assert first.startswith("capture ") and first.endswith(f" saved to {directory}")
+    paths = [pathlib.Path(path) for path in rest]
     assert paths and all(path.exists() and stat.S_IMODE(path.stat().st_mode) == 0o600 for path in paths)
     saved = json.loads(agent.history(as_json=True))["artifacts"]
     assert saved[0]["parts"] == [path.name for path in paths]

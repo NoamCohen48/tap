@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `capture NAME` labels a bundle, `capture list [-L]` lists them newest first,
+  `capture show NAME|ID` prints a bundle's files and `capture clean NAME|ID` (`--older-than`,
+  `--all`) deletes the files the agent saved; history marks cleaned bundles. `capture` now prints
+  the bundle's name or id first.
 - tap-agent `capture` also saves the device's history as `history.txt` and `history.json`
   (`tap-history/2`): the session's steps, calls, crashes, ANRs, gaps and device log, all that is
   kept or `--last` / `--from`, so one bundle holds the screen and what led up to it.

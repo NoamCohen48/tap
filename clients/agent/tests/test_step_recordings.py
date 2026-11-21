@@ -154,12 +154,12 @@ def test_an_until_marker_before_the_start_is_refused_not_read_as_an_open_range(f
 def test_capture_indexes_private_files_without_a_second_evidence_command(fake, agent, tmp_path):
     agent.attach("first")
     directory = tmp_path / "capture"
-    paths = agent.capture(out=directory).splitlines()
+    paths = agent.capture(out=directory).splitlines()[1:]
     assert paths and all(pathlib.Path(path).stat().st_mode & 0o777 == 0o600 for path in paths)
     saved = document(agent)["artifacts"]
     assert len(saved) == 1 and saved[0]["serial"] == "first"
     assert saved[0]["directory"] == str(directory)
-    assert f"CAPTURE saved to {directory}" in agent.history()
+    assert f" saved to {directory}" in agent.history() and "  CAPTURE " in agent.history()
     with pytest.raises(AgentError):
         agent.capture(out=directory)
     assert not hasattr(agent, "log")
@@ -396,3 +396,54 @@ def test_capture_history_bound_and_a_failed_read(fake, agent, tmp_path, monkeypa
     assert any(line.startswith("history failed: ") and "history read lost" in line for line in lines)
     assert not any(line.endswith(".history.txt") for line in lines)
     assert any(line.endswith(".screenshot.png") for line in lines)
+
+
+def test_captures_are_named_listed_shown_and_cleaned(fake, agent, tmp_path):
+    agent.attach("first")
+    assert agent.capture(name="checkout", out=tmp_path / "a").startswith("capture checkout saved to ")
+    with pytest.raises(AgentError, match="a capture named 'checkout' exists"):
+        agent.capture(name="checkout", out=tmp_path / "b")
+    assert not (tmp_path / "b").exists()
+    other = agent.capture(out=tmp_path / "c").splitlines()[0].split()[1]  # an unnamed one: its id
+    listed = agent.capture("list").splitlines()
+    assert [line.split()[1] for line in listed] == [other, "checkout"]  # newest first
+    assert "id=" in agent.capture("list", long=True) and "parts=" in agent.capture("list", long=True)
+    entries = json.loads(agent.capture("list", as_json=True))
+    assert entries[1]["name"] == "checkout" and entries[1]["bytes"] > 0
+    shown = agent.capture("show", "checkout")
+    assert f"directory {tmp_path / 'a'}" in shown and "first.history.json" in shown
+    assert json.loads(agent.capture("show", other, as_json=True))["directory"] == str(tmp_path / "c")
+    assert "CAPTURE checkout saved to" in agent.history()
+
+    (tmp_path / "a" / "notes.txt").write_text("mine")
+    refused = agent.capture("clean", "checkout")
+    assert "not cleaned" in refused and "notes.txt" in refused and (tmp_path / "a" / "first.history.txt").exists()
+    (tmp_path / "a" / "notes.txt").unlink()
+    assert agent.capture("clean", "checkout") == f"cleaned capture checkout ({tmp_path / 'a'})"
+    assert not (tmp_path / "a").exists()
+    assert "cleaned " in agent.capture("list").splitlines()[1]
+    assert "(cleaned " in agent.history()
+    assert agent.capture(name="checkout", out=tmp_path / "d").startswith("capture checkout")  # the name is free again
+    assert agent.capture("clean", all_captures=True).count("cleaned capture") == 2
+    assert agent.capture("clean", older_than="1h") == "no captures to clean"
+
+
+@pytest.mark.parametrize("call", [
+    lambda a: a.capture("list", "x"), lambda a: a.capture("show"), lambda a: a.capture("clean"),
+    lambda a: a.capture("clean", "x", all_captures=True), lambda a: a.capture(long=True),
+    lambda a: a.capture("clean", "x", as_json=True), lambda a: a.capture("list", out="o"),
+    lambda a: a.capture(name="list"), lambda a: a.capture(name="bad name"),
+])
+def test_capture_management_refuses_mixed_forms(fake, agent, call):
+    agent.attach("first")
+    with pytest.raises(AgentError):
+        call(agent)
+
+
+def test_capture_cli_takes_a_name_or_a_management_word(fake, agent, tmp_path):
+    agent.attach("first")
+    parser = cli.parser()
+    out = cli.run(parser.parse_args(["capture", "login", "-o", str(tmp_path / "x")]), agent)
+    assert out.startswith("capture login saved to ")
+    assert cli.run(parser.parse_args(["capture", "list"]), agent).split()[1] == "login"
+    assert "directory " in cli.run(parser.parse_args(["capture", "show", "login"]), agent)

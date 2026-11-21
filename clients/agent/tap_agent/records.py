@@ -79,8 +79,14 @@ _SCHEMA_6 = (
 )""",
     "CREATE INDEX artifacts_time ON artifacts(at)",
 )
-_MIGRATIONS = {1: _SCHEMA_2, 2: _SCHEMA_3, 3: _SCHEMA_4, 4: _SCHEMA_5, 5: _SCHEMA_6}
-VERSION = 6
+_SCHEMA_7 = (
+    "ALTER TABLE artifacts ADD COLUMN name TEXT",
+    "ALTER TABLE artifacts ADD COLUMN cleaned_at TEXT",
+    # A name labels one capture at a time; once its files are cleaned the name is free again.
+    "CREATE UNIQUE INDEX artifacts_name ON artifacts(name) WHERE name IS NOT NULL AND cleaned_at IS NULL",
+)
+_MIGRATIONS = {1: _SCHEMA_2, 2: _SCHEMA_3, 3: _SCHEMA_4, 4: _SCHEMA_5, 5: _SCHEMA_6, 6: _SCHEMA_7}
+VERSION = 7
 
 
 class RecordError(Exception):
@@ -581,15 +587,55 @@ class RecordStore:
             return [row for row in rows if row["batch_id"] == batch] if batch is not None else rows[:1]
 
     def artifact(self, recording: dict[str, Any], *, serial: str, attached_device_id: str,
-                 started_at: str, directory: str, parts: list[str], failures: dict[str, str]) -> None:
-        """Index already saved files only; never read their contents or persist exception text."""
+                 started_at: str, directory: str, parts: list[str], failures: dict[str, str],
+                 name: str | None = None) -> str:
+        """Index already saved files only; never read their contents or persist exception text.
+        Returns the capture's id."""
         document = _json({"directory": directory, "parts": parts, "failures": failures})
         if _bytes(document) > 64 * 1024:
             raise RecordError("capture reference exceeds 64 KiB; saved files remain available")
+        identifier = uuid.uuid4().hex
+        try:
+            with self._db(write=True) as connection:
+                connection.execute("INSERT INTO artifacts(id,record_id,connection_id,serial,attached_device_id,at,started_at,"
+                    "directory,parts,failures,name) VALUES(?,?,?,?,?,?,?,?,?,?,?)", (identifier,
+                    recording["id"], recording["connection_id"], serial, attached_device_id, _now(), started_at,
+                    directory, _json(parts), _json(failures), name))
+        except RecordError as error:  # the storage wraps sqlite errors; a taken name is one of them
+            if isinstance(error.__cause__, sqlite3.IntegrityError):
+                raise RecordError(f"a capture named {name!r} exists; clean it or choose another name") from error
+            raise
+        return identifier
+
+    def capture_name_taken(self, name: str) -> bool:
+        """Whether a capture not yet cleaned carries ``name``."""
+        if not self._exists():
+            return False
+        with self._db() as connection:
+            return connection.execute("SELECT 1 FROM artifacts WHERE name=? AND cleaned_at IS NULL", (name,)).fetchone() is not None
+
+    def captures(self, *, start: str | None = None, until: str | None = None, devices: tuple[str, ...] = ()) -> list[dict[str, Any]]:
+        """Every indexed capture, newest first, cleaned ones included."""
+        return list(reversed(self.artifact_references(start=start, until=until, devices=devices)))
+
+    def find_capture(self, key: str) -> dict[str, Any]:
+        """The capture named ``key`` (not cleaned), else the one whose id is ``key`` or starts with it."""
+        if not self._exists():
+            raise RecordError(f"no capture {key!r}; `capture list` shows them")
+        with self._db() as connection:
+            rows = connection.execute("SELECT * FROM artifacts WHERE name=? AND cleaned_at IS NULL", (key,)).fetchall()
+            if not rows and len(key) >= 6:
+                rows = connection.execute("SELECT * FROM artifacts WHERE substr(id,1,?)=?", (len(key), key)).fetchall()
+        if not rows:
+            raise RecordError(f"no capture {key!r}; `capture list` shows them")
+        if len(rows) > 1:
+            raise RecordError(f"{key!r} matches {len(rows)} captures; give more of the id")
+        return self._artifact_document(rows[0])
+
+    def capture_cleaned(self, identifier: str) -> None:
+        """Marks a capture whose files are deleted; history keeps showing it, as cleaned."""
         with self._db(write=True) as connection:
-            connection.execute("INSERT INTO artifacts VALUES(?,?,?,?,?,?,?,?,?,?)", (uuid.uuid4().hex,
-                recording["id"], recording["connection_id"], serial, attached_device_id, _now(), started_at,
-                directory, _json(parts), _json(failures)))
+            connection.execute("UPDATE artifacts SET cleaned_at=? WHERE id=?", (_now(), identifier))
 
     @staticmethod
     def _artifact_document(row) -> dict[str, Any]:
@@ -599,7 +645,7 @@ class RecordStore:
             raise RecordError("capture reference contains invalid stored JSON") from error
         if not isinstance(parts, list) or not all(isinstance(part, str) for part in parts) or not isinstance(failures, dict) or not all(isinstance(key, str) and isinstance(value, str) for key, value in failures.items()):
             raise RecordError("capture reference contains invalid stored metadata")
-        return {**{key: row[key] for key in ("id", "connection_id", "serial", "attached_device_id", "at", "started_at", "directory")},
+        return {**{key: row[key] for key in ("id", "connection_id", "serial", "attached_device_id", "at", "started_at", "directory", "name", "cleaned_at")},
             "kind": "capture", "parts": parts, "failures": failures,
             "scope": "state_captured_at_request_time", "storage": "external_local_files"}
 
