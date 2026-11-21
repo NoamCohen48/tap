@@ -124,6 +124,8 @@ def parse_extras(items: Sequence[str]) -> dict[str, str | bool | int | float | L
     return extras
 KEYBOARD_ACTIONS = ("hide",)
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
+KEYBOARD_GONE_SECONDS = 2.0
+"""How long `keyboard hide` waits for the keyboard's window to go (it animates out for ~0.3 s)."""
 CONDITIONS = (
     "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
     "stay-awake", "soft-keyboard", "high-contrast-text", "color-inversion", "bold-text",
@@ -1199,7 +1201,9 @@ class Agent:
 
     def keyboard(self, action: str | None = None, device: str | None = None, settle: bool = False) -> str:
         """Without ``action``: reports whether a soft keyboard is on screen. ``hide`` hides it
-        (one Back key, sent only when a keyboard shows) and reports the state read back."""
+        (one Back key, sent only when a keyboard shows) and reports the state read back once the
+        keyboard's window has gone, waiting up to ``KEYBOARD_GONE_SECONDS``: right after the key
+        it is still on screen while it animates out, and a second hide would send Back to the app."""
         action = _device_action("keyboard", action, KEYBOARD_ACTIONS, settle)
 
         def step() -> str:
@@ -1207,7 +1211,16 @@ class Agent:
             if action == "hide":
                 with sending():
                     d.hide_keyboard()
-            text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
+                deadline = time.monotonic() + KEYBOARD_GONE_SECONDS
+                while d.keyboard_shown():
+                    if time.monotonic() >= deadline:
+                        text = (f"keyboard still shown {format_duration(KEYBOARD_GONE_SECONDS)} after Back; "
+                                "read it again (keyboard) before hiding again, which would send Back to the app")
+                        return f"{text}\n{self._settled_after_input(d)}" if settle else text
+                    time.sleep(0.1)
+                text = "keyboard hidden"
+            else:
+                text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
             return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)

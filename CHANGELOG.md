@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `keyboard hide` reported "keyboard shown" right after hiding it, because the keyboard's
+  window is still on screen while it animates out; a second hide then sent Back to the app. It now
+  reads the state back once the window has gone (up to 2 s), and says so if it stays.
 - Screen snapshots report the display they were taken on: `ScreenSnapshotResponse` gains
   `display_width`, `display_height` and `density_dpi` (the dump's `<hierarchy>` writes `width`,
   `height` and `density`), and Python `ScreenSnapshot` has the same fields. tap-agent uses them to
