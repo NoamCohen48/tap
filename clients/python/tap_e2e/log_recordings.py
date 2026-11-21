@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, cast
 from . import proto as pb
 from ._history_deaths import death_document
 from .client import mapped_errors
+from .errors import ServerError, TapError
 from .history import HistoryExport, log_entry_dict
 from .logs import LogEntries, LogPriority, _entry
 
@@ -176,7 +177,10 @@ class LogRecordings:
         return HistoryExport(data)
 
     def history(self, connection_id: str, *, logs: bool = False, step_ids: Iterable[str] | None = None,
-                from_time: float | None = None, until_time: float | None = None, timeout: float = 30) -> HistoryExport:
+                from_time: float | None = None, until_time: float | None = None, timeout: float = 30,
+                devices: Iterable[str] = (), packages: Iterable[str] = (), tags: Iterable[str] = (),
+                min_priority: LogPriority | str | None = None, grep: str | None = None, actions: bool = True,
+                log_step: str | None = None) -> HistoryExport:
         """Export retained SDK calls for an original connection, optionally with device logs.
 
         Call from script cleanup or a fresh client after release/restart. ``from_time`` is
@@ -186,6 +190,11 @@ class LogRecordings:
         ``step_ids=None`` includes all calls; an explicit empty collection includes no calls,
         but never removes independent death evidence. Ordinary retention may have expired
         evidence; missing capture is explicit, not an empty successful result.
+        ``devices`` selects serials for calls/deaths/logs. Package/tag/priority/Java-regex and
+        ``actions`` filters apply only to ordinary log archives, never death or gap evidence.
+        Package filtering requires each original live attachment's UID mapping. ``log_step``
+        selects an original action span instead of receipt-time bounds for ordinary logs,
+        preserving action lines delivered after the agent finished the step.
         """
         if not connection_id:
             raise ValueError("history needs the original connection id")
@@ -194,27 +203,50 @@ class LogRecordings:
                 raise ValueError("history time bounds must be finite epoch seconds")
         if from_time is not None and until_time is not None and until_time < from_time:
             raise ValueError("until_time must not precede from_time")
+        serials = frozenset(devices)
+        package_names, tag_names = tuple(packages), tuple(tags)
+        priority = int(LogPriority.of(min_priority)) if min_priority is not None else None
         sources = [(archive, None) for archive in self.archives(connection_id, include_events=True, timeout=timeout)
-            if archive.events or logs]
+            if archive.events or (logs and (not serials or archive.serial in serials))]
+        if package_names and any(not archive.events and archive.closed for archive, _ in sources):
+            raise ValueError("package filtering needs each original live attachment's package/UID mapping; use tag/priority/grep for archived logs")
         wanted = frozenset(step_ids) if step_ids is not None else None
-        def selected(entry: pb.LogEntry) -> bool:
+        def selected(entry: pb.LogEntry, archive: RetainedLog) -> bool:
+            if serials and entry.HasField("event") and entry.event.serial not in serials:
+                return False
+            if serials and entry.HasField("death") and entry.death.serial not in serials:
+                return False
             # Receipt time is common to RPC completions, independent deaths and log lines.
             at = entry.host_time_ms / 1000
-            if (from_time is not None and at < from_time) or (until_time is not None and at >= until_time):
+            if (log_step is None or archive.events) and (
+                (from_time is not None and at < from_time) or (until_time is not None and at >= until_time)
+            ):
                 return False
             if wanted is not None and entry.HasField("event"):
                 return entry.event.HasField("step") and entry.event.step in wanted
             if wanted is not None and entry.HasField("action") and entry.action.HasField("step"):
                 return entry.action.step in wanted
             return True
-        data = self._export_sources(connection_id, sources, logs=logs, timeout=timeout, select=selected)
-        if wanted is not None or from_time is not None or until_time is not None:
-            data["range"] = {"step_ids": sorted(wanted) if wanted is not None else None,
+        def configure(request: pb.ReadLogRequest, archive: RetainedLog) -> None:
+            if not archive.events:
+                if log_step is not None:
+                    request.step = log_step
+                request.packages.extend(package_names)
+                request.tags.extend(tag_names)
+                if priority is not None:
+                    request.min_priority = cast(pb.LogPriority, priority)
+                if grep is not None:
+                    request.message_regex = grep
+                request.exclude_actions = not actions
+        data = self._export_sources(connection_id, sources, logs=logs, timeout=timeout, select=selected, configure=configure)
+        if wanted is not None or from_time is not None or until_time is not None or log_step is not None:
+            data["range"] = {"step_ids": sorted(wanted) if wanted is not None else None, "log_step": log_step,
                 "from_time": from_time, "until_time": until_time, "clock": "host_receipt"}
         return HistoryExport(data)
 
     def _export_sources(self, connection_id: str, sources: Sequence[tuple[RetainedLog, str | None]], *, logs: bool, timeout: float,
-                        select: Callable[[pb.LogEntry], bool] | None = None) -> dict:
+                        select: Callable[[pb.LogEntry, RetainedLog], bool] | None = None,
+                        configure: Callable[[pb.ReadLogRequest, RetainedLog], None] | None = None) -> dict:
         data = {"format": "tap-history/1", "connection_id": connection_id, "steps": [], "events": [],
             "event_capture": [], "deaths": [], "complete": bool(sources)}
         if logs:
@@ -223,13 +255,20 @@ class LogRecordings:
             request = pb.ReadLogRequest(client_connection_id=connection_id, attached_device_id=archive.attached_device_id)
             if recording is not None:
                 request.recording = recording
+            if configure is not None:
+                configure(request, archive)
             entries = LogEntries()
-            with mapped_errors(archive.serial or None):
-                for response in self._client.device_log.ReadLog(request, timeout=timeout):
-                    entries.dropped += response.dropped
-                    entries.capture_error = response.capture_error or entries.capture_error
-                    entries.clock_id = response.clock_id or entries.clock_id
-                    entries.extend(_entry(entry) for entry in response.entries if select is None or select(entry))
+            entries.clock_id = archive.clock_id
+            try:
+                with mapped_errors(archive.serial or None):
+                    for response in self._client.device_log.ReadLog(request, timeout=timeout):
+                        entries.dropped += response.dropped
+                        entries.capture_error = response.capture_error or entries.capture_error
+                        entries.clock_id = response.clock_id or entries.clock_id
+                        entries.extend(_entry(entry) for entry in response.entries if select is None or select(entry, archive))
+            except (TapError, OSError) as error:
+                reason = error.reason.name if isinstance(error, ServerError) else type(error).__name__
+                entries.capture_error = (entries.capture_error + "; " if entries.capture_error else "") + f"archive read incomplete ({reason})"
             capture = {"attached_device_id": archive.attached_device_id, "dropped": entries.dropped,
                 "capture_error": entries.capture_error, "clock_id": entries.clock_id,
                 "capture_scope": "recording" if recording is not None else "connection"}

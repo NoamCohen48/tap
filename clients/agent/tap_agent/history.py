@@ -134,14 +134,46 @@ def _export_recording(agent: Agent, name: str, *, logs: bool, as_json: bool, det
     return _render(data, as_json, details=details)
 
 
-def history(agent: Agent, *, start: str | int | None = None, until: str | int | None = None,
+def history(agent: Agent, action: str = "read", value: str | None = None, *, start: str | int | None = None, until: str | int | None = None,
             last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False,
-            details: bool = False) -> str:
+            details: bool = False, devices=(), packages=(), priority: str | None = None, tags=(), grep: str | None = None,
+            actions: bool = True, driver_lines: bool = False, since_marker: str | None = None, until_marker: str | None = None,
+            step: str | int | None = None, last_action: bool = False, tail: int | None = None, after: str | None = None) -> str:
     """Read full time-window evidence independently of paginated agent intent."""
+    from . import history_selection as selection
     from .core import AgentError
-    _flags(logs=logs, json=as_json, details=details)
+    _flags(logs=logs, json=as_json, details=details, actions=actions, driver_lines=driver_lines, last_action=last_action)
+    try:
+        devices = selection.serials(devices)
+        if priority is not None:
+            from tap_e2e import LogPriority
+            LogPriority.of(priority)
+        if grep is not None and (not isinstance(grep, str) or len(grep) > 512):
+            _usage("--grep needs a regex of at most 512 characters (Java syntax)")
+    except (RecordError, ValueError) as error:
+        _usage(str(error))
+    if action not in ("read", "mark", "redact"):
+        _usage("history action must be read, mark or redact")
+    selectors = (start is not None, last is not None, since_marker is not None, step is not None, last_action, after is not None)
+    if sum(selectors) > 1:
+        if last is not None:
+            _usage("--last cannot be combined with other start bounds")
+        _usage("choose one history start: --from, --last, --since-marker, --step, --last-action or --after")
+    if step is not None and (until is not None or until_marker is not None):
+        _usage("--step already has its own end; do not combine it with --until")
+    if until is not None and until_marker is not None:
+        _usage("choose --until or --until-marker")
+    if tail is not None and (isinstance(tail, bool) or not isinstance(tail, int) or not 1 <= tail <= 100_000):
+        _usage("--tail must be an integer from 1 to 100000")
+    if action != "read":
+        if any(selectors) or until is not None or until_marker is not None or logs or details or packages or priority or tags or grep or not actions or driver_lines or tail is not None or limit != 200:
+            _usage("history mark/redact take only NAME/REGEX, device/session selection and --json")
+        return agent._run(lambda: selection.control(agent, action, value, devices, as_json=as_json))
+    if value is not None:
+        _usage("history read takes no value; use explicit selection flags")
+    logs = bool(logs or packages or priority or tags or grep or not actions or driver_lines or since_marker or until_marker or last_action or after or tail is not None)
     if last is not None:
-        if start is not None or until is not None:
+        if start is not None or until is not None or until_marker is not None:
             _usage("--last cannot be combined with --from or --until")
         try:
             seconds = parse_duration(last)
@@ -156,17 +188,24 @@ def history(agent: Agent, *, start: str | int | None = None, until: str | int | 
         lower, upper = _history_options(start, until, limit)
     except RecordError as error:
         _usage(str(error))
-    time_view = any(bound is not None and bound[0] == "started_at" for bound in (lower, upper))
+    time_view = any(bound is not None and bound[0] == "started_at" for bound in (lower, upper)) or any((since_marker, until_marker, step, last_action, after)) or tail is not None
 
     def run() -> str:
+        anchor_low, anchor_high, wanted, anchor_metadata = selection.anchor(agent, devices=devices, since_marker=since_marker,
+            until_marker=until_marker, step=step, last_action=last_action, after=after)
+        selected_start, selected_until = anchor_low or start, anchor_high or until
         agent._end_ended_histories()
-        data = agent.records.timeline(start=start, until=until, limit=limit)
-        data.update(events=[], event_capture=[], deaths=[])
+        step_cursor = anchor_metadata.get("step", {}).get("cursor")
+        data = agent.records.timeline(start=step_cursor if wanted else selected_start,
+            until=step_cursor + 1 if wanted else selected_until, limit=limit, devices=devices)
+        if wanted is not None:
+            data["steps"] = [row for row in data["steps"] if row["id"] == wanted]
+        data.update(events=[], event_capture=[], deaths=[], selection=anchor_metadata)
         data["complete"] = data["complete"] if data["steps"] else True
         if logs:
             data["log"] = {}
         bounds = []
-        for bound in (lower, upper):
+        for bound in _history_options(selected_start, selected_until, limit):
             if bound is None:
                 bounds.append(None)
             elif bound[0] == "started_at":
@@ -182,11 +221,18 @@ def history(agent: Agent, *, start: str | int | None = None, until: str | int | 
                 bounds.append(_seconds(at))
         low, high = bounds
         data["range"] = {"from_time": low, "until_time": high, "clock": "host_receipt",
-            "activity": "all" if time_view else "selected_steps_and_independent_evidence"}
+            "activity": "all" if time_view else "selected_steps_and_independent_evidence",
+            "log_scope": "original_step_action_span" if wanted else "host_receipt_window"}
         owners = set(data.pop("connections"))
         try:
-            owners.update(archive.connection_id for archive in agent.client.log_recordings.archives(include_events=True))
+            discovered = agent.client.log_recordings.archives(include_events=True)
+            selected_archives = [archive for archive in discovered if archive.events or not devices or archive.serial in devices]
+            if packages and any(archive.closed and not archive.events for archive in selected_archives):
+                _usage("--package requires original live attachment ownership; use --tag/--priority/--grep for archived logs")
+            owners.update(archive.connection_id for archive in selected_archives)
         except (TapError, AgentError, OSError) as error:
+            if isinstance(error, AgentError) and error.exit_code == 2:
+                raise
             data["complete"] = False
             data["events_unavailable"] = f"retained archive discovery failed ({type(error).__name__})"
             if logs:
@@ -195,8 +241,9 @@ def history(agent: Agent, *, start: str | int | None = None, until: str | int | 
             steps = [step for step in data["steps"] if step["connection_id"] == owner]
             try:
                 evidence = agent.client.log_recordings.history(owner, logs=logs,
-                    step_ids=None if time_view else [step["id"] for step in steps if step["id"]],
-                    from_time=low, until_time=high).to_dict()
+                    step_ids=[wanted] if wanted is not None else None if time_view else [row["id"] for row in steps if row["id"]],
+                    from_time=low, until_time=high, devices=devices, packages=packages, tags=tags,
+                    min_priority=priority, grep=grep, actions=actions, log_step=wanted).to_dict()
             except (TapError, AgentError, OSError) as error:
                 data["complete"] = False
                 data["events_unavailable"] = f"retained events were not inspected ({type(error).__name__})"
@@ -212,6 +259,10 @@ def history(agent: Agent, *, start: str | int | None = None, until: str | int | 
             for serial, entries in evidence.get("log", {}).items():
                 key = serial if serial not in data["log"] else f"{serial}:{owner}"
                 data["log"][key] = entries
+        data["artifacts"] = agent.records.artifact_references(start=_at(round(low * 1000)) if low is not None else None,
+            until=_at(round(high * 1000)) if high is not None else None, devices=devices)
+        selection.finish(data, devices=devices, actions=actions, driver_lines=driver_lines,
+            tail=tail, after=anchor_metadata.get("after"))
         if time_view and (data.get("next") is not None or data.get("older") is not None):
             data["steps_truncated"] = True
             data["complete"] = False

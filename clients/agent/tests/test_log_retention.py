@@ -180,8 +180,8 @@ def test_capture_failure_is_preserved_when_exporting_local_intent_offline(fake, 
 def test_live_log_does_not_hide_a_durable_capture_failure(fake, agent):
     attach(fake, agent)
     fake.device_log.capture_error = "hard storage limit"
-    assert "WARNING: incomplete durable log capture" in agent.log()
-    assert json.loads(agent.log(as_json=True))["capture_error"] == "hard storage limit"
+    assert "WARNING: hard storage limit" in agent.history(logs=True)
+    assert json.loads(agent.history(logs=True, as_json=True))["log"]["first"]["capture_error"] == "hard storage limit"
 
 
 def test_cli_is_stdout_only_and_old_overlapping_commands_are_removed(fake, agent, tmp_path):

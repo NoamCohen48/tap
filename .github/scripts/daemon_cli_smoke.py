@@ -51,7 +51,7 @@ def main() -> int:
             except json.JSONDecodeError as error:
                 raise AssertionError(f"CLI returned invalid JSON for {args}: {output!r}") from error
 
-        for args in ((), ("--help",), ("-h",), ("help",), ("start", "--help"), ("help", "sessions", "close"), ("unquarantine", "--help"), ("config", "logging-policy", "--help"), ("help", "config", "logging-policy", "rolling")):
+        for args in ((), ("--help",), ("-h",), ("help",), ("start", "--help"), ("help", "sessions", "close"), ("unquarantine", "--help"), ("config", "logging-policy", "--help"), ("logs", "driver", "--help"), ("help", "config", "logging-policy", "rolling")):
             assert "Usage:" in run(*args)
         assert not state.exists(), "help must not create daemon state"
         assert "tap daemon" in run("--version")
@@ -78,6 +78,10 @@ def main() -> int:
             run("start", "--adb", str(adb), "--driver-idle-timeout-ms", "1000")
             assert data("status")["healthy"]
             assert data("devices")["devices"] == []
+            assert data("sessions")["sessions"] == []
+            run("logs", "driver", code=2)
+            missing = data("logs", "driver", "--serial", "missing", code=1)
+            assert missing and not marker.exists()
             assert data("sessions")["sessions"] == []
             descriptor = json.loads((state / "daemon.json").read_text())
             with TapClient.create(f"127.0.0.1:{descriptor['port']}", token=descriptor["token"]) as client:

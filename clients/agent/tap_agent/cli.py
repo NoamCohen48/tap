@@ -17,8 +17,6 @@ from .core import (
     EXIT_OK,
     EXIT_USAGE,
     KEYBOARD_ACTIONS,
-    LOG_ACTIONS,
-    LOG_LIMIT,
     NOTIFICATION_ACTIONS,
     PANELS,
     PERMISSION_CHOICES,
@@ -133,27 +131,6 @@ def parser() -> argparse.ArgumentParser:
     verb("device-info", "complete current device information as JSON", on_device)
     p = verb("capabilities", "read SDK operation support and prerequisites; no device changes", on_device)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured capability entries")
-
-    p = verb("log", "the session's history on a device: app log lines with the steps run, Tap's actions and markers; or write a marker", on_device)
-    p.add_argument("action", choices=LOG_ACTIONS, nargs="?", default="read", help="read (default); mark NAME; redact REGEX; driver / evidence: save the driver's own log / the device's failure evidence to a file")
-    p.add_argument("value", nargs="?", help="mark: the marker's name; redact: a regular expression whose matches are hidden in the whole log")
-    start = p.add_mutually_exclusive_group()
-    start.add_argument("--since", metavar="MARKER", help="from a marker: its name (the newest with it) or @CURSOR (as `log mark` prints it)")
-    start.add_argument("--after", type=int, metavar="CURSOR", help="what came after this cursor (printed by an earlier read)")
-    start.add_argument("--tail", type=int, metavar="N", help="the newest N entries that pass the filters")
-    start.add_argument("--last-action", action="store_true", help="from the start of the newest Tap action")
-    start.add_argument("--step", metavar="STEP", help="only one step: its number or id, from its first action to its last")
-    p.add_argument("--until", metavar="MARKER", help="stop at a marker (a name or @CURSOR) instead of now")
-    p.add_argument("--package", dest="packages", action="append", default=[], metavar="PACKAGE", help="only this app's lines (repeatable)")
-    p.add_argument("--priority", help="lines at least this severe: verbose, debug, info, warn, error, fatal")
-    p.add_argument("--tag", dest="tags", action="append", default=[], metavar="TAG", help="only lines with this tag (repeatable)")
-    p.add_argument("--grep", metavar="REGEX", help="only lines whose message matches")
-    p.add_argument("--no-actions", dest="actions", action="store_false", help="leave Tap's own actions out")
-    p.add_argument("--driver-lines", action="store_true", help="keep the Tap driver's own logcat lines (UiAutomator lookups), left out by default")
-    p.add_argument("--limit", type=int, default=LOG_LIMIT, help=f"at most this many entries, 1 to 5000 (default {LOG_LIMIT}): from a start the first ones (read on with --after), otherwise the newest")
-    p.add_argument("--json", dest="as_json", action="store_true", help="the entries as JSON data instead of lines")
-
-    p.add_argument("-o", "--out", help="driver / evidence: new local output file; never overwrite")
 
     p = verb("deaths", "app crashes and ANRs since the device was attached (watched apps; --all for every app)", on_device)
     p.add_argument("--package", help="only this app's")
@@ -365,8 +342,8 @@ def parser() -> argparse.ArgumentParser:
     p = verb("screenshot", "save a PNG and print its path", on_device)
     p.add_argument("-o", "--out", help="file (default .tap/agent/<serial>-<time>.png)")
 
-    p = verb("capture", "save screenshot, hierarchy, device info and driver log", on_device)
-    p.add_argument("-o", "--out", help="directory (default .tap/agent/capture-<serial>-<time>)")
+    p = verb("capture", "save current screen, hierarchy, device/driver logs and activity/window state; index external history references", on_device)
+    p.add_argument("-o", "--out", help="new private directory, never overwrite (default .tap/agent/capture-<serial>-<time>)")
 
     p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS), on_device, expect)
     p.add_argument("action", choices=APP_ACTIONS)
@@ -397,7 +374,22 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", dest="as_json", action="store_true", help="export only: JSON instead of readable text; stdout, never a file")
     p.add_argument("--details", action="store_true", help="export only: show retained redacted crash/ANR stack traces in text (JSON always includes them)")
 
-    p = verb("history", "show retained activity, not a catalog; latest 200 steps by default", common)
+    p = verb("history", "read merged retained activity or mark/redact held attachments", common)
+    p.add_argument("action", choices=("read", "mark", "redact"), nargs="?", default="read")
+    p.add_argument("value", nargs="?", help="mark NAME or redact REGEX")
+    p.add_argument("-d", "--device", dest="history_devices", action="append", default=[], metavar="SERIAL", help="select devices before pagination (repeatable); controls use held attachments only")
+    p.add_argument("--package", dest="packages", action="append", default=[], help="log lines owned by this package; original live attachment required")
+    p.add_argument("--priority", help="minimum log severity: verbose/debug/info/warn/error/fatal")
+    p.add_argument("--tag", dest="tags", action="append", default=[], help="log tag (repeatable)")
+    p.add_argument("--grep", metavar="REGEX", help="match log messages")
+    p.add_argument("--no-actions", dest="actions", action="store_false", help="omit log action rows, not RPC outcomes")
+    p.add_argument("--driver-lines", action="store_true", help="include driver logcat noise")
+    p.add_argument("--since-marker", metavar="NAME", help="from the latest acknowledged marker batch")
+    p.add_argument("--until-marker", metavar="NAME", help="through the latest acknowledged marker batch")
+    p.add_argument("--step", metavar="CURSOR|STEP_ID", help="one stable global step cursor or ID")
+    p.add_argument("--last-action", action="store_true", help="from each selected device's latest retained action")
+    p.add_argument("--tail", type=int, metavar="N", help="newest N log entries; preserve capture gaps and report omissions")
+    p.add_argument("--after", metavar="ARCHIVE_UUID:CURSOR", help="after an original retained receipt; never a bare step cursor")
     p.add_argument("--from", dest="start", metavar="STEP|TIME", help="inclusive stable step cursor or ISO timestamp with timezone; page forward")
     p.add_argument("--until", metavar="STEP|TIME", help="exclusive stable step cursor or ISO timestamp with timezone")
     p.add_argument("--last", metavar="DURATION", help="all retained activity in the last duration, e.g. 30s or 5m; excludes --from/--until")
@@ -442,13 +434,6 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.device_info(device)
     if v == "capabilities":
         return agent.capabilities(device, as_json=args.as_json)
-    if v == "log":
-        return agent.log(
-            args.action, args.value, device, since=args.since, after=args.after, tail=args.tail,
-            last_action=args.last_action, packages=args.packages, priority=args.priority, tags=args.tags,
-            grep=args.grep, actions=args.actions, limit=args.limit, step=args.step, until=args.until, as_json=args.as_json, out=args.out,
-            driver_lines=args.driver_lines,
-        )
     if v == "deaths":
         if args.wait:
             if args.trace is not None or args.as_json:
@@ -542,7 +527,11 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "record":
         return agent.record(args.action, args.name, long=args.long, logs=args.logs, as_json=args.as_json, details=args.details)
     if v == "history":
-        return agent.history(start=args.start, until=args.until, last=args.last, limit=args.limit, logs=args.logs, as_json=args.as_json, details=args.details)
+        return agent.history(args.action, args.value, start=args.start, until=args.until, last=args.last, limit=args.limit,
+            logs=args.logs, as_json=args.as_json, details=args.details, devices=args.history_devices, packages=args.packages,
+            priority=args.priority, tags=args.tags, grep=args.grep, actions=args.actions, driver_lines=args.driver_lines,
+            since_marker=args.since_marker, until_marker=args.until_marker, step=args.step, last_action=args.last_action,
+            tail=args.tail, after=args.after)
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
@@ -589,7 +578,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return EXIT_OK  # the way to stop a watch without --for
         raise
     except BrokenPipeError:
-        # The reader went away (`log | head`): not an error of ours. Point stdout at nothing so
+        # The reader went away (`history | head`): not an error of ours. Point stdout at nothing so
         # the interpreter's own flush at exit does not fail again.
         os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
         return EXIT_OK

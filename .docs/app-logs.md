@@ -3,6 +3,11 @@
 Retention update: [History, recordings and daemon logging policy](history-and-logging-policy.md)
 adds redacted disk storage, configurable rolling limits and named protected ranges. It supersedes
 the original in-memory-only retention and removal of `record start|stop` described below.
+[Command consolidation](history-command-consolidation.md) supersedes the legacy agent `log`
+examples below: `history` is the sole reader and owns mark/redact, daemon `tap logs driver`
+owns driver diagnostics, and explicit private `capture` bundles are indexed as external references.
+SDK `device.logs` remains unchanged; ordinary time windows and original step-action spans are
+separate selections, so delayed action lines are not cut off at the client step's finish time.
 
 Status: implemented (2026-11-14). Unit suites pass (driver engine, protocol, host core, daemon,
 Kotlin SDK, Python client, `tap-agent`); **not yet run on the device matrix**, so the ordering of
