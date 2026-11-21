@@ -175,6 +175,7 @@ nav:
       - A session, step by step: agent/session.md
       - History and recordings: agent/export.md
       - Commands: agent/commands.md
+      - Commands on one page: agent/command-reference.html
   - Tap Studio:
       - studio/index.md
       - A first recording: studio/first-recording.md

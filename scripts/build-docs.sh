@@ -16,6 +16,7 @@
 #   (Python, site)                 mkdocstrings renders clients/python/tap_e2e at mkdocs time
 #   build/docs-md/reference/python/ the same pages with lazydocs Markdown (scripts/python_ref_md.py)
 #   docs/agent/commands.md         tap-agent command reference (clients/agent/scripts/gen_reference.py)
+#   docs/agent/command-reference.html  the same as one HTML page with examples (gen_reference_page.py)
 #
 # Requirements: a local JDK 17 (Gradle's daemon JVM), `buf` and `protoc-gen-doc` on PATH (or set BUF /
 # PROTOC_GEN_DOC), and a Python with `pip install -r docs/requirements.txt -e "clients/python[dev]"
@@ -65,6 +66,7 @@ YAML
 
 echo "== tap-agent command reference"
 "$PYTHON" clients/agent/scripts/gen_reference.py docs/agent/commands.md
+"$PYTHON" clients/agent/scripts/gen_reference_page.py docs/agent/command-reference.html
 
 echo "== Site (mkdocs)"
 "$MKDOCS" build --strict

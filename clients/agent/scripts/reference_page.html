@@ -1,0 +1,343 @@
+<title>tap-agent commands</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<meta name="description" content="Every tap-agent command on one page: usage, options, the MCP tool and real terminal examples.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<style>
+/* Layout: the Tap docs header band, then a sticky command index beside one reading column.
+   Quiet page, loud terminals: the transcripts are the content people come for. */
+:root {
+  --paper: #FFFFFF;
+  --ink: #17202A;
+  --muted: #536070;
+  --surface: #F4F6F8;
+  --rule: rgba(23, 32, 42, 0.12);
+  --coral: #FF6A3D;
+  --coral-text: #C2410C;
+  --coral-wash: rgba(255, 106, 61, 0.10);
+  --band: #17202A;
+  --band-fg: #F3F5F7;
+  --term: #17202A;
+  --term-fg: #E3E8EE;
+  --term-dim: #9AA7B4;
+  --term-add: #7EE2A8;
+  --term-del: #FF9C8F;
+  --term-rule: rgba(255, 255, 255, 0.10);
+  --font-text: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-code: "JetBrains Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --step--1: 0.875rem;
+  --step-0: 1rem;
+  --step-1: 1.25rem;
+  --step-2: 1.6rem;
+  --step-3: 2.1rem;
+  --index-w: 17rem;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --paper: #131A21; --ink: #E7ECF1; --muted: #A1ADB9; --surface: #1B242D;
+    --rule: rgba(255, 255, 255, 0.12); --coral-text: #FF8A66; --coral-wash: rgba(255, 138, 102, 0.12);
+    --band: #0F151B; --term: #0D1318; --term-rule: rgba(255, 255, 255, 0.09); color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --paper: #131A21; --ink: #E7ECF1; --muted: #A1ADB9; --surface: #1B242D;
+  --rule: rgba(255, 255, 255, 0.12); --coral-text: #FF8A66; --coral-wash: rgba(255, 138, 102, 0.12);
+  --band: #0F151B; --term: #0D1318; --term-rule: rgba(255, 255, 255, 0.09); color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html { scroll-padding-top: 1rem; }
+/* Smooth only after load: a #command link opened cold must land exactly, after the fonts. */
+@media (prefers-reduced-motion: no-preference) { html.ready { scroll-behavior: smooth; } }
+body {
+  margin: 0; background: var(--paper); color: var(--ink);
+  font: 400 var(--step-0)/1.55 var(--font-text);
+  -webkit-text-size-adjust: 100%;
+}
+code, pre, kbd { font-family: var(--font-code); font-size: 0.88em; }
+a { color: var(--coral-text); text-underline-offset: 0.18em; }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+  outline: 2px solid var(--coral); outline-offset: 2px; border-radius: 3px;
+}
+.skip { position: absolute; left: -999px; top: 0; }
+.skip:focus { left: max(16px, env(safe-area-inset-left, 0px)); top: 0.5rem; z-index: 20;
+  background: var(--paper); padding: 0.4rem 0.7rem; }
+
+/* Header band: the docs site's ink bar, so the page reads as part of the site. */
+.band { background: var(--band); color: var(--band-fg);
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+.band__inner { display: flex; align-items: center; gap: 1.25rem; min-height: 3.25rem; flex-wrap: wrap; padding-block: 0.4rem; }
+.band a { color: inherit; text-decoration: none; }
+.band a:hover { text-decoration: underline; }
+.brand { display: inline-flex; align-items: center; gap: 0.5rem; font-weight: 600; font-size: 1.05rem; }
+.brand svg { width: 1.6rem; height: 1.6rem; color: var(--band-fg); }
+.band nav { display: flex; gap: 1.1rem; margin-left: auto; font-size: var(--step--1); flex-wrap: wrap; }
+
+.layout { display: grid; grid-template-columns: var(--index-w) minmax(0, 1fr); gap: 0 3rem;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+
+/* Index */
+.index { position: sticky; top: env(safe-area-inset-top, 0px); align-self: start; max-height: 100vh;
+  overflow-y: auto; padding-block: 1.5rem 2rem; overscroll-behavior: contain; }
+.filter label { display: block; font-size: var(--step--1); font-weight: 500; margin-bottom: 0.35rem; }
+.filter__box { position: relative; }
+.filter input { width: 100%; font: inherit; font-size: var(--step--1); padding: 0.55rem 2.2rem 0.55rem 0.7rem;
+  border: 1px solid var(--rule); border-radius: 6px; background: var(--paper); color: var(--ink); min-height: 2.5rem; }
+.filter input:focus { border-color: var(--coral); outline: none; box-shadow: 0 0 0 3px var(--coral-wash); }
+.filter kbd { position: absolute; right: 0.55rem; top: 50%; transform: translateY(-50%); font-size: 0.75rem;
+  color: var(--muted); border: 1px solid var(--rule); border-radius: 4px; padding: 0 0.35rem; pointer-events: none; }
+.filter input:not(:placeholder-shown) + kbd { display: none; }
+.filter__count { font-size: var(--step--1); color: var(--muted); margin: 0.45rem 0 0; min-height: 1.4em; }
+.index details { margin-top: 0.75rem; }
+.index summary { display: none; }
+.index ol { list-style: none; margin: 0; padding: 0; }
+.index__group + .index__group { margin-top: 1rem; }
+.index__group > a { display: block; font-size: var(--step--1); font-weight: 600; color: var(--ink); text-decoration: none;
+  padding: 0.15rem 0; }
+.index__group ol a { display: block; font-family: var(--font-code); font-size: 0.82rem; color: var(--muted);
+  text-decoration: none; padding: 0.22rem 0.5rem; margin-left: -0.5rem; border-radius: 4px; border-left: 2px solid transparent; }
+.index__group ol a:hover { color: var(--ink); background: var(--surface); }
+.index__group ol a[aria-current="true"] { color: var(--coral-text); border-left-color: var(--coral); background: var(--coral-wash); }
+
+/* Reading column */
+main { min-width: 0; max-width: 54rem; padding-block: 2rem 6rem; }
+h1, h2, h3 { text-wrap: balance; line-height: 1.2; }
+h1 { font-size: var(--step-3); font-weight: 600; margin: 0 0 0.75rem; letter-spacing: -0.01em; }
+.intro { font-size: 1.075rem; max-width: 42rem; margin: 0 0 1rem; }
+.notice { font-size: var(--step--1); color: var(--muted); margin: 0 0 2rem; max-width: 42rem; }
+
+/* Conventions: three facts every command relies on, as a definition list. */
+.basics { display: grid; grid-template-columns: 9.5rem minmax(0, 1fr); gap: 0.9rem 1.5rem; margin: 0 0 3rem;
+  padding: 1.25rem 1.4rem; background: var(--surface); border-radius: 10px; }
+.basics dt { font-weight: 600; }
+.basics dd { margin: 0; min-width: 0; }
+.basics dd p { margin: 0 0 0.4rem; }
+.basics dd p:last-child { margin: 0; }
+.codes { display: flex; flex-wrap: wrap; gap: 0.35rem 1.1rem; margin: 0; padding: 0; list-style: none; }
+.codes b { font-family: var(--font-code); font-weight: 600; color: var(--coral-text); margin-right: 0.3rem; }
+
+.group { margin-top: 3.5rem; }
+.group > h2 { font-size: var(--step-2); font-weight: 600; margin: 0 0 0.5rem; }
+.group > .blurb { color: var(--muted); max-width: 44rem; margin: 0 0 1.5rem; }
+
+.cmd { border-top: 1px solid var(--rule); padding-top: 1.75rem; margin-top: 2rem; scroll-margin-top: 0.5rem; }
+.cmd h3 { font-family: var(--font-code); font-size: var(--step-1); font-weight: 600; margin: 0; display: flex;
+  align-items: baseline; gap: 0.5rem; flex-wrap: wrap; }
+.cmd h3 .prog { color: var(--muted); font-weight: 400; }
+.cmd h3 .anchor { font-family: var(--font-text); font-size: var(--step--1); font-weight: 400; color: var(--muted);
+  text-decoration: none; opacity: 0; }
+.cmd h3:hover .anchor, .cmd h3 .anchor:focus-visible { opacity: 1; }
+.cmd .summary { font-size: 1.075rem; margin: 0.4rem 0 1rem; max-width: 44rem; }
+.usage { margin: 0 0 1.1rem; overflow-x: auto; background: var(--surface); border-radius: 6px; padding: 0.65rem 0.85rem;
+  font-size: 0.8rem; line-height: 1.6; white-space: pre; }
+.cmd h4 { font-size: var(--step--1); font-weight: 600; margin: 1.25rem 0 0.4rem; }
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 0.92rem; }
+td { border-top: 1px solid var(--rule); padding: 0.45rem 0.75rem 0.45rem 0; vertical-align: top; }
+tr:last-child td { border-bottom: 1px solid var(--rule); }
+td:first-child { white-space: nowrap; width: 1%; padding-right: 1.25rem; }
+td:first-child code { color: var(--ink); font-weight: 600; }
+td code, .basics code, .notes code, .summary code, .blurb code, .also code, .mcp code { overflow-wrap: anywhere; }
+.none { color: var(--muted); font-size: 0.92rem; margin: 0; }
+.also, .mcp { font-size: 0.92rem; color: var(--muted); margin: 0.6rem 0 0; }
+.also a { color: inherit; }
+.mcp code { color: var(--ink); }
+
+/* Terminal transcripts: always dark, in every theme, like the terminal they come from. */
+.term { margin: 0.75rem 0 0; background: var(--term); color: var(--term-fg); border-radius: 8px; overflow: hidden;
+  border: 1px solid var(--term-rule); }
+.term__in { display: flex; align-items: flex-start; gap: 0.5rem; padding: 0.6rem 0.5rem 0.6rem 0.9rem; }
+.term__in pre { margin: 0; flex: 1; min-width: 0; overflow-x: auto; white-space: pre; font-size: 0.85rem; line-height: 1.55; }
+.term__in pre::before { content: "$ "; color: var(--coral); font-weight: 600; }
+.term__out { margin: 0; padding: 0.6rem 0.9rem 0.75rem; border-top: 1px solid var(--term-rule); overflow-x: auto;
+  white-space: pre; font-size: 0.8rem; line-height: 1.6; color: var(--term-fg); }
+.term__out .h { color: var(--term-dim); }
+.term__out .a { color: var(--term-add); }
+.term__out .d { color: var(--term-del); }
+.copy { flex: none; font: 500 0.75rem var(--font-text); color: var(--term-dim); background: transparent;
+  border: 1px solid var(--term-rule); border-radius: 5px; padding: 0 0.6rem; min-height: 1.9rem; min-width: 3.6rem; cursor: pointer; }
+.copy:hover { color: var(--term-fg); border-color: var(--term-dim); }
+.copy[data-done] { color: var(--term-add); }
+.notes { margin: 0.9rem 0 0; padding-left: 1.2rem; max-width: 44rem; font-size: 0.95rem; }
+.notes li + li { margin-top: 0.3rem; }
+
+.empty { margin-top: 2.5rem; padding: 1.5rem; border: 1px dashed var(--rule); border-radius: 10px; }
+.empty p { margin: 0 0 0.75rem; }
+.empty button { font: inherit; font-size: var(--step--1); padding: 0.45rem 0.9rem; min-height: 2.5rem; border-radius: 6px;
+  border: 1px solid var(--rule); background: var(--paper); color: var(--ink); cursor: pointer; }
+
+@media (max-width: 60rem) {
+  .layout { grid-template-columns: minmax(0, 1fr); }
+  .index { position: static; max-height: none; overflow: visible; padding-block: 1.25rem 0;
+    border-bottom: 1px solid var(--rule); }
+  .index summary { display: list-item; cursor: pointer; font-weight: 500; padding: 0.5rem 0; min-height: 2.75rem; }
+  .index details[open] { padding-bottom: 1rem; }
+  .index__list { columns: 2 12rem; column-gap: 2rem; }
+  .index__group { break-inside: avoid; }
+  main { padding-top: 1.5rem; }
+}
+@media (max-width: 34rem) {
+  .usage { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .basics { grid-template-columns: minmax(0, 1fr); gap: 0.25rem; padding: 1rem; }
+  .basics dd + dt { margin-top: 0.75rem; }
+  td:first-child { white-space: normal; width: auto; }
+  tr { display: block; border-top: 1px solid var(--rule); padding: 0.45rem 0; }
+  tr:last-child { border-bottom: 1px solid var(--rule); }
+  td { display: block; border: 0 !important; padding: 0; }
+  td + td { margin-top: 0.2rem; }
+}
+</style>
+
+<a class="skip" href="#main">Skip to the commands</a>
+<header class="band">
+  <div class="band__inner">
+    <a class="brand" href="{{SITE}}">
+      <svg viewBox="0 0 64 64" aria-hidden="true"><rect x="15" y="5" width="34" height="54" rx="8" fill="none" stroke="currentColor" stroke-width="4"/><line x1="27" y1="52" x2="37" y2="52" stroke="currentColor" stroke-width="3" stroke-linecap="round"/><circle cx="32" cy="29" r="11.5" fill="none" stroke="#FF6A3D" stroke-width="3"/><circle cx="32" cy="29" r="5" fill="#FF6A3D"/></svg>
+      Tap
+    </a>
+    <nav aria-label="Tap agent docs">
+      <a href="{{SITE}}agent/">Tap agent guide</a>
+      <a href="{{SITE}}agent/session/">A session, step by step</a>
+      <a href="{{SITE}}agent/commands/">Reference as one table</a>
+    </nav>
+  </div>
+</header>
+
+<div class="layout">
+  <aside class="index" aria-label="Commands">
+    <div class="filter" role="search">
+      <label for="filter">Filter commands</label>
+      <div class="filter__box">
+        <input id="filter" type="search" placeholder="snapshot, --settle, crash…" autocomplete="off" spellcheck="false">
+        <kbd aria-hidden="true">/</kbd>
+      </div>
+      <p class="filter__count" id="filter-count" aria-live="polite">{{COUNT}} commands</p>
+    </div>
+    <details id="index-details" open>
+      <summary>All commands</summary>
+      <div class="index__list">{{INDEX}}</div>
+    </details>
+  </aside>
+
+  <main id="main">
+    <h1>tap-agent commands</h1>
+    <p class="intro">Every command of <code>tap-agent</code>, the CLI and MCP server an AI agent uses to drive an Android device through the Tap server. Each one lists its options, the MCP tool that does the same, and what it prints.</p>
+    <p class="notice">Experimental: commands and output may change in any release. Generated from the CLI parser for Tap {{VERSION}}; <code>tap-agent &lt;command&gt; --help</code> prints the same options.</p>
+
+    <dl class="basics" id="basics">
+      <dt>Targets</dt>
+      <dd>
+        <p>A ref from the latest <code>snapshot</code>, such as <code>@e3</code>, or <code>key=value</code> terms joined by commas, all of which must match: <code>id=pay</code>, <code>text=Pay</code>, <code>text~=Pay</code> (contains), <code>desc=</code>, <code>hint=</code>, <code>class=</code>, <code>pkg=</code>, <code>index=1</code>.</p>
+        <p>An action needs exactly one matching node. With none or several it is refused before anything is sent to the device.</p>
+      </dd>
+      <dt>Options on every step</dt>
+      <dd id="common">
+        <p><code>-s NAME</code> picks the session (default <code>$TAP_AGENT_SESSION</code>, else <code>agent</code>). <code>-d SERIAL</code> picks the device when the session holds several.</p>
+        <p>Steps that act also take <code>--settle</code> (wait for the screen to stop changing and print what changed), <code>--events KINDS</code> (print the device events seen during the step), <code>--expect KIND[:TEXT]</code> (require one, such as <code>toast:saved</code>), <code>--event-timeout</code> and <code>--expect-death</code> (the step must crash a watched app).</p>
+      </dd>
+      <dt>Exit codes</dt>
+      <dd><ul class="codes">{{EXIT_CODES}}</ul></dd>
+    </dl>
+
+    {{SECTIONS}}
+
+    <div class="empty" id="empty" hidden>
+      <p>No command matches <strong id="empty-query"></strong>. Try a command name such as <code>tap</code>, an option such as <code>--settle</code>, or a word from a summary such as <code>keyboard</code>.</p>
+      <button type="button" id="clear">Clear the filter</button>
+    </div>
+  </main>
+</div>
+
+<script>
+(() => {
+  // Web fonts change every line's height, so a #command link lands only once they are in.
+  const settled = document.fonts ? document.fonts.ready : Promise.resolve();
+  addEventListener("load", () => settled.then(() => {
+    if (location.hash) document.getElementById(decodeURIComponent(location.hash.slice(1)))?.scrollIntoView();
+    document.documentElement.classList.add("ready");
+  }));
+  const input = document.getElementById("filter");
+  const count = document.getElementById("filter-count");
+  const empty = document.getElementById("empty");
+  const commands = [...document.querySelectorAll(".cmd")];
+  const groups = [...document.querySelectorAll(".group")];
+  const links = new Map([...document.querySelectorAll(".index__group ol a")].map(a => [a.hash.slice(1), a]));
+  const total = commands.length;
+
+  function apply() {
+    const words = input.value.trim().toLowerCase().split(/\s+/).filter(Boolean);
+    let shown = 0;
+    for (const cmd of commands) {
+      const hit = words.every(w => cmd.dataset.search.includes(w));
+      cmd.hidden = !hit;
+      links.get(cmd.id).parentElement.hidden = !hit;
+      if (hit) shown++;
+    }
+    for (const group of groups) {
+      const any = group.querySelector(".cmd:not([hidden])") !== null;
+      group.hidden = !any;
+      document.querySelector(`.index__group[data-group="${group.id}"]`).hidden = !any;
+    }
+    document.getElementById("basics").hidden = words.length > 0;
+    empty.hidden = shown > 0;
+    document.getElementById("empty-query").textContent = input.value.trim();
+    count.textContent = words.length ? `${shown} of ${total} commands` : `${total} commands`;
+  }
+  input.addEventListener("input", apply);
+  input.addEventListener("keydown", e => {
+    if (e.key === "Escape") { input.value = ""; apply(); }
+    if (e.key === "Enter") {
+      const first = commands.find(c => !c.hidden);
+      if (first) { location.hash = first.id; first.querySelector("h3 a.anchor").focus({ preventScroll: true }); }
+    }
+  });
+  document.getElementById("clear").addEventListener("click", () => { input.value = ""; apply(); input.focus(); });
+  document.addEventListener("keydown", e => {
+    if (e.key === "/" && document.activeElement !== input && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      e.preventDefault(); input.focus(); input.select();
+    }
+  });
+
+  // The index follows the reader: the command at the top of the screen is marked.
+  let current = null;
+  const mark = id => {
+    if (current) current.removeAttribute("aria-current");
+    current = links.get(id) || null;
+    if (current) {
+      current.setAttribute("aria-current", "true");
+      const index = document.querySelector(".index");
+      const r = current.getBoundingClientRect(), box = index.getBoundingClientRect();
+      if (getComputedStyle(index).position === "sticky" && (r.top < box.top + 80 || r.bottom > box.bottom - 20)) {
+        index.scrollTop += r.top - box.top - box.height / 3;
+      }
+    }
+  };
+  if ("IntersectionObserver" in window) {
+    const visible = new Set();
+    const io = new IntersectionObserver(entries => {
+      for (const e of entries) e.isIntersecting ? visible.add(e.target) : visible.delete(e.target);
+      const top = commands.filter(c => visible.has(c)).sort((a, b) => a.getBoundingClientRect().top - b.getBoundingClientRect().top)[0];
+      if (top) mark(top.id);
+    }, { rootMargin: "0px 0px -65% 0px" });
+    commands.forEach(c => io.observe(c));
+  }
+
+  // On a narrow screen the index starts folded and folds again after a pick.
+  const details = document.getElementById("index-details");
+  const narrow = matchMedia("(max-width: 60rem)");
+  const fold = () => { details.open = !narrow.matches; };
+  fold(); narrow.addEventListener("change", fold);
+  details.addEventListener("click", e => { if (narrow.matches && e.target.closest("ol a")) details.open = false; });
+
+  for (const button of document.querySelectorAll(".copy")) {
+    button.addEventListener("click", () => {
+      const pre = button.previousElementSibling;
+      const text = pre.textContent;
+      const done = () => { button.textContent = "Copied"; button.dataset.done = ""; setTimeout(() => { button.textContent = "Copy"; delete button.dataset.done; }, 1600); };
+      const select = () => { const range = document.createRange(); range.selectNodeContents(pre); const s = getSelection(); s.removeAllRanges(); s.addRange(range); button.textContent = "Selected"; setTimeout(() => { button.textContent = "Copy"; }, 1600); };
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(text).then(done, select); else select();
+    });
+  }
+})();
+</script>
