@@ -666,11 +666,23 @@ class Agent:
         return self._run(lambda: json_text(self.client.info()) if as_json else render.fields_text(json_value(self.client.info())))
 
     def device_info(self, device: str | None = None, *, as_json: bool = False) -> str:
-        """Complete current device information, one ``name  value`` line each (``as_json``: the
-        SDK object)."""
+        """The whole current device state, one ``name  value`` line each: the SDK device
+        information (display, current package, screen and keyguard, keyboard, every condition)
+        and the activity on top (``foreground activity``, ``none`` when none is resumed). With
+        ``as_json``: the SDK object plus ``foreground_activity``. A failed activity read is
+        reported in its place, never failing the rest."""
         def step() -> str:
-            info = self._device(device).info()
-            return json_text(info) if as_json else render.fields_text(json_value(info))
+            d = self._device(device)
+            values = json_value(d.info())
+            try:
+                top = d.foreground_activity()
+                values["foreground_activity"] = None if top is None else f"{top.package_name}/{top.class_name}"
+            except TapError as error:
+                values["foreground_activity"] = f"unavailable: {type(error).__name__}"
+            if as_json:
+                return json_text(values)
+            shown = dict(values, foreground_activity=values["foreground_activity"] or "none")
+            return render.fields_text(shown)
         return self._run(step)
 
     def capabilities(self, device: str | None = None, *, as_json: bool = False) -> str:

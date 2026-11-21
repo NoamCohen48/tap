@@ -307,6 +307,8 @@ wait. Remove `--target`. Update MCP, docs and tests.
 
 ## `device-info`: the whole device state
 
+Status: done (the soft-keyboard setting joins it with that condition).
+
 `activity`, `screen`, `keyboard`, `condition` and `device-info` each read part of the device
 state.
 

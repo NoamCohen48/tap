@@ -407,7 +407,8 @@ or unknown outcomes, never a passing test. Check `dropped`, `capture_error`, gap
 `attach` another serial to the same session and pass `--device <serial>` to device steps.
 `--session <name>` (or `TAP_AGENT_SESSION`) keeps separate sessions apart; `sessions` lists
 them. `devices` includes API/model/emulator properties when available; `server-info` and
-`device-info` return complete SDK metadata. `detach --device SERIAL` releases only that device,
+`device-info` print complete SDK metadata (`--json` for the object); `device-info` is the
+whole device state, foreground activity included. `detach --device SERIAL` releases only that device,
 including temporary settings/files, and keeps the held session and its other devices alive.
 
 ## Quarantined devices
