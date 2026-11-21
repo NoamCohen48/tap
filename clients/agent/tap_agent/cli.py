@@ -169,10 +169,10 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", dest="as_json", action="store_true", help="the complete structured snapshot with selector candidates; no view level or filter")
     p.add_argument("--package", help="only windows rooted in this package")
     p.add_argument("--window", type=int, help="only this one-based window ordinal from the snapshot header")
-    p.add_argument("--keyboard", action="store_true", help="show the keyboard window's nodes (by default it is one header line with a count)")
-    p.add_argument("--hide-keyboard", action="store_true", help="hide input-method windows, header included; unknown types remain visible")
-    p.add_argument("--system-bars", action="store_true", help="show the status and navigation bars' nodes (by default each is one header line)")
-    p.add_argument("--hide-system-chrome", action="store_true", help="hide the status and navigation bars, headers included; the shade and system dialogs stay")
+    p.add_argument("--keyboard", choices=render.WINDOW_VIEWS, default="collapse",
+                   help="the keyboard window: one header line with a count (collapse, the default), its nodes (show), or nothing (omit)")
+    p.add_argument("--system-bars", choices=render.WINDOW_VIEWS, default="collapse",
+                   help="the status and navigation bars, as --keyboard; the shade and system dialogs always show")
 
     for name, help in (("inspect", "read one node's complete state"), ("exists", "whether any node matches now"), ("count", "count matching nodes now")):
         p = verb(name, help, on_device)
@@ -474,8 +474,8 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max, out=args.out)
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT, as_json=args.as_json,
-                              package=args.package, window=args.window, hide_keyboard=args.hide_keyboard, keyboard=args.keyboard,
-                              hide_system_chrome=args.hide_system_chrome, system_bars=args.system_bars)
+                              package=args.package, window=args.window, keyboard=args.keyboard,
+                              system_bars=args.system_bars)
     if v in ("inspect", "exists", "count"):
         return getattr(agent, v)(args.target, device, args.timeout, as_json=args.as_json)
     if v == "elements":

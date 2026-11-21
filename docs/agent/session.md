@@ -118,20 +118,21 @@ Narrow the output without changing refs:
 ```sh
 tap-agent snapshot -i --package com.android.settings
 tap-agent snapshot --window 1
-tap-agent snapshot -i --hide-keyboard --hide-system-chrome
-tap-agent snapshot --keyboard      # the keyboard's keys too
+tap-agent snapshot -i --keyboard omit --system-bars omit
+tap-agent snapshot --keyboard show      # the keyboard's keys too
 ```
 
 A keyboard window prints as one line by default, `# <ime package> · window N · keyboard (24 nodes,
---keyboard to show)`: it says the keyboard is up (it covers the bottom of the screen, and a tap
-behind it is refused as covered) without listing its keys. `--keyboard` (MCP `keyboard`) or
-`--window N` naming it shows its nodes; `--hide-keyboard` drops even the header. `--settle`
-diffs collapse it the same way.
+collapsed)`: it says the keyboard is up (it covers the bottom of the screen, and a tap behind it is
+refused as covered) without listing its keys. `--keyboard show` (MCP `keyboard="show"`) or
+`--window N` naming it shows its nodes; `--keyboard omit` drops even the header. `--settle` diffs
+collapse it the same way.
 
 The status bar and the navigation bar print the same way, `# com.android.systemui · window 3 ·
-status bar (6 nodes, --system-bars to show)`, and are left out of `--settle` diffs (their clock
-and icons change on their own). `--system-bars` (MCP `system_bars`) or `--window N` shows their
-nodes; `--hide-system-chrome` drops even the headers. A bar is a SystemUI system window that runs
+status bar (6 nodes, collapsed)`, and are left out of `--settle` diffs (their clock and icons
+change on their own). `--system-bars show` (MCP `system_bars="show"`) or `--window N` shows their
+nodes; `--system-bars omit` drops even the headers. The server decides which windows are bars
+(`WindowKind`): a SystemUI system window that runs
 along one whole edge of the display and is at most 64 dp thick. Window titles cannot tell (the
 status bar has none, the rest are translated) and neither can the window: on Android 10 the
 notification shade is the status-bar window grown to full screen. So the shade, quick settings,
@@ -141,8 +142,7 @@ nothing is collapsed.
 
 `--package` matches the window-root package. `--window` uses the one-based ordinal in the
 header, valid only for that dump (not a persistent Android window ID). The MCP tool exposes
-`package`, `window`, `keyboard`, `hide_keyboard`, `system_bars` and `hide_system_chrome` with the
-same behavior.
+`package`, `window`, `keyboard` and `system_bars` with the same behavior.
 Suppression uses the window kind the server reports, never package-name guesses: application
 windows such as Settings and permission dialogs remain visible, and windows of an unknown kind
 remain visible. `--json` returns the complete structured snapshot

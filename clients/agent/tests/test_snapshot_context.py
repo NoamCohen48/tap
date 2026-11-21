@@ -6,7 +6,7 @@ import pytest  # type: ignore[import-not-found]
 from tap_e2e import Bounds, NodeChange, NodeFlag, ScreenSnapshot
 from tap_e2e import _gen as pb
 
-from tap_agent import render
+from tap_agent import cli, render
 from tap_agent.core import AgentError
 
 from .test_targets_render import _node
@@ -103,7 +103,7 @@ def test_same_package_windows_and_filters_do_not_cross_roots():
               window_package="com.android.systemui", bounds=Bounds(0, 0, 1080, 2400)),
     )
     result = render.snapshot_text(screen(*nodes, display=PHONE), render.INTERACTIVE,
-                                  filters=render.SnapshotFilter(hide_keyboard=True, hide_system_chrome=True))
+                                  filters=render.SnapshotFilter(keyboard="omit", system_bars="omit"))
     assert "Keyboard" not in result and "Status bar" not in result and "window 3" not in result
     assert "Settings" in result and "Unknown" in result and "Allow" in result and "Shade" in result
     assert 'context="Settings"' in result.splitlines()[1]
@@ -133,7 +133,7 @@ def test_invalid_window_is_rejected_before_rpc(agent, window):
         agent.snapshot(window=window)
 
 
-@pytest.mark.parametrize("kwargs", [{"package": "p"}, {"window": 1}, {"hide_keyboard": True}, {"hide_system_chrome": True}])
+@pytest.mark.parametrize("kwargs", [{"package": "p"}, {"window": 1}, {"keyboard": "omit"}, {"system_bars": "show"}])
 def test_candidates_cannot_silently_ignore_filters(agent, kwargs):
     with pytest.raises(AgentError, match="no view level or filter"):
         agent.snapshot(as_json=True, **kwargs)
@@ -154,21 +154,26 @@ def test_the_keyboard_window_collapses_to_its_header_unless_asked():
     from tap_agent import render
     shot = _keyboard_screen()
     collapsed = render.snapshot_text(shot, render.ALL)
-    assert "# com.android.inputmethod · window 2 · keyboard (4 nodes, --keyboard to show)" in collapsed
+    assert "# com.android.inputmethod · window 2 · keyboard (4 nodes, collapsed)" in collapsed
     assert '"q"' not in collapsed and '"Search"' in collapsed
-    shown = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(keyboard=True))
-    assert '"q"' in shown and "--keyboard to show" not in shown
-    hidden = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(hide_keyboard=True))
+    shown = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(keyboard="show"))
+    assert '"q"' in shown and "collapsed" not in shown
+    hidden = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(keyboard="omit"))
     assert "inputmethod" not in hidden
     named = render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(window=2))
     assert '"q"' in named
     diff = render.diff_text(shot, render.ALL)
-    assert diff.splitlines() == ["# com.android.inputmethod · window 2 · keyboard (4 nodes, --keyboard to show)"]
+    assert diff.splitlines() == ["# com.android.inputmethod · window 2 · keyboard (4 nodes, collapsed)"]
 
 
-def test_keyboard_and_hide_keyboard_together_are_refused(agent):
-    with pytest.raises(AgentError, match="choose one"):
-        agent.snapshot(keyboard=True, hide_keyboard=True)
+def test_keyboard_and_system_bars_take_collapse_show_or_omit(agent):
+    with pytest.raises(AgentError, match="--keyboard takes collapse, show, omit"):
+        agent.snapshot(keyboard="hide")
+    with pytest.raises(AgentError, match="--system-bars takes"):
+        agent.snapshot(system_bars=True)  # type: ignore[arg-type]
+    for gone in ("--hide-keyboard", "--hide-system-chrome"):
+        with pytest.raises(SystemExit):
+            cli.parser().parse_args(["snapshot", gone])
 
 
 SYSTEM_UI = "com.android.systemui"
@@ -197,17 +202,13 @@ def test_bars_collapse_to_a_header_and_stay_out_of_diffs():
     )
     shot = screen(*nodes, display=PHONE)
     text = render.snapshot_text(shot, render.ALL)
-    assert "# com.android.systemui · window 2 · status bar (2 nodes, --system-bars to show)" in text
+    assert "# com.android.systemui · window 2 · status bar (2 nodes, collapsed)" in text
     assert "12:01" not in text and '"Pay"' in text
-    assert "12:01" in render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(system_bars=True))
+    assert "12:01" in render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(system_bars="show"))
     assert "12:01" in render.snapshot_text(shot, render.ALL, filters=render.SnapshotFilter(window=2))
     # The clock ticked and an icon went: neither is worth a diff line.
     ticked = screen(replace(nodes[0], change=NodeChange.UNCHANGED), replace(nodes[1], change=NodeChange.ADDED, text="12:02"),
                     removed=(replace(nodes[2], change=NodeChange.REMOVED),), display=PHONE)
     assert render.diff_text(ticked, render.ALL) == "(no change)"
-    assert "12:02" in render.diff_text(ticked, render.ALL, filters=render.SnapshotFilter(system_bars=True))
+    assert "12:02" in render.diff_text(ticked, render.ALL, filters=render.SnapshotFilter(system_bars="show"))
 
-
-def test_system_bars_and_hide_system_chrome_together_are_refused(agent):
-    with pytest.raises(AgentError, match="choose one"):
-        agent.snapshot(system_bars=True, hide_system_chrome=True)

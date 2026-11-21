@@ -54,13 +54,12 @@ container's @ref, not a text selector inferred from context. `(by index)` means 
 (fragile); `(no selector)` means the ref cannot be targeted.
 
 Window headers include a one-based `window N` ordinal (not a persistent ID). Narrow snapshots
-with `--package PACKAGE` (window-root package), `--window N`, `--hide-keyboard` or
-`--hide-system-chrome`. MCP uses `package`, `window`, `hide_keyboard`, `hide_system_chrome`.
-A keyboard window is one header line (`· keyboard (24 nodes, --keyboard to show)`) unless
-`--keyboard` (MCP `keyboard`) or `--window N` asks for its keys; it means the keyboard is up and
-covers the screen's bottom. The status and navigation bars are one header line each too
-(`· status bar (6 nodes, --system-bars to show)`; MCP `system_bars`) and never appear in
-`--settle` diffs; `--hide-system-chrome` drops even their headers. The notification shade, quick
+with `--package PACKAGE` (window-root package) or `--window N`; MCP uses `package`, `window`.
+A keyboard window is one header line (`· keyboard (24 nodes, collapsed)`) unless
+`--keyboard show` (MCP `keyboard="show"`) or `--window N` asks for its keys; it means the keyboard
+is up and covers the screen's bottom; `--keyboard omit` drops even the header. The status and
+navigation bars are one header line each too (`· status bar (6 nodes, collapsed)`;
+`--system-bars show|omit`, MCP `system_bars`) and never appear in `--settle` diffs. The notification shade, quick
 settings, the volume panel and system dialogs ("isn't responding") always show in full.
 Suppression uses the window kind the server reports, never package guesses; Settings and
 permission dialogs remain application windows. Unknown kinds remain visible. Filters affect presentation only,

@@ -321,10 +321,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         as_json: Annotated[bool, Field(description="The complete structured SDK snapshot with selector candidates; use the default view without filters.")] = False,
         package: Annotated[str, Field(description="Only windows rooted in this package.")] = "",
         window: Annotated[StrictInt | None, Field(ge=1, description="One-based window ordinal from the snapshot header, not a persistent ID.")] = None,
-        keyboard: Annotated[bool, Field(description="Show the keyboard window's nodes; by default it is one header line with a count.")] = False,
-        hide_keyboard: Annotated[bool, Field(description="Hide input-method windows, header included. Unknown window types remain visible.")] = False,
-        system_bars: Annotated[bool, Field(description="Show the status and navigation bars' nodes; by default each is one header line with a count.")] = False,
-        hide_system_chrome: Annotated[bool, Field(description="Hide the status and navigation bars, headers included. The shade, quick settings and system dialogs always show.")] = False,
+        keyboard: Annotated[
+            Literal["collapse", "show", "omit"],
+            Field(description="The keyboard window: one header line with a node count (collapse), its nodes (show), or nothing (omit)."),
+        ] = "collapse",
+        system_bars: Annotated[
+            Literal["collapse", "show", "omit"],
+            Field(description="The status and navigation bars, as keyboard. The shade, quick settings and system dialogs always show."),
+        ] = "collapse",
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -336,7 +340,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         level = {"default": render.DEFAULT, "interactive": render.INTERACTIVE, "all": render.ALL}[view]
         return await call(session, lambda a: a.snapshot(device or None, level, as_json=as_json,
                                                        package=package or None, window=window,
-                                                       hide_keyboard=hide_keyboard, hide_system_chrome=hide_system_chrome, keyboard=keyboard, system_bars=system_bars))
+                                                       keyboard=keyboard, system_bars=system_bars))
 
     @mcp.tool(name="inspect", annotations=READ_ONLY)
     async def inspect(

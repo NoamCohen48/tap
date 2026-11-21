@@ -69,7 +69,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
          '@e2  [EditText]  empty  hint="Email"  id=email  accepts=tap,long,edit\n'
          '@e3  [CheckBox]  "Save card"  accepts=check\n'
          '@e4  [Button]  "PAY $12.40"  id=pay  accepts=tap\n'
-         "# com.android.systemui · window 2 · status bar (6 nodes, --system-bars to show)"),
+         "# com.android.systemui · window 2 · status bar (6 nodes, collapsed)"),
         ("tap-agent snapshot -i --package com.shop",
          "# com.shop · window 1\n"
          '@e2  [EditText]  empty  hint="Email"  id=email  accepts=tap,long,edit\n'
@@ -263,7 +263,8 @@ NOTES: dict[str, list[str]] = {
         "`accepts=` says what the node takes: `tap`, `long`, `check`, `edit`, `scroll`, or `actions` "
         "for accessibility actions only (see `action`).",
         "The keyboard and the status and navigation bars collapse to one header line each; "
-        "`--keyboard` and `--system-bars` show them, `--window N` shows one window in full.",
+        "`--keyboard show` and `--system-bars show` list their nodes, `omit` drops them, and `--window N` "
+        "shows one window in full.",
     ],
     "tap": [
         "With `--settle` the step waits for the screen to stop changing and prints the difference: "
