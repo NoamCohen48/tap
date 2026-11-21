@@ -1,7 +1,8 @@
 # A session, step by step
 
 Below is a real session on an API 34 emulator, run from the command line. Over MCP the same
-steps are tool calls with the same output.
+steps are tool calls with the same output, with one difference: MCP actions settle by default
+(the CLI's `--settle`) and return what changed; pass `settle=false` to skip it.
 
 ## Attach a device
 

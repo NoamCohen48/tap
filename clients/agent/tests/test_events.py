@@ -223,7 +223,8 @@ async def test_mcp_tools(fake, server):
         tap_causes(fake, [toast(1, "Draft saved")])
         result = await client.call_tool("tap", {"target": "text=Save", "expect_events": ["toast:saved"], "events": ["window"]})
         assert not result.is_error
-        assert result.content[0].text == 'tapped text=Save\nevents:\n✓ toast "Draft saved" (com.shop)'
+        assert result.content[0].text.startswith("tapped text=Save\n")
+        assert result.content[0].text.endswith('events:\n✓ toast "Draft saved" (com.shop)')
         result = await client.call_tool("tap", {"target": "text=Save", "expect_events": ["window"], "event_timeout_seconds": 0.2})
         assert result.is_error and "expected event did not happen" in result.content[0].text
 

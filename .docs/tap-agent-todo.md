@@ -326,6 +326,8 @@ Do: `--max DURATION` (`--max 20s`), same limits (30 s with video, 60 s audio onl
 
 ## MCP: settle after actions by default
 
+Status: done, after a failed settle after input stopped failing the step.
+
 After almost every action an agent's next call is `snapshot`. Make MCP action tools settle by
 default and return the diff (`settle=false` to opt out), halving the calls. The CLI keeps its
 default (`--settle` opt in). Document it in the MCP instructions; MCP tests for both.
