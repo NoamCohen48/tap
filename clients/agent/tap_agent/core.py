@@ -791,29 +791,25 @@ class Agent:
 
         return self._run(step)
 
-    def record(self, action: str, name: str | None = None, *, long: bool = False) -> str:
-        """Start, stop, list or clean a named recording of this session's history."""
-        from .history import record
-        return record(self, action, name, long=long)
-
     def history(self, action: str = "read", value: str | None = None, *, start: str | None = None, until: str | None = None,
                 last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False, details: bool = False,
                 devices: Sequence[str] = (), packages: Sequence[str] = (), priority: str | None = None, tags: Sequence[str] = (),
                 grep: str | None = None, actions: bool = True, driver_lines: bool = False, since_marker: str | None = None,
                 until_marker: str | None = None, step: str | int | None = None, last_action: bool = False,
-                recording: str | None = None, after: str | None = None) -> str:
+                kept: str | None = None, after: str | None = None, name: str | None = None, long: bool = False) -> str:
         """What happened: the server's calls, crashes, ANRs and gaps (``logs`` or any log filter
         adds device logs), merged with this agent's steps and capture bundles, oldest first.
 
         One start: ``start`` (ISO time), ``last`` (a duration such as ``30s``), ``since_marker``,
         ``step`` (a cursor or id), ``last_action`` or ``after`` (the position a previous page
         printed); without one, the newest ``limit`` entries. ``until`` / ``until_marker`` end it.
-        ``recording`` reads a named recording's range. ``mark``/``redact`` with ``value`` act on
-        this session's held devices instead."""
+        ``kept`` reads a kept range's entries. ``mark``/``redact`` with ``value`` act on this
+        session's held devices instead; ``keep`` with ``value`` start|stop|list|clean and ``name``
+        keeps a named range past the server's retention (``long``: list details)."""
         from .history import history
         return history(self, action, value, start=start, until=until, last=last, limit=limit, logs=logs, as_json=as_json, details=details,
             devices=devices, packages=packages, priority=priority, tags=tags, grep=grep, actions=actions, driver_lines=driver_lines,
-            since_marker=since_marker, until_marker=until_marker, step=step, last_action=last_action, recording=recording, after=after)
+            since_marker=since_marker, until_marker=until_marker, step=step, last_action=last_action, kept=kept, after=after, name=name, long=long)
 
     def _end_ended_histories(self) -> bool:
         """Stops each live step history whose held connection the server no longer has (an idle

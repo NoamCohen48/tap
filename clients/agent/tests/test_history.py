@@ -1,4 +1,4 @@
-"""`record` and `history --recording`: named recordings of a session's history, on the server."""
+"""`history keep` and `history --kept`: named recordings of a session's history, on the server."""
 # pyright: reportMissingImports=false
 from __future__ import annotations
 
@@ -7,65 +7,72 @@ import time
 
 import pytest
 
-from tap_agent import Agent, AgentError
+from tap_agent import Agent, AgentError, cli
 
 
 def test_a_recording_follows_devices_attached_after_it_started(fake, agent):
     agent.attach("first")
-    assert "devices attached later join it" in agent.record("start", "checkout")
+    assert "devices attached later join it" in agent.history("keep", "start", name="checkout")
     agent.attach("second")
     agent.tap("id=pay", device="second")  # no refusal: the recording is the connection's, not a device set
-    assert agent.record("stop", "checkout") == "stopped recording 'checkout'"
+    assert agent.history("keep", "stop", name="checkout") == "stopped recording 'checkout'"
 
     (saved,) = fake.history.recordings.values()
     assert saved.HasField("stopped_at_ms")
     assert {span.source_id for span in saved.spans} >= {"attached-first", "attached-second"}
-    assert agent.record("list") == "checkout"
-    assert f"id={saved.id}" in agent.record("list", long=True)
+    assert agent.history("keep", "list") == "checkout"
+    assert f"id={saved.id}" in agent.history("keep", "list", long=True)
 
 
 def test_history_reads_a_recording_by_name_also_after_release(fake, agent):
     agent.attach("first")
-    agent.record("start", "checkout")
+    agent.history("keep", "start", name="checkout")
     agent.tap("id=pay")
     agent.release()  # stops the session's recording
 
     (saved,) = fake.history.recordings.values()
     assert saved.HasField("stopped_at_ms")
-    document = json.loads(agent.history(recording="checkout", as_json=True))
+    document = json.loads(agent.history(kept="checkout", as_json=True))
     assert fake.history.requests[-1].selection.recording_id == saved.id
     assert document["recording"]["name"] == "checkout" and document["recording"]["stopped_at"]
-    assert agent.history(recording="checkout").splitlines()[0] == "recording checkout (stopped)"
+    assert agent.history(kept="checkout").splitlines()[0] == "recording checkout (stopped)"
 
 
 def test_the_same_name_on_two_sessions_needs_its_id_outside_them(fake, client, agent, tmp_path):
     other = Agent("other", client=client, out_dir=tmp_path / "other")
     agent.attach("first")
     other.attach("second")
-    agent.record("start", "checkout")
-    other.record("start", "checkout")
+    agent.history("keep", "start", name="checkout")
+    other.history("keep", "start", name="checkout")
     mine = next(r for r in fake.history.recordings.values() if r.connection_id == next(iter(fake.connections.live)))
-    agent.history(recording="checkout")  # the session's own recording wins
+    agent.history(kept="checkout")  # the session's own recording wins
     assert fake.history.requests[-1].selection.recording_id == mine.id
     stranger = Agent("stranger", client=client, out_dir=tmp_path / "stranger")
     with pytest.raises(AgentError, match="give its id"):
-        stranger.history(recording="checkout")
-    stranger.history(recording=mine.id)
+        stranger.history(kept="checkout")
+    stranger.history(kept=mine.id)
     assert fake.history.requests[-1].selection.recording_id == mine.id
 
 
-def test_clean_needs_a_stopped_recording_and_export_points_at_history(fake, agent):
+def test_clean_needs_a_stopped_recording_and_keep_refuses_other_words(fake, agent):
     agent.attach("first")
-    agent.record("start", "checkout")
+    agent.history("keep", "start", name="checkout")
     with pytest.raises(AgentError, match="stop the recording"):
-        agent.record("clean", "checkout")
-    agent.record("stop", "checkout")
-    assert agent.record("clean", "checkout") == "cleaned recording 'checkout'"
+        agent.history("keep", "clean", name="checkout")
+    agent.history("keep", "stop", name="checkout")
+    assert agent.history("keep", "clean", name="checkout") == "cleaned recording 'checkout'"
     assert not fake.history.recordings
-    with pytest.raises(AgentError, match="history --recording NAME"):
-        agent.record("export", "checkout")
+    with pytest.raises(AgentError, match="history keep takes start, stop, list, clean"):
+        agent.history("keep", "export", name="checkout")
+    with pytest.raises(AgentError, match="history keep takes only"):
+        agent.history("keep", "list", as_json=True)
+    with pytest.raises(AgentError, match="NAME and -L go with history keep"):
+        agent.history(long=True)
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(["record", "list"])
+    assert cli.run(cli.parser().parse_args(["history", "keep", "list"]), agent) == "no recordings"
     with pytest.raises(AgentError, match="no recording named"):
-        agent.record("stop", "checkout")
+        agent.history("keep", "stop", name="checkout")
 
 
 def test_last_and_explicit_times_are_sent_as_server_bounds(fake, agent):
@@ -189,17 +196,17 @@ def test_a_step_read_shows_only_markers_written_during_it(fake, agent):
     assert "marker" not in agent.history(step="1") and "marker after-a" in agent.history()
 
 
-def test_a_recording_holds_only_the_steps_taken_while_it_recorded(fake, agent):
+def test_a_kept_range_holds_only_the_steps_taken_while_it_was_kept(fake, agent):
     agent.attach("first")
-    agent.tap("id=before")  # before the recording: its steps are not the recording's
+    agent.tap("id=before")  # before the range: its steps are not the range's
     time.sleep(0.01)
-    agent.record("start", "checkout")
+    agent.history("keep", "start", name="checkout")
     agent.tap("id=pay")
-    agent.record("stop", "checkout")
+    agent.history("keep", "stop", name="checkout")
     time.sleep(0.01)
     agent.tap("id=after")
 
-    document = json.loads(agent.history(recording="checkout", as_json=True))
+    document = json.loads(agent.history(kept="checkout", as_json=True))
     assert [step["targets"]["target"]["node"]["resource"]["name"] for step in document["steps"]] == ["pay"]
-    text = agent.history(recording="checkout")
+    text = agent.history(kept="checkout")
     assert "pay" in text and "before" not in text and "after" not in text

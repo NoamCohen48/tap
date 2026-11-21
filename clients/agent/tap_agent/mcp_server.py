@@ -60,17 +60,17 @@ original live attachment's UID mapping. capture explicitly collects current stat
 private files and indexes external references in history; reads never take a fresh capture.
 Driver infrastructure diagnostics belong to daemon `tap logs driver --serial SERIAL`, not an
 agent log tool. Every action and wait is
-recorded as a step without being asked. record start/stop keeps a named range of the session's
-history (its calls, crashes and the device logs of every device attached while it runs) past
-rolling eviction; read it with history(recording="NAME"). history reads one page of the server's
+recorded as a step without being asked. history(action="keep", value="start"|"stop", name=...)
+keeps a named range of the session's history (its calls, crashes and the device logs of every
+device attached while it runs) past rolling eviction; read it with history(kept="NAME"). history reads one page of the server's
 kept history merged with this agent's steps, printed oldest first. A window ending now (no
 start, last, last_action) pages from the newest entries to older ones; start, since_marker and
 step page forward. until/until_marker end it (times are ISO 8601 with a zone; markers are this
 session's, the marker included). limit counts server entries; continue with after="<the
 next/older token it printed>" (in JSON, its "next"). Text by default;
 as_json returns tap-history/2, logs adds device-log lines. History survives release/restart;
-no live connection or standalone export tool is needed. record list
-prints names, long=true adds state/times/shared disk bytes; clean needs a stopped name.
+no live connection or standalone export tool is needed. value="list" (with action="keep")
+prints names, long=true adds state/times/shared disk bytes; "clean" needs a stopped name.
 Missing intent, capture gaps and unknown outcomes stay explicit; never infer assertions or
 replay uncertain input. For an unexpected incident use history(last="30s", logs=true,
 details=true): the entire retained window is read even with no agent steps or live attachment.
@@ -967,23 +967,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras or (), timeout=timeout_seconds, as_json=as_json)
         )
 
-    @mcp.tool(name="record")
-    async def record(
-        action: Literal["start", "stop", "list", "clean"],
-        name: Annotated[str, Field(description="start/stop/clean: the recording's name, or its id; list takes none.")] = "",
-        long: Annotated[bool, Field(description="list: state, id, connection, times and disk use (-L).")] = False,
-        session: Session = "",
-    ) -> CallToolResult:
-        """Keep a named range of this session's history past the server's retention, devices
-        attached later included. Read it with `history` and `recording`; `clean` deletes it."""
-        return await call(session, report=False, step=lambda a: a.record(action, name or None, long=long))
-
     @mcp.tool(name="history")
     async def history(
-        action: Literal["read", "mark", "redact"] = "read",
-        value: Annotated[str, Field(description="mark NAME or redact REGEX, on this session's held devices.")] = "",
+        action: Literal["read", "mark", "redact", "keep"] = "read",
+        value: Annotated[str, Field(description="mark NAME or redact REGEX, on this session's held devices; keep: start, stop, list or clean.")] = "",
+        name: Annotated[str, Field(description="keep start/stop/clean: the kept range's name, or its id; list takes none.")] = "",
+        long: Annotated[bool, Field(description="keep list: state, id, connection, times and disk use (-L).")] = False,
         devices: Annotated[list[str] | None, Field(description="Only these serials; for mark/redact, these held devices.")] = None,
-        recording: Annotated[str, Field(description="Only this recording's range (name or id), also after its session ended.")] = "",
+        kept: Annotated[str, Field(description="Only this kept range (name or id), also after its session ended.")] = "",
         start: Annotated[str, Field(description="Start at this ISO time with a time zone (--from).")] = "",
         last: Annotated[str, Field(description="Everything in the last duration, e.g. 30s.")] = "",
         since_marker: Annotated[str, Field(description="Start at the newest marker with this name.")] = "",
@@ -1006,12 +997,14 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     ) -> CallToolResult:
         """What happened: calls, crashes, ANRs and gaps (plus device logs with logs or a log
         filter), with this agent's steps, oldest first; the newest entries without a start.
-        Missing evidence is shown as gaps and warnings."""
+        Missing evidence is shown as gaps and warnings. action="keep" with value start|stop|list|clean
+        keeps a named range of this session's history past the server's retention, devices
+        attached later included; read it with kept="NAME"."""
         return await call(session, report=False, step=lambda a: a.history(action, value or None, start=start or None, until=until or None,
             last=last or None, limit=limit, logs=logs, as_json=as_json, details=details, devices=devices or (), packages=packages or (),
             priority=priority, tags=tags or (), grep=grep or None, actions=actions, driver_lines=driver_lines,
             since_marker=since_marker or None, until_marker=until_marker or None, step=step or None,
-            last_action=last_action, recording=recording or None, after=after or None))
+            last_action=last_action, kept=kept or None, after=after or None, name=name or None, long=long))
 
     return mcp
 

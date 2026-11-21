@@ -284,6 +284,8 @@ Update the MCP tools, `SKILL.md`, docs and tests; note the renames in `CHANGELOG
 
 ## History recordings: `history keep`
 
+Status: done (`history --kept NAME` reads a kept range).
+
 `record` keeps a range of history, `media-record` records video and audio, and Tap Studio has
 "recordings" too. Recordings are already read with `history --recording`.
 

@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `record start|stop|list|clean NAME` (MCP `record`) moves under `history keep
+  start|stop|list|clean NAME` (MCP `history` with `action="keep"`, `value`, `name`, `long`), and
+  `history --recording NAME` is now `history --kept NAME`, so "recording" means only
+  `media-record` video and audio.
 - tap-agent event commands read by default and wait with `--wait`: `toast` reads retained toasts
   (was `toast --history`) and `toast --wait` waits (was plain `toast`); `notification` lists and
   `notification --wait` waits (was `notification await`); MCP `await_toast` is now `toast` with

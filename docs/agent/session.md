@@ -348,20 +348,20 @@ the idle timeout. MCP has no background calls, so it is a CLI command only.
 ## History, recordings and release
 
 Every action and explicit wait is recorded automatically, and the server keeps the session's
-calls, crashes and device logs. `history` reads them; `record start NAME` keeps a named range of
+calls, crashes and device logs. `history` reads them; `history keep start NAME` keeps a named range of
 them past rolling eviction:
 
 ```sh
-tap-agent record start checkout
+tap-agent history keep start checkout
 tap-agent tap text=Pay,pkg=com.shop
-tap-agent record stop checkout
+tap-agent history keep stop checkout
 tap-agent release
-tap-agent history --recording checkout --logs --json > checkout.json
+tap-agent history --kept checkout --logs --json > checkout.json
 ```
 
 Release frees devices and stops an open recording; it writes no file. History stays readable
 after release and restart while it is kept. `history [--logs] [--json] [--from TIME]
-[--until TIME] [--limit N]` reads ordinary activity; `record list [-L]` lists recordings.
+[--until TIME] [--limit N]` reads ordinary activity; `history keep list [-L]` lists recordings.
 Default output is readable stdout text. Only actions and explicit waits are steps, not internal
 inspections or polls. [History and recordings](export.md) explains pages, retention, redaction
 and unknown outcomes.
@@ -445,7 +445,7 @@ attachments; they never attach a device or change another client's controls. Par
 are reported—do not blindly repeat a failed control. Markers bookmark, not protect, evidence.
 A repeated name selects its latest locally indexed acknowledgement batch, with original attachment
 identities and receipt times. An unindexed/missing marker is explicit; it is not recreated on a
-new attachment. The ending marker is included. Use `record start/stop` for protection.
+new attachment. The ending marker is included. Use `history keep start/stop` for protection.
 
 Redaction lasts for the attachment and also scrubs retained evidence, including earlier lines.
 It cannot erase exports or backups already delivered. Accessibility data and diagnostics can

@@ -95,11 +95,11 @@ boundary. Restart/connection removal closes interrupted streams without manufact
 Owner-approved agent surface (all under `tap-agent`):
 
 ```text
-record list [-L]
-record start NAME
-record stop NAME
+history keep list [-L]
+history keep start NAME
+history keep stop NAME
 record export NAME [--logs] [--json] [--details]
-record clean NAME
+history keep clean NAME
 history [--logs] [--json] [--details] [--from STEP|TIME] [--until STEP|TIME] [--limit N]
 history --last DURATION [--logs] [--json] [--details]
 ```
@@ -108,7 +108,7 @@ Output defaults to readable stdout text; JSON is optional and callers redirect f
 standalone export, history catalog/cleanup command or release-time file export remains.
 History uses stable SQLite AUTOINCREMENT step cursors, including after pruning; latest 200 by
 default, oldest-first presentation, inclusive from/exclusive until, timezone-qualified times,
-forward `next` and backward `older`. Physical shared segment bytes are reported by `record list
+forward `next` and backward `older`. Physical shared segment bytes are reported by `history keep list
 -L`, not advertised as reclaimable bytes.
 
 Python `LogRecordings.export/history` and Kotlin equivalents return portable structured/text/
@@ -136,7 +136,7 @@ See [remaining debugging gaps](history-debugging-gaps.md) for what still cannot 
 
 ## Protected ranges
 
-`tap-agent record start NAME` first asks the daemon to protect the current attachment set,
+`tap-agent history keep start NAME` first asks the daemon to protect the current attachment set,
 then starts a named range in the same local history store. Capture is already running: start
 does not reset logcat, clear buffers, launch an app or alter rolling configuration.
 
@@ -145,9 +145,9 @@ fall outside the range even if the app emitted it earlier. The recording names t
 attachment set from start; the agent refuses input on a later/unprotected attachment while
 that recording is active. Stop/start a new range with the desired devices already attached.
 
-`record stop NAME` closes the protected interval; release also finalizes an active named
-recording. It remains protected until `record clean NAME`. A client crash can leave an open
-range; inspect `record list` and stop it explicitly. No control silently continues an ended
+`history keep stop NAME` closes the protected interval; release also finalizes an active named
+recording. It remains protected until `history keep clean NAME`. A client crash can leave an open
+range; inspect `history keep list` and stop it explicitly. No control silently continues an ended
 connection under a reused session name.
 
 Agent steps stay in its private SQLite store. Ordinary histories retain the newest 20 stopped
@@ -232,7 +232,7 @@ paged by an opaque cursor, bounded by time or marker, with gaps as entries and t
 evidence as typed issues (no `complete` flag). "Protected ranges" are now history recordings,
 owned by a connection, addressed by id, and following devices attached after their start. The
 private disk format moved to `host/daemon/src/main/proto/retention.proto`. Python
-`client.history` and `tap-agent history` / `record` are the clients; the Kotlin SDK reader is in
+`client.history` and `tap-agent history` (and `history keep`) are the clients; the Kotlin SDK reader is in
 `.docs/feature-todo.md`. Design and the user's choices: `.docs/history-api-revision.md`.
 
 A review of that API (same day) changed: marker bounds resolve per device (serial) within the

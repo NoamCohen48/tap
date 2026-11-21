@@ -373,16 +373,13 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("local", nargs="?", help="read/write: local file; export-db/import-db: local bundle directory")
     p.add_argument("--overwrite", action="store_true", help="write/import-db: explicitly replace existing remote data")
 
-    p = verb("record", "keep a named range of this session's history past the server's retention", common)
-    p.add_argument("action", choices=("start", "stop", "list", "clean"))
-    p.add_argument("name", nargs="?", help="start/stop/clean: the recording's name (or its id, as `record list -L` shows it)")
-    p.add_argument("-L", dest="long", action="store_true", help="list: state, id, connection, times and disk use")
-
-    p = verb("history", "what happened: calls, crashes, ANRs and (with --logs) device logs, with this agent's steps; or mark/redact held devices", common)
-    p.add_argument("action", choices=("read", "mark", "redact"), nargs="?", default="read")
-    p.add_argument("value", nargs="?", help="mark NAME or redact REGEX")
+    p = verb("history", "what happened: calls, crashes, ANRs and (with --logs) device logs, with this agent's steps; or mark/redact held devices, or keep a named range past retention", common)
+    p.add_argument("action", choices=("read", "mark", "redact", "keep"), nargs="?", default="read")
+    p.add_argument("value", nargs="?", help="mark NAME, redact REGEX, or keep start|stop|list|clean")
+    p.add_argument("name", nargs="?", help="keep start/stop/clean: the kept range's name (or its id, as `history keep list -L` shows it)")
+    p.add_argument("-L", dest="long", action="store_true", help="keep list: state, id, connection, times and disk use")
     p.add_argument("-d", "--device", dest="history_devices", action="append", default=[], metavar="SERIAL", help="only these devices (repeatable); for mark/redact, these held devices")
-    p.add_argument("--recording", metavar="NAME", help="only a recording's range (`record start`), also after its session ended")
+    p.add_argument("--kept", metavar="NAME", help="only a kept range (`history keep start`), also after its session ended")
     start = p.add_argument_group("where to start (one; default: the newest entries)")
     start.add_argument("--from", dest="start", metavar="TIME", help="from this ISO time with a time zone, e.g. 2026-11-21T12:00:00Z")
     start.add_argument("--last", metavar="DURATION", help="everything in the last DURATION, e.g. 30s or 5m")
@@ -410,7 +407,7 @@ def parser() -> argparse.ArgumentParser:
 
 # Verbs after which no app deaths are reported: they need no device or session (record, export
 # and the inventory work without one), end the session, or list deaths themselves.
-UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "unquarantine", "server-info", "record", "history", "deaths"})
+UNREPORTED = frozenset({"watch", "attach", "sessions", "release", "devices", "unquarantine", "server-info", "history", "deaths"})
 
 
 def run(args: argparse.Namespace, agent: Agent) -> str:
@@ -532,14 +529,12 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         return str(agent.screenshot(device, args.out))
     if v == "capture":
         return agent.capture(device, args.out)
-    if v == "record":
-        return agent.record(args.action, args.name, long=args.long)
     if v == "history":
         return agent.history(args.action, args.value, start=args.start, until=args.until, last=args.last, limit=args.limit,
             logs=args.logs, as_json=args.as_json, details=args.details, devices=args.history_devices, packages=args.packages,
             priority=args.priority, tags=args.tags, grep=args.grep, actions=args.actions, driver_lines=args.driver_lines,
             since_marker=args.since_marker, until_marker=args.until_marker, step=args.step, last_action=args.last_action,
-            recording=args.recording, after=args.after)
+            kept=args.kept, after=args.after, name=args.name, long=args.long)
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":

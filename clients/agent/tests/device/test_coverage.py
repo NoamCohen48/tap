@@ -108,14 +108,14 @@ def test_named_steps_across_cli_processes_and_export_after_release(real_agent, t
     environment = {**os.environ, "TAP_AGENT_DIR": str(a.out_dir)}
     def cli(*arguments):
         return subprocess.run([sys.executable, "-m", "tap_agent", *arguments, "--session", a.session], env=environment, capture_output=True, text=True, check=True, timeout=30).stdout
-    cli("record", "start", "fixture-steps")
+    cli("history", "keep", "start", "fixture-steps")
     screen = cli("snapshot")
     target = next(line.split()[0] for line in screen.splitlines() if "id=search_field" in line)
     value = "private fixture input"
     cli("fill", target, value, "--sensitive")
     assert json.loads(a.inspect("id=search_field"))["text"] == value  # inspection is not a step
     a.wait("id=search_field", state="enabled", timeout=5)
-    cli("record", "stop")
+    cli("history", "keep", "stop")
     a.release()
     document = json.loads(cli("export", "fixture-steps"))
     assert document["complete"] and document["state"] == "stopped"
@@ -127,5 +127,5 @@ def test_named_steps_across_cli_processes_and_export_after_release(real_agent, t
     cli("export", "fixture-steps", "-o", str(path))
     assert json.loads(path.read_text())["name"] == "fixture-steps"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
-    cli("record", "clean", "fixture-steps")
-    assert "no step recordings" in cli("record", "list")
+    cli("history", "keep", "clean", "fixture-steps")
+    assert "no step recordings" in cli("history", "keep", "list")

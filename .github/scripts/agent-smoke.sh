@@ -35,14 +35,14 @@ step app cold-launch "$PACKAGE"
 step snapshot -i | tee "$OUT/snapshot.txt"
 ref=$(sed -n 's/^\(@e[0-9]*\) .*id=view_button.*/\1/p' "$OUT/snapshot.txt" | head -1)
 [ -n "$ref" ] || { echo "no view_button in the snapshot"; exit 1; }
-step record start "$RECORDING"
+step history keep start "$RECORDING"
 step history mark smoke
 step tap "$ref" --settle
 step wait "text=View tapped"
-step record stop "$RECORDING"
+step history keep stop "$RECORDING"
 step release
 # Invoke directly: step's human-readable command echo must not corrupt JSON stdout.
-"$AGENT" history --recording "$RECORDING" --logs --json > "$OUT/recording.json"
+"$AGENT" history --kept "$RECORDING" --logs --json > "$OUT/recording.json"
 "$AGENT" history --from "$STARTED_AT" --json > "$OUT/history.json"
 
 python3 - "$OUT/history.json" "$PACKAGE" "$OUT/recording.json" <<'PY'
@@ -77,4 +77,4 @@ assert tap["ok"] and {"resource": {"name": "view_button"}} in operands, tap
 assert {"match": {"property": "PROPERTY_PACKAGE_NAME", "value": sys.argv[2], "mode": "MATCH_EXACT"}} in operands, tap
 assert tap["attached_device_id"] and all(c["ok"] for c in made), made
 PY
-step record clean "$RECORDING"
+step history keep clean "$RECORDING"

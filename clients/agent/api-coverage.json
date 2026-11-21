@@ -18,7 +18,7 @@
     },
     "tap.v1.HistoryService": {
       "ReadHistory": ["history"], "ListHistorySources": ["history"],
-      "StartHistoryRecording": ["record"], "StopHistoryRecording": ["record", "release"], "ListHistoryRecordings": ["record", "history"], "DeleteHistoryRecording": ["record"]
+      "StartHistoryRecording": ["history"], "StopHistoryRecording": ["history", "release"], "ListHistoryRecordings": ["history"], "DeleteHistoryRecording": ["history"]
     },
     "tap.v1.AppService": {
       "Install": ["app"], "Uninstall": ["app"], "IsInstalled": ["app"], "ForceStop": ["app"], "ClearData": ["app"], "GrantPermission": ["app"], "RevokePermission": ["app"], "IsPermissionGranted": ["app"], "SetLocales": ["app"], "GetLocales": ["app"], "Launch": ["app"], "ColdLaunch": ["app"], "Foreground": ["app"], "OpenLink": ["app"], "Process": ["app"], "IsRunning": ["app"]
@@ -49,10 +49,10 @@
   "sdk": {
     "History": [
       {"methods": ["read", "pages", "resume", "sources"], "tools": ["history"], "reason": "One reader of the server's kept history; the agent merges its own steps into each page."},
-      {"methods": ["start_recording", "stop_recording", "recordings", "delete_recording"], "tools": ["record"], "reason": "Named recordings of a session's history."}
+      {"methods": ["start_recording", "stop_recording", "recordings", "delete_recording"], "tools": ["history"], "reason": "Named recordings of a session's history."}
     ],
     "TapClient": [
-      {"methods": ["history"], "tools": ["record", "history"], "reason": "The server's kept history, readable after the original connection ended."},
+      {"methods": ["history"], "tools": ["history"], "reason": "The server's kept history, readable after the original connection ended."},
       {"methods": ["info", "devices", "unquarantine", "connect", "connections"], "tools": ["server_info", "devices", "unquarantine", "attach", "sessions"], "reason": "connect uses held mode only"},
       {"methods": ["create", "resume", "close"], "tools": [], "reason": "Client transport/handle lifecycle; Agent constructs and closes its SDK client, never starts a daemon."}
     ],

@@ -354,11 +354,11 @@ All these commands belong to `tap-agent`, not the daemon-admin `tap` CLI:
 ```sh
 tap-agent history [--logs] [--json] [--details] [--from TIME] [--until TIME] [--limit N]
 tap-agent history --last 30s [--logs] [--json] [--details]
-tap-agent history --recording NAME [--logs] [--json] [--details]
-tap-agent record list [-L]
-tap-agent record start NAME
-tap-agent record stop NAME
-tap-agent record clean NAME
+tap-agent history --kept NAME [--logs] [--json] [--details]
+tap-agent history keep list [-L]
+tap-agent history keep start NAME
+tap-agent history keep stop NAME
+tap-agent history keep clean NAME
 ```
 
 Default output is readable text on stdout; JSON is `tap-history/2`. Redirect stdout yourself
@@ -376,9 +376,9 @@ context, transient accessibility events and historical screenshots/media are not
 Screenshots/capture and media need explicit collection. Never claim a read flag can recover
 evidence that was not captured.
 
-`record start` keeps this session's calls, crashes and the logs of every device attached to it,
+`history keep start` keeps this session's calls, crashes and the logs of every device attached to it,
 including devices attached later. `release` stops it. Names are per session; elsewhere use the
-id from `record list -L` when a name is not unique. Reading a live recording does not stop it.
+id from `history keep list -L` when a name is not unique. Reading a live recording does not stop it.
 `-L` adds state, times, id and shared bytes, not guaranteed reclaimable space. Clean requires a
 stopped recording. When the server is unreachable, `history` shows local steps with an
 `unavailable` warning. SDKs call `client.history` directly, not this CLI. `media-record` is separate.
