@@ -9,7 +9,7 @@ import android.provider.Settings
  * Read-backs for the device conditions the host changes (`.docs/device-actions.md`), each from
  * where the change lands first, so a read right after the host's change (or its restore) sees it:
  * the animation scales, network switches and stay-awake from `Settings.Global` (readable by any
- * app), the font scale from `Settings.System`, the accessibility display switches and bold text
+ * app), the font scale from `Settings.System`, the accessibility display switches, bold text and the soft keyboard
  * from `Settings.Secure`, and dark mode, density and the locales from the system's configuration.
  *
  * Not from this process's own `Configuration`: Android delivers a change to each process after
@@ -69,6 +69,9 @@ internal class DeviceConditionsReader(
 
     val colorInversion: Boolean? get() = secure(DISPLAY_INVERSION)?.let { it == 1 }
 
+    /** `show_ime_with_hard_keyboard`: the soft keyboard shows with a hardware keyboard; null when unreadable. */
+    val softKeyboard: Boolean? get() = secure(SHOW_IME_WITH_HARD_KEYBOARD)?.let { it == 1 }
+
     /**
      * Bold text (API 31+; older devices have no such setting): `font_weight_adjustment`, what the
      * host writes, which Android copies into the configuration later; the system's configuration
@@ -94,6 +97,9 @@ internal class DeviceConditionsReader(
 
         /** `Settings.Secure.ACCESSIBILITY_HIGH_TEXT_CONTRAST_ENABLED` / `ACCESSIBILITY_DISPLAY_INVERSION_ENABLED`, hidden. */
         const val HIGH_TEXT_CONTRAST = "high_text_contrast_enabled"
+
+        /** `Settings.Secure.SHOW_IME_WITH_HARD_KEYBOARD`, hidden. */
+        const val SHOW_IME_WITH_HARD_KEYBOARD = "show_ime_with_hard_keyboard"
         const val DISPLAY_INVERSION = "accessibility_display_inversion_enabled"
 
         /** `Settings.Secure.FONT_WEIGHT_ADJUSTMENT` (API 31). */

@@ -441,6 +441,11 @@ class FakeDevices(device_pb2_grpc.DeviceServiceServicer):
         self.conditions.append(request)
         return pb.SetStayAwakeResponse()
 
+    def SetSoftKeyboard(self, request, context):
+        self._own("set_soft_keyboard", request, context)
+        self.conditions.append(request)
+        return pb.SetSoftKeyboardResponse()
+
     def SetAccessibilityDisplay(self, request, context):
         self._own("set_accessibility_display", request, context)
         self.conditions.append(request)

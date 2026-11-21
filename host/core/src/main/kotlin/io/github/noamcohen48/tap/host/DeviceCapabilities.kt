@@ -107,6 +107,7 @@ object DeviceCapabilities {
             "SetSystemLocales" to setOf(CAPABILITY_DEVICE_SET_SYSTEM_LOCALES),
             "SetLocation" to setOf(CAPABILITY_SET_LOCATION),
             "SetStayAwake" to setOf(CAPABILITY_DEVICE_SET_STAY_AWAKE),
+            "SetSoftKeyboard" to setOf(CAPABILITY_DEVICE_SET_SOFT_KEYBOARD),
             "SetAccessibilityDisplay" to setOf(CAPABILITY_DEVICE_SET_ACCESSIBILITY_DISPLAY, CAPABILITY_DEVICE_SET_BOLD_TEXT),
             "GetForegroundActivity" to setOf(CAPABILITY_GET_FOREGROUND_ACTIVITY),
             "PushFile" to setOf(CAPABILITY_PUSH_FILE),

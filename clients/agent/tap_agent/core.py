@@ -126,7 +126,7 @@ KEYBOARD_ACTIONS = ("hide",)
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
 CONDITIONS = (
     "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
-    "stay-awake", "high-contrast-text", "color-inversion", "bold-text",
+    "stay-awake", "soft-keyboard", "high-contrast-text", "color-inversion", "bold-text",
 )
 """The device conditions `condition` reads or changes (restored on release)."""
 
@@ -1211,7 +1211,8 @@ class Agent:
         """Without ``name``: reports every device condition. With ``name`` (animations on|off,
         dark-mode on|off, font-scale 0.5..2.0, density DPI|reset, airplane-mode / wifi /
         mobile-data on|off, locale TAGS: the device languages as comma-separated BCP-47 tags,
-        stay-awake on|off: the screen stays on while plugged in, high-contrast-text /
+        stay-awake on|off: the screen stays on while plugged in, soft-keyboard on|off: the soft
+        keyboard shows while a hardware keyboard is connected, high-contrast-text /
         color-inversion / bold-text on|off: accessibility display, bold text API 31+) and
         ``value``: changes it until release, which restores what the device had. Reports the value
         read back."""
@@ -1237,6 +1238,7 @@ class Agent:
                 "mobile-data": "on" if info.mobile_data_enabled else "off",
                 "locale": ",".join(info.system_locales) or "unknown",
                 "stay-awake": "on" if info.stay_awake else "off",
+                "soft-keyboard": _switch(info.soft_keyboard),
                 "high-contrast-text": _switch(info.high_contrast_text),
                 "color-inversion": _switch(info.color_inversion),
                 "bold-text": "on" if info.bold_text else "off",
@@ -1891,7 +1893,8 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
             raise AgentError("locale takes comma-separated BCP-47 tags, e.g. fr-FR,en", EXIT_USAGE)
         return lambda d: d.set_system_locales(tags)
     value = value.lower()
-    if name in ("animations", "dark-mode", "airplane-mode", "wifi", "mobile-data", "stay-awake", "high-contrast-text", "color-inversion", "bold-text"):
+    if name in ("animations", "dark-mode", "airplane-mode", "wifi", "mobile-data", "stay-awake", "soft-keyboard", "high-contrast-text",
+                "color-inversion", "bold-text"):
         if value not in ("on", "off"):
             raise AgentError(f"{name} takes on or off, not {value!r}", EXIT_USAGE)
         enabled = value == "on"
@@ -1902,6 +1905,7 @@ def _condition_change(name: str, value: str) -> Callable[[Device], None]:
             "wifi": lambda d: d.set_network(wifi=enabled),
             "mobile-data": lambda d: d.set_network(mobile_data=enabled),
             "stay-awake": lambda d: d.set_stay_awake(enabled),
+            "soft-keyboard": lambda d: d.set_soft_keyboard(enabled),
             "high-contrast-text": lambda d: d.set_accessibility_display(high_contrast_text=enabled),
             "color-inversion": lambda d: d.set_accessibility_display(color_inversion=enabled),
             "bold-text": lambda d: d.set_accessibility_display(bold_text=enabled),

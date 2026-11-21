@@ -218,7 +218,8 @@ export const AppCallSchema: GenMessage<AppCall> = /*@__PURE__*/
 /**
  * A DeviceService condition call. `operation` is the RPC in snake_case: set_animations,
  * set_dark_mode, set_font_scale, set_density, set_network, set_system_locales,
- * set_location, push_file, pull_file, add_media, set_stay_awake, set_accessibility_display.
+ * set_location, push_file, pull_file, add_media, set_stay_awake, set_soft_keyboard,
+ * set_accessibility_display.
  *
  * @generated from message tap.v1.DeviceCall
  */
@@ -229,7 +230,7 @@ export type DeviceCall = Message<"tap.v1.DeviceCall"> & {
   operation: string;
 
   /**
-   * set_animations / set_dark_mode.
+   * set_animations / set_dark_mode / set_stay_awake / set_soft_keyboard.
    *
    * @generated from field: optional bool enabled = 2;
    */
@@ -298,7 +299,8 @@ export type DeviceCall = Message<"tap.v1.DeviceCall"> & {
   sizeBytes?: bigint | undefined;
 
   /**
-   * set_accessibility_display: the settings the call set (set_stay_awake uses `enabled`).
+   * set_accessibility_display: the settings the call set (set_stay_awake and set_soft_keyboard
+   * use `enabled`).
    *
    * @generated from field: optional bool high_contrast_text = 13;
    */

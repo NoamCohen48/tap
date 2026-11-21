@@ -614,6 +614,20 @@ class SetStayAwakeResponse(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...
 
+class SetSoftKeyboardRequest(_message.Message):
+    __slots__ = ("client_connection_id", "attached_device_id", "enabled")
+    CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]
+    ATTACHED_DEVICE_ID_FIELD_NUMBER: _ClassVar[int]
+    ENABLED_FIELD_NUMBER: _ClassVar[int]
+    client_connection_id: str
+    attached_device_id: str
+    enabled: bool
+    def __init__(self, client_connection_id: _Optional[str] = ..., attached_device_id: _Optional[str] = ..., enabled: _Optional[bool] = ...) -> None: ...
+
+class SetSoftKeyboardResponse(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
 class SetAccessibilityDisplayRequest(_message.Message):
     __slots__ = ("client_connection_id", "attached_device_id", "high_contrast_text", "color_inversion", "bold_text")
     CLIENT_CONNECTION_ID_FIELD_NUMBER: _ClassVar[int]

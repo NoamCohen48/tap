@@ -162,7 +162,11 @@ Do:
 
 ## `keyboard` and `screen`: no `state` word; a soft-keyboard condition
 
-Status: the `state` word is gone (done); the soft-keyboard condition is still to do.
+Status: done (the `state` word is gone; `condition soft-keyboard`). Device check (2026-11-21): the
+setting reads back on both devices, a change reads back and release restores it. Its effect is not
+shown on either device: Gboard on the API 34 emulator (hardware keyboard, `keysexposed-qwerty`)
+showed the full soft keyboard with the setting at 0, even after a restart, and the Samsung has no
+hardware keyboard. The wording no longer claims the keyboard never shows without it.
 
 `keyboard` takes `state|hide` and `screen` takes `state|on|off|unlock`, with `state` as the
 default. The extra word adds nothing.

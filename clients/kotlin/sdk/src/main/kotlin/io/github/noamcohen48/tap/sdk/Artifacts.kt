@@ -161,6 +161,11 @@ data class DeviceInfo(
     val colorInversion: Boolean? = null,
     /** The system font is bold (API 31+; always false below). */
     val boldText: Boolean = false,
+    /**
+     * The soft keyboard shows while a hardware keyboard is connected ([Device.setSoftKeyboard]);
+     * null when Android does not let Tap read it.
+     */
+    val softKeyboard: Boolean? = null,
 ) : Artifact {
     /** [PORTRAIT][Orientation.PORTRAIT] when the display is at least as tall as it is wide. */
     val orientation: Orientation get() = if (displayHeight >= displayWidth) Orientation.PORTRAIT else Orientation.LANDSCAPE
@@ -193,6 +198,7 @@ data class DeviceInfo(
                 put("highContrastText", highContrastText)
                 put("colorInversion", colorInversion)
                 put("boldText", boldText)
+                put("softKeyboard", softKeyboard)
             }.toString().encodeToByteArray()
     override val mediaType: String get() = "application/json"
     override val extension: String get() = "json"

@@ -670,7 +670,9 @@ def test_device_conditions_name_the_device_and_keep_the_failure_reason(fake, dev
     device.set_accessibility_display(color_inversion=True, bold_text=False)
     with pytest.raises(ValueError):
         device.set_accessibility_display()
-    animations, font, density, reset, dark, _, network, locales, location, awake, a11y = fake.devices.conditions
+    device.set_soft_keyboard(True)
+    animations, font, density, reset, dark, _, network, locales, location, awake, a11y, soft = fake.devices.conditions
+    assert soft.enabled is True
     assert awake.enabled is True
     assert a11y.color_inversion is True and a11y.bold_text is False and not a11y.HasField("high_contrast_text")
     assert list(locales.locales) == ["fr-FR", "en"]

@@ -91,6 +91,11 @@ service DeviceService {
   // Keeps the screen on while the device is plugged in (USB, AC or wireless): Settings.Global
   // `stay_on_while_plugged_in` 7, or 0. Captured and restored on detach.
   rpc SetStayAwake(SetStayAwakeRequest) returns (SetStayAwakeResponse);
+  // Shows the soft keyboard while a hardware keyboard is connected (Settings › Physical keyboard
+  // › Show on-screen keyboard): Settings.Secure `show_ime_with_hard_keyboard` 1, or 0. Input
+  // methods that follow it hide the soft keyboard while a hardware keyboard is connected unless it
+  // is 1; whether one does is up to the input method. Captured and restored on detach.
+  rpc SetSoftKeyboard(SetSoftKeyboardRequest) returns (SetSoftKeyboardResponse);
   // The accessibility display settings: high-contrast text, color inversion and bold text (API
   // 31+, else FAILED_PRECONDITION / UNSUPPORTED_API before anything changes), as Settings ›
   // Accessibility writes them. At least one must be set. Captured and restored on detach.
@@ -569,6 +574,14 @@ message SetStayAwakeRequest {
 }
 
 message SetStayAwakeResponse {}
+
+message SetSoftKeyboardRequest {
+  string client_connection_id = 1;
+  string attached_device_id = 2;
+  bool enabled = 3;
+}
+
+message SetSoftKeyboardResponse {}
 
 // At least one setting must be set; an absent one is left as it is.
 message SetAccessibilityDisplayRequest {
