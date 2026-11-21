@@ -164,7 +164,7 @@ def test_steps_need_a_session_and_pick_the_device(fake, agent):
         agent.snapshot()
     assert info.value.exit_code == EXIT_USAGE
     _screen(fake, _node("e1", "OK"))
-    assert agent.snapshot("85e49002") == '# com.example\n@e1  [Button]  "OK"'
+    assert agent.snapshot("85e49002") == '# com.example\n@e1  [Button]  "OK"  accepts=tap'
     assert fake.devices.snapshot_requests[-1].attached_device_id == "attached-85e49002"
 
 
@@ -270,7 +270,7 @@ def test_settle_waits_for_the_focused_window_then_prints_the_diff(fake, agent):
     fake.devices.responder = respond
     _screen(fake, _node("e1", "OK", pb.NODE_UNCHANGED), _node("e4", "Allow", pb.NODE_ADDED))
     out = agent.fill("text=Name", "Ada", settle=True)
-    assert out == 'filled text=Name\n# com.example\n+ @e4  [Button]  "Allow"'
+    assert out == 'filled text=Name\n# com.example\n+ @e4  [Button]  "Allow"  accepts=tap'
     kinds = [c.WhichOneof("op") for c in fake.devices.commands]
     assert kinds[-4:] == ["set_text", "device_info", "wait_screen_stable", "read_toast_history"]
     wait = fake.devices.commands[-2].wait_screen_stable
@@ -574,7 +574,7 @@ def test_cli_prints_the_result_and_maps_failures_to_exit_codes(fake, monkeypatch
     assert capsys.readouterr().out == "attached emulator-5554 to session 'cli', idle timeout 90s\n"
     _screen(fake, _node("e1", "OK"))
     assert cli.main(["snapshot", "-i", "--session", "cli"]) == 0
-    assert capsys.readouterr().out == '# com.example\n@e1  [Button]  "OK"\n'
+    assert capsys.readouterr().out == '# com.example\n@e1  [Button]  "OK"  accepts=tap\n'
     assert cli.main(["tap", "@e9", "-s", "cli"]) == EXIT_FAILED
     assert "not on the screen any more" in capsys.readouterr().err
     assert cli.main(["tap", "banana", "-s", "cli"]) == EXIT_USAGE
@@ -763,7 +763,7 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         result = await client.call_tool("snapshot", {"view": "interactive"})
         assert isinstance(result.content[0], TextContent) and "@e1" in result.content[0].text
         # The CLI (another Agent, another client) sees the session the MCP server started.
-        assert agent.snapshot().endswith('"OK"')
+        assert agent.snapshot().endswith('"OK"  accepts=tap')
         result = await client.call_tool("tap", {"target": "@e42"})
         assert result.is_error and "run `snapshot`" in result.content[0].text
         result = await client.call_tool("tap", {"target": "text=OK", "count": 3, "interval": 0.2})
@@ -886,3 +886,27 @@ def test_devices_unquarantine_is_the_cli_form_and_the_verb_is_gone(fake, agent):
         cli.run(parser.parse_args(["devices", "unquarantine"]), agent)
     with pytest.raises(SystemExit):
         parser.parse_args(["devices", "85e49002"])
+
+
+@pytest.mark.parametrize("fields,words", [
+    ({"flags": [pb.FLAG_CLICKABLE, pb.FLAG_LONG_CLICKABLE, pb.FLAG_CHECKABLE]}, "accepts=tap,long,check"),
+    ({"editable": True}, "accepts=edit"),
+    ({"flags": [pb.FLAG_SCROLLABLE]}, "accepts=scroll"),
+    ({"actions": [pb.A11Y_SCROLL_FORWARD]}, "accepts=scroll"),
+    ({"actions": [pb.A11Y_EXPAND]}, "accepts=actions"),
+    ({"custom_actions": ["Archive"]}, "accepts=actions"),
+    ({"editable": True, "flags": [pb.FLAG_CLICKABLE], "actions": [pb.A11Y_PASTE]}, "accepts=tap,edit,actions"),
+])
+def test_snapshot_lines_say_what_a_node_accepts(fields, words):
+    from tap_e2e._proto import screen_node
+    from tap_agent.render import node_line
+    line = node_line(screen_node(pb.ScreenNode(ref="e1", window_package="p", text="x", interactive=True, **fields)))
+    assert line.split("  ")[-1] == words or words in line.split("  ")
+
+
+def test_focus_selection_and_copy_alone_accept_nothing():
+    from tap_e2e._proto import screen_node
+    from tap_agent.render import node_line
+    line = node_line(screen_node(pb.ScreenNode(ref="e1", window_package="p", text="Total", flags=[pb.FLAG_ENABLED],
+        actions=[pb.A11Y_FOCUS, pb.A11Y_SELECT, pb.A11Y_COPY, pb.A11Y_SHOW_ON_SCREEN])))
+    assert "accepts=" not in line

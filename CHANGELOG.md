@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent snapshot lines end in `accepts=` with what the node takes (`tap`, `long`, `check`,
+  `edit`, `scroll`, `actions`), in every view and in `--settle` diffs; `accepts=scroll` replaces
+  the `scrollable` word.
 - Screen snapshots decide `interactive` from the node itself: the driver's dump reports
   `editable` and the actions a node offers, and `ScreenNode` carries `editable`, `actions` and
   `custom_actions`. An editable field whose class is not an `EditText`, or a row reachable only

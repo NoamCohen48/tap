@@ -36,7 +36,8 @@ INSTRUCTIONS = """\
 Drive an Android device through the Tap daemon (it must be running: `tap start`).
 Flow: devices -> attach(serial="SERIAL") -> app(action="cold-launch", package="com.example.app")
 -> snapshot -> act (tap, fill, scroll, press_key(key="back"), ...) -> release. Selectors search the whole screen unless `pkg=` names a package.
-snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button`. Pass `@e3` as
+snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button  accepts=tap`
+(accepts: tap, long, check, edit, scroll, actions). Pass `@e3` as
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen. An
 action waits for the screen to settle and returns what changed (+ added, - removed) by default,
 so a fresh snapshot is rarely needed; pass settle=false to skip it (faster, e.g. several inputs

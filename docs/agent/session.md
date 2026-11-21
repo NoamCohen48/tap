@@ -90,15 +90,17 @@ $ tap-agent app cold-launch com.android.settings
 cold-launched com.android.settings (pid 14853)
 $ tap-agent snapshot -i
 # com.android.settings · window 1
-@e4  [ScrollView]  id=settings_homepage_container  scrollable
-  @e8  [ImageView]  desc="Profile picture, double tap to open Google Account"  id=account_avatar
-  @e12  [ViewGroup]  context="Search settings"  id=search_action_bar
-  @e15  [ScrollView]  id=main_content_scrollable_container  scrollable
-    @e21  [LinearLayout]  context="Network & internet · Wi-Fi, mobile, data"  (by index)
+@e4  [ScrollView]  id=settings_homepage_container  accepts=scroll
+  @e8  [ImageView]  desc="Profile picture, double tap to open Google Account"  id=account_avatar  accepts=tap
+  @e12  [ViewGroup]  context="Search settings"  id=search_action_bar  accepts=tap
+  @e15  [ScrollView]  id=main_content_scrollable_container  accepts=scroll
+    @e21  [LinearLayout]  context="Network & internet · Wi-Fi, mobile, data"  accepts=tap  (by index)
 …
 ```
 
-A **snapshot** prints a compact outline grouped by window (`# package · window N`).
+A **snapshot** prints a compact outline grouped by window (`# package · window N`). `accepts=`
+says what a node itself takes (`tap`, `long`, `check`, `edit`, `scroll`, `actions`), from the
+node's accessibility facts, never its class name; `action @eN` lists the actions.
 Indentation follows the nearest displayed ancestor; uninformative layout wrappers collapse.
 `-i` keeps interactive controls and labeled ancestor groups (marked `(group)`). Controls borrow
 passive descendant labels as `context="…"`, stopping at independently interactive children;

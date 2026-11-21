@@ -38,10 +38,14 @@ prove media capture will work.
 
 ```
 # com.example.app
-@e3  [Button]  "Log in"  id=login_button
-@e5  [EditText]  hint="Email"  id=email  focused
+@e3  [Button]  "Log in"  id=login_button  accepts=tap
+@e5  [EditText]  hint="Email"  id=email  focused  accepts=tap,edit
 @e9  [TextView]  "Welcome"
 ```
+
+`accepts=` lists what the node itself takes, from its own accessibility facts: `tap`, `long`,
+`check`, `edit`, `scroll`, and `actions` for other accessibility actions (`action @eN` lists
+them). A line without it accepts no input of its own: act on its row or container instead.
 
 `-i` shows interactive controls plus labeled ancestor `(group)` rows; `--all` adds layout
 containers. Indentation preserves displayed ancestry. A container's `context="…"` borrows
