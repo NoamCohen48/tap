@@ -78,7 +78,7 @@ PANELS = ("notifications", "quick-settings")
 """The system panels `panel` opens."""
 ROTATIONS = ("portrait", "landscape", "natural", "left", "upside-down", "right", "auto")
 """What `rotate` takes: a geometry, an exact rotation, or `auto` (back to the sensor)."""
-SCREEN_ACTIONS = ("state", "on", "off", "unlock")
+SCREEN_ACTIONS = ("on", "off", "unlock")
 """What `screen` does: report, wake, sleep, or wake and dismiss a keyguard without a PIN."""
 PERMISSION_CHOICES = tuple(choice.name.lower().replace("_", "-") for choice in PermissionChoice)
 """The permission-dialog buttons `permission` can press."""
@@ -121,7 +121,7 @@ def parse_extras(items: Sequence[str]) -> dict[str, str | bool | int | float | L
         except ValueError:
             raise AgentError(f"extra {key!r}: {value!r} is not a {kind}", EXIT_USAGE) from None
     return extras
-KEYBOARD_ACTIONS = ("state", "hide")
+KEYBOARD_ACTIONS = ("hide",)
 """What `keyboard` does: report whether a soft keyboard shows, or hide it."""
 CONDITIONS = (
     "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
@@ -1118,13 +1118,12 @@ class Agent:
 
         return self._run(step)
 
-    def screen(self, action: str = "state", device: str | None = None, settle: bool = False) -> str:
-        """``state`` reports whether the screen is on and the keyguard showing; ``on`` wakes it,
-        ``off`` turns it off, ``unlock`` wakes it and dismisses a keyguard without a PIN, pattern
-        or password (a secure one is refused, never unlocked)."""
-        action = action.strip().lower()
-        if action not in SCREEN_ACTIONS:
-            raise AgentError(f"screen takes {', '.join(SCREEN_ACTIONS)}, not {action!r}", EXIT_USAGE)
+    def screen(self, action: str | None = None, device: str | None = None, settle: bool = False) -> str:
+        """Without ``action``: reports whether the screen is on and the keyguard showing. ``on``
+        wakes it, ``off`` turns it off, ``unlock`` wakes it and dismisses a keyguard without a
+        PIN, pattern or password (a secure one is refused, never unlocked); each then reports
+        the state read back."""
+        action = _device_action("screen", action, SCREEN_ACTIONS, settle)
 
         def step() -> str:
             d = self._device(device)
@@ -1142,16 +1141,14 @@ class Agent:
             if info.keyguard_locked:
                 keyguard = "showing (secure: needs the PIN, pattern or password)" if info.keyguard_secure else "showing"
             text = f"screen {'on' if info.screen_on else 'off'}, keyguard {keyguard}"
-            return f"{text}\n{self._settled(d)}" if settle and action != "state" else text
+            return f"{text}\n{self._settled(d)}" if settle else text
 
         return self._run(step)
 
-    def keyboard(self, action: str = "state", device: str | None = None, settle: bool = False) -> str:
-        """``state`` reports whether a soft keyboard is on screen; ``hide`` hides it (one Back key,
-        sent only when a keyboard shows)."""
-        action = action.strip().lower()
-        if action not in KEYBOARD_ACTIONS:
-            raise AgentError(f"keyboard takes {' or '.join(KEYBOARD_ACTIONS)}, not {action!r}", EXIT_USAGE)
+    def keyboard(self, action: str | None = None, device: str | None = None, settle: bool = False) -> str:
+        """Without ``action``: reports whether a soft keyboard is on screen. ``hide`` hides it
+        (one Back key, sent only when a keyboard shows) and reports the state read back."""
+        action = _device_action("keyboard", action, KEYBOARD_ACTIONS, settle)
 
         def step() -> str:
             d = self._device(device)
@@ -1159,7 +1156,7 @@ class Agent:
                 with sending():
                     d.hide_keyboard()
             text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
-            return f"{text}\n{self._settled(d)}" if settle and action == "hide" else text
+            return f"{text}\n{self._settled(d)}" if settle else text
 
         return self._run(step)
 
@@ -1798,6 +1795,18 @@ class Agent:
             return json_text(running) if as_json else f"{name} is {'running' if running else 'not running'}"
 
         return self._run(step)
+
+
+def _device_action(command: str, action: str | None, actions: tuple[str, ...], settle: bool) -> str | None:
+    """The normalized action, None for a read; ``settle`` only goes with an action."""
+    if action is None or not action.strip():
+        if settle:
+            raise AgentError(f"--settle goes with a {command} action ({', '.join(actions)}), not a read", EXIT_USAGE)
+        return None
+    action = action.strip().lower()
+    if action not in actions:
+        raise AgentError(f"{command} takes {' or '.join(actions)}, or nothing to read, not {action!r}", EXIT_USAGE)
+    return action
 
 
 def _condition_change(name: str, value: str) -> Callable[[Device], None]:

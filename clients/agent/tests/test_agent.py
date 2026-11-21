@@ -774,8 +774,9 @@ async def test_mcp_tools_call_the_core(fake, server, agent):
         assert isinstance(result.content[0], ImageContent) and result.content[0].mime_type == "image/png"
         result = await client.call_tool("open_panel", {"panel": "quick_settings"})
         assert not result.is_error and result.content[0].text == "opened quick-settings"
-        result = await client.call_tool("screen", {"action": "state"})
+        result = await client.call_tool("screen", {})
         assert not result.is_error and result.content[0].text.startswith("screen off")
+        assert (await client.call_tool("screen", {"action": "state"})).is_error
         result = await client.call_tool("permission", {"choice": "deny"})
         assert not result.is_error and result.content[0].text == "pressed deny"
         result = await client.call_tool("keyboard", {})
@@ -810,3 +811,18 @@ def test_launch_extras_are_typed_and_checked(fake, agent, capsys):
         agent.app("stop", "com.example", extras=["a=b"])
     assert info.value.exit_code == EXIT_USAGE
     assert len(fake.apps.launches) == 1
+
+
+def test_keyboard_and_screen_read_without_a_word_and_refuse_state(fake, agent):
+    agent.attach("emulator-5554")
+    assert agent.keyboard() == "keyboard hidden"
+    assert agent.screen().startswith("screen ")
+    for call in (lambda: agent.keyboard("state"), lambda: agent.screen("state")):
+        with pytest.raises(AgentError, match="or nothing to read"):
+            call()
+    for call in (lambda: agent.keyboard(settle=True), lambda: agent.screen(settle=True)):
+        with pytest.raises(AgentError, match="--settle goes with"):
+            call()
+    with pytest.raises(SystemExit):
+        cli.parser().parse_args(["keyboard", "state"])
+    assert cli.run(cli.parser().parse_args(["keyboard"]), agent) == "keyboard hidden"
