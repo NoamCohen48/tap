@@ -989,3 +989,16 @@ def test_keyboard_hide_says_when_the_keyboard_stays(fake, agent, monkeypatch):
     monkeypatch.setattr("tap_agent.core.time.monotonic", lambda: float(next(clock)))
     monkeypatch.setattr("tap_agent.core.time.sleep", lambda _: None)
     assert agent.keyboard("hide").startswith("keyboard still shown 2s after Back; read it again")
+
+
+def test_key_list_needs_no_server(monkeypatch, capsys):
+    from tap_agent import core
+
+    def no_server(*_args, **_kwargs):
+        raise AssertionError("key --list must not reach the server")
+
+    monkeypatch.setattr(core.Agent, "reporting_deaths", no_server)
+    monkeypatch.setattr(core.Agent, "_run", no_server)
+    assert cli.main(["key", "--list", "--session", "nowhere"]) == 0
+    assert "volume-up  24" in capsys.readouterr().out
+    assert cli.main(["key", "back", "--list", "--session", "nowhere"]) == 2

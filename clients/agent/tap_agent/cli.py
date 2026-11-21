@@ -597,6 +597,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_OK
     agent = Agent(args.session)
     try:
+        if args.verb == "key" and args.list_keys:
+            # A table, not a step: no server, device or death report, so it works without `tap start`.
+            print(run(args, agent))
+            return EXIT_OK
         if args.verb == "watch" and not args.until_first:
             if args.text is not None or args.timeout is not None:
                 raise UsageError("--text and --timeout go with --until-first")
