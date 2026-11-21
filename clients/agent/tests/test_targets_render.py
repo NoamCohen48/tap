@@ -65,7 +65,9 @@ def test_keys():
     assert parse_key("back") == 4
     assert parse_key("ENTER") == 66
     assert parse_key("KEYCODE_TAB") == 61
-    assert parse_key("187") == 187
+    assert parse_key("code:187") == 187
+    with pytest.raises(UsageError, match="digit keys"):
+        parse_key("187")
     with pytest.raises(UsageError):
         parse_key("hyper")
 

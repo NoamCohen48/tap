@@ -322,16 +322,19 @@ KEYS = {**CODES, **KEY_ALIASES}
 
 def parse_key(name: str) -> int:
     """A key name (every Android ``KEYCODE_*`` name in lowercase-dash form, with or without the
-    ``keycode-`` prefix, plus the aliases in ``KEY_ALIASES``) or a numeric Android key code. A
-    bare number is always a code: the digit keys are ``keycode-0`` .. ``keycode-9``."""
+    ``keycode-`` prefix, plus the aliases in ``KEY_ALIASES``) or ``code:N`` for an Android key
+    code. ``0`` .. ``9`` are the digit keys, so typing a PIN key by key presses its digits; any
+    other bare number is refused, never taken as a code (``5`` would be Call)."""
     lowered = name.strip().lower().replace("_", "-")
-    if lowered.isdigit():
-        return parse_int32(lowered, "key code")
+    if lowered.startswith("code:"):
+        return parse_int32(lowered.removeprefix("code:").strip(), "key code")
     if lowered.startswith("keycode-"):
         lowered = lowered.removeprefix("keycode-")
     try:
         return KEYS[lowered]
     except KeyError:
+        if lowered.isdigit():
+            raise UsageError(f"no key is named {name!r}: 0 .. 9 are the digit keys; give code:{lowered} for key code {lowered}") from None
         close = [key for key in KEYS if lowered in key][:8]
         hint = f"; close: {', '.join(close)}" if close else ""
-        raise UsageError(f"unknown key {name!r}{hint} (`key --list` prints all {len(KEYS)} names, or give a key code)") from None
+        raise UsageError(f"unknown key {name!r}{hint} (`key --list` prints all {len(KEYS)} names, or give code:N)") from None

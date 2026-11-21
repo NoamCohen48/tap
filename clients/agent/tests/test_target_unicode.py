@@ -20,7 +20,7 @@ def test_invalid_unicode_or_oversized_target_is_a_usage_error(target):
         parse_target(target)
 
 
-@pytest.mark.parametrize("value", ["²", "9" * 5000, "2147483648"])
+@pytest.mark.parametrize("value", ["²", "9" * 5000, "2147483648", "code:²", "code:" + "9" * 5000, "code:2147483648", "code:"])
 def test_key_codes_fail_locally_for_invalid_decimal_or_overflow(value):
     with pytest.raises(UsageError):
         parse_key(value)

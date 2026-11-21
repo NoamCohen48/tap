@@ -919,7 +919,7 @@ def test_focus_selection_and_copy_alone_accept_nothing():
 @pytest.mark.parametrize("name,code", [
     ("back", 4), ("volume-up", 24), ("VOLUME_UP", 24), ("KEYCODE_VOLUME_UP", 24), ("media-play-pause", 85),
     ("dpad-center", 23), ("delete", 67), ("del", 67), ("backspace", 67), ("recents", 187), ("app-switch", 187),
-    ("keycode-0", 7), ("7", 7), ("camera", 27),
+    ("keycode-0", 7), ("0", 7), ("7", 14), ("11", 227), ("code:5", 5), ("CODE: 187", 187), ("camera", 27),
 ])
 def test_every_android_key_name_and_the_aliases_resolve(name, code):
     from tap_agent.targets import parse_key
@@ -930,7 +930,9 @@ def test_key_list_needs_no_device_and_names_every_key(agent):
     from tap_agent.targets import CODES
     listing = agent.key(list_keys=True)
     assert len(listing.splitlines()) > 330 and "volume-up  24" in listing and "backspace  67  (= del)" in listing
-    assert "0  7  (keycode-0)" in listing and len(CODES) > 300
+    assert "\n0  7\n" in listing and len(CODES) > 300
+    with pytest.raises(AgentError, match="give code:42"):
+        agent.key("42")
     with pytest.raises(AgentError, match="close: volume-up"):
         agent.key("volume-u")
     with pytest.raises(AgentError):

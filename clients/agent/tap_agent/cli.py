@@ -285,8 +285,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--percent", type=int, default=80, help="how far across the node, 1..100 (default 80)")
     p.add_argument("--timeout", type=_command_duration, help="command budget, at most 120s")
 
-    p = verb("key", "press a key: any Android key name (back, home, enter, volume-up, media-play-pause, …) or a key code", on_device, settle)
-    p.add_argument("name", nargs="?", help="a key name (`--list` prints them all; digit keys are keycode-0 .. keycode-9) or a numeric key code")
+    p = verb("key", "press a key: any Android key name (back, home, enter, volume-up, media-play-pause, …) or code:N", on_device, settle)
+    p.add_argument("name", nargs="?", help="a key name (`--list` prints them all; 0 .. 9 are the digit keys) or code:N for an Android key code")
     p.add_argument("--list", dest="list_keys", action="store_true", help="print every key name with its code (no device needed)")
     press = p.add_mutually_exclusive_group()
     press.add_argument("--long", action="store_true", help="hold each press for the device's long-press timeout (Android's long press)")

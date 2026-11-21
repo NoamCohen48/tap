@@ -38,8 +38,8 @@ name the components affected. Earlier releases used independent version lines. T
   with refs; a failed snapshot is listed like any other part.
 - tap-agent `key` accepts every Android key name (`volume-up`, `media-play-pause`, `camera`, …,
   from the SDKs' key table), and `key --list` (MCP
-  `press_key(list_keys=true)`) prints them with their codes. Digit keys are `keycode-0` ..
-  `keycode-9`; a bare number is still a raw key code.
+  `press_key(list_keys=true)`) prints them with their codes. `0` .. `9` are the digit keys;
+  `code:N` is a raw key code, and any other bare number is refused (`key 5` was Call).
 - tap-agent snapshots and `--settle` diffs print a keyboard window as one header line with a
   node count; `snapshot --keyboard` (MCP `keyboard`) or `--window N` shows its keys, and
   `--hide-keyboard` still drops the window.

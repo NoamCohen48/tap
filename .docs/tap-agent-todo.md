@@ -398,6 +398,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 
 1. `key --list` needs a running server (the step wrappers open a client first). Status: done.
 2. `key 5` is key code 5 (Call), not the digit: digits are the digit keys, `code:N` a raw code.
+   Status: done.
 3. One key table in both SDKs (Python `Key`, Kotlin `Keys`) instead of only in tap-agent.
    Status: done.
 4. Press modes use `tap`'s names everywhere: `count`, `interval`, `duration`; proto `PressKey`

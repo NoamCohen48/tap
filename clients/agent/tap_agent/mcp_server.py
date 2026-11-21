@@ -719,7 +719,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="press_key")
     async def press_key(
-        key: Annotated[str, Field(description="Any Android key name (back, home, enter, volume-up, media-play-pause, ...; digit keys are keycode-0 .. keycode-9) or an Android key code.")] = "",
+        key: Annotated[str, Field(description="Any Android key name (back, home, enter, volume-up, media-play-pause, ...; 0 .. 9 are the digit keys) or code:N for an Android key code.")] = "",
         list_keys: Annotated[bool, Field(description="Return every key name with its code instead of pressing one.")] = False,
         long: Annotated[bool, Field(description="Hold each press for the device's long-press timeout (Android's long press). Not with hold_seconds.")] = False,
         hold_seconds: Annotated[float | None, Field(description="Hold each press this long (up to 30), repeating as a held key does.", gt=0, le=30)] = None,

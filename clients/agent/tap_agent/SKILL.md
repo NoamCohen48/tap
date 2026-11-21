@@ -141,7 +141,7 @@ finger's direction, so `--finger up` scrolls down), `fling <target> <direction>`
 fast; the content may keep moving). Each prints both, e.g. `scrolled down (finger up)`, `drag <target> <destination>` (long-press, move
 onto the destination node, drop), `pinch <target> open|close [--percent 80]`,
 `key NAME` (any Android key name: `back`, `home`, `recents`, `enter`, `volume-up`,
-`media-play-pause`, … `key --list` prints all; a number is a raw key code; what a key does is up
+`media-play-pause`, … `key --list` prints all; `0` .. `9` are the digit keys and `code:N` a raw key code; what a key does is up
 to the device and app; `--long` long-presses, `--hold 2s` holds with key repeats, `--double` or
 `--times N [--interval 300ms]` presses again),
 `panel notifications|quick-settings` (the status bar's panels: their nodes are in
