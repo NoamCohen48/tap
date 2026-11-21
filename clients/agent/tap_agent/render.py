@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from tap_e2e import ElementSnapshot, NodeChange, NodeFlag, ScreenNode, ScreenSnapshot
+from tap_e2e import ElementSnapshot, NodeChange, NodeFlag, ScreenNode, ScreenSnapshot, StandardAction
 
 # What `snapshot` shows. INTERACTIVE: nodes an action can target; DEFAULT: those plus nodes with
 # text or a description (what a person reads); ALL: every node, layout containers included.
@@ -40,6 +40,28 @@ def shown(node: ScreenNode, level: str) -> bool:
     return level == DEFAULT and bool(node.text or node.content_description or node.content_invalid or node.error)
 
 
+_SCROLLS = frozenset(a for a in StandardAction if a.name.startswith(("SCROLL_", "PAGE_")))
+_PASSIVE = frozenset({StandardAction.FOCUS, StandardAction.CLEAR_FOCUS, StandardAction.SELECT,
+                      StandardAction.CLEAR_SELECTION, StandardAction.COPY, StandardAction.SHOW_ON_SCREEN})
+
+
+def accepts(node: ScreenNode) -> list[str]:
+    """What the node itself accepts, in a fixed order: ``tap`` (clickable), ``long``
+    (long-clickable), ``check`` (checkable), ``edit`` (editable), ``scroll`` (scrollable, or a
+    scroll or page action) and ``actions`` (another accessibility action, standard or custom:
+    see ``action @eN``). Focus, selection, copy and show-on-screen alone are not listed."""
+    flags = node.flags
+    words = [word for flag, word in ((NodeFlag.CLICKABLE, "tap"), (NodeFlag.LONG_CLICKABLE, "long"),
+                                      (NodeFlag.CHECKABLE, "check")) if flag in flags]
+    if node.editable:
+        words.append("edit")
+    if NodeFlag.SCROLLABLE in flags or any(a in _SCROLLS for a in node.actions):
+        words.append("scroll")
+    if node.custom_actions or any(a not in _SCROLLS and a not in _PASSIVE for a in node.actions):
+        words.append("actions")
+    return words
+
+
 def node_line(node: ScreenNode, context: str = "") -> str:
     """``@e3  [Button] "Log in"  id=login_button  focused``."""
     parts = [f"@{node.ref}"]
@@ -68,12 +90,14 @@ def node_line(node: ScreenNode, context: str = "") -> str:
         (NodeFlag.FOCUSED, "focused"),
         (NodeFlag.CHECKED, "checked"),
         (NodeFlag.SELECTED, "selected"),
-        (NodeFlag.SCROLLABLE, "scrollable"),
     ):
         if flag in flags:
             parts.append(word)
     if NodeFlag.ENABLED not in flags and node.interactive:
         parts.append("disabled")
+    accepted = accepts(node)
+    if accepted:
+        parts.append("accepts=" + ",".join(accepted))
     if node.selector is None:
         parts.append("(no selector)")
     elif node.by_index:

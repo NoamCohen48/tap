@@ -73,6 +73,8 @@ Do:
 
 ## Snapshot: say what each node accepts
 
+Status: done (`accepts=` on each line).
+
 `snapshot` lines show state (`focused`, `checked`, `selected`, `scrollable`, `disabled`) but not
 what a node can do. To find out, you have to run `action @eN` or `inspect @eN`.
 
