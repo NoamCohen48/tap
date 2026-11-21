@@ -8,6 +8,11 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Screen snapshots decide `interactive` from the node itself: the driver's dump reports
+  `editable` and the actions a node offers, and `ScreenNode` carries `editable`, `actions` and
+  `custom_actions`. An editable field whose class is not an `EditText`, or a row reachable only
+  through accessibility actions, is now interactive; an `EditText` class name alone no longer
+  makes a node interactive. Python `ScreenNode` has the same fields.
 - tap-agent `capture NAME` labels a bundle, `capture list [-L]` lists them newest first,
   `capture show NAME|ID` prints a bundle's files and `capture clean NAME|ID` (`--older-than`,
   `--all`) deletes the files the agent saved; history marks cleaned bundles. `capture` now prints

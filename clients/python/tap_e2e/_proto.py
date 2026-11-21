@@ -516,6 +516,9 @@ def screen_node(node: pb.ScreenNode) -> ScreenNode:
         showing_hint=node.showing_hint,
         content_invalid=node.content_invalid,
         error=_optional(node, "error"),
+        editable=node.editable,
+        actions=tuple(a for a in (_named(StandardAction, pb.StandardAction, n, "A11Y_", None) for n in node.actions) if a is not None),
+        custom_actions=tuple(node.custom_actions),
     )
 
 

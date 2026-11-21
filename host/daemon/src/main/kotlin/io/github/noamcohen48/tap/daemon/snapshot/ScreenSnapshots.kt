@@ -4,6 +4,7 @@ import io.github.noamcohen48.tap.api.v1.Bounds
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.ScreenNode
 import io.github.noamcohen48.tap.api.v1.SelectorCandidate
+import io.github.noamcohen48.tap.api.v1.StandardAction
 
 /** One parsed screen before ref alignment: [nodes] have no `ref` and no `change` yet. */
 internal class Screen(
@@ -50,7 +51,12 @@ internal object ScreenSnapshots {
                 showingHint = node.showingHint
                 contentInvalid = node.contentInvalid
                 node.error?.let { error = it }
-                interactive = node.clickable || node.longClickable || node.checkable || node.scrollable || node.editable
+                editable = node.editable
+                val actions = node.actions.mapNotNull(::standardAction)
+                addAllActions(actions)
+                addAllCustomActions(node.customActions)
+                interactive = node.clickable || node.longClickable || node.checkable || node.scrollable || node.editable ||
+                    node.customActions.isNotEmpty() || actions.any { it !in PASSIVE }
                 synthesised.firstOrNull()?.let {
                     selector = it.selector
                     byIndex = it.byIndex
@@ -69,7 +75,21 @@ internal object ScreenSnapshots {
                 SelectorKind.BY_INDEX -> io.github.noamcohen48.tap.api.v1.SelectorKind.SELECTOR_KIND_BY_INDEX
             }
 
-    private val DumpNode.editable: Boolean get() = className?.endsWith("EditText") == true
+    /** Actions that do not make a node something to act on: every focusable or selectable
+     * label offers them. */
+    private val PASSIVE =
+        setOf(
+            StandardAction.A11Y_FOCUS,
+            StandardAction.A11Y_CLEAR_FOCUS,
+            StandardAction.A11Y_SELECT,
+            StandardAction.A11Y_CLEAR_SELECTION,
+            StandardAction.A11Y_COPY,
+            StandardAction.A11Y_SHOW_ON_SCREEN,
+        )
+
+    /** A dumped action name; one this daemon does not know (a newer driver's) is left out. */
+    private fun standardAction(name: String): StandardAction? =
+        runCatching { StandardAction.valueOf(name) }.getOrNull()?.takeIf { it != StandardAction.STANDARD_ACTION_UNSPECIFIED && it != StandardAction.UNRECOGNIZED }
 
     private fun flags(node: DumpNode): List<NodeFlag> =
         listOfNotNull(

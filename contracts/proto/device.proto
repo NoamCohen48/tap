@@ -394,7 +394,10 @@ message ScreenNode {
   // The boolean properties that are true.
   repeated NodeFlag flags = 10;
   bool password = 11;
-  // Clickable, long-clickable, checkable, scrollable or editable.
+  // The node accepts input of its own: editable, clickable, long-clickable, checkable or
+  // scrollable, or it offers a custom action or a standard action that acts on it (expand,
+  // collapse, dismiss, scroll or page, context click, press and hold, cut, paste). Focus,
+  // selection, copy and show-on-screen alone do not count. Decided from the node, never its class.
   bool interactive = 12;
   // A selector that matched only this node in the dump; absent when none was found.
   optional Selector selector = 13;
@@ -417,6 +420,13 @@ message ScreenNode {
   // AccessibilityWindowInfo type: 1 application, 2 input method, 3 system, etc.
   // Zero means unknown (including dumps from older drivers). Never infer from package name.
   int32 window_type = 21;
+  // The node is editable text (`AccessibilityNodeInfo.isEditable`), whatever its class.
+  bool editable = 22;
+  // The standard actions the node offers that Tap can perform (`Element.perform_action`), in
+  // StandardAction order.
+  repeated StandardAction actions = 23;
+  // The labels of the custom actions the node offers (`Element.perform_custom_action`).
+  repeated string custom_actions = 24;
 }
 
 message ScreenSnapshotResponse {

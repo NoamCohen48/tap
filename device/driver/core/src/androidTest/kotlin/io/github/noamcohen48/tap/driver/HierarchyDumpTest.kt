@@ -62,6 +62,9 @@ class HierarchyDumpTest {
             if (fixtureWindow) {
                 // Upstream has no type attribute; Tap's fixture window must be application type.
                 if (tapDump) assertEquals("1", attributes["window-type"])
+                // The field reports itself editable from the node, not from its class name.
+                if (tapDump && attributes["resource-id"] == "$PACKAGE:id/field_state_input") assertEquals("true", attributes["editable"])
+                if (tapDump && attributes["resource-id"] == "$PACKAGE:id/validate_field") assertEquals("false", attributes["editable"])
                 nodes += parser.depth to attributes.filterKeys { it !in EXTRA_ATTRIBUTES }
             }
         }
@@ -70,7 +73,7 @@ class HierarchyDumpTest {
 
     private companion object {
         const val PACKAGE = "io.github.noamcohen48.tap.fixture"
-        val EXTRA_ATTRIBUTES = setOf("showing-hint", "content-invalid", "error", "window-type")
+        val EXTRA_ATTRIBUTES = setOf("showing-hint", "content-invalid", "error", "window-type", "editable", "actions", "custom-actions")
         const val STILL_ATTEMPTS = 5
     }
 }
