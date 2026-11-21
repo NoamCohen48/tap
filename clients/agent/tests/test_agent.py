@@ -927,7 +927,7 @@ def test_every_android_key_name_and_the_aliases_resolve(name, code):
 
 
 def test_key_list_needs_no_device_and_names_every_key(agent):
-    from tap_agent.keycodes import CODES
+    from tap_agent.targets import CODES
     listing = agent.key(list_keys=True)
     assert len(listing.splitlines()) > 330 and "volume-up  24" in listing and "backspace  67  (= del)" in listing
     assert "0  7  (keycode-0)" in listing and len(CODES) > 300

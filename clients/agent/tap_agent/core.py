@@ -1891,8 +1891,7 @@ def _device_action(command: str, action: str | None, actions: tuple[str, ...], s
 
 def key_listing() -> str:
     """Every key name with its code, by code; an alias says what it stands for."""
-    from .keycodes import CODES
-    from .targets import KEY_ALIASES
+    from .targets import CODES, KEY_ALIASES
     by_code: dict[int, str] = {}
     for key, code in CODES.items():
         by_code.setdefault(code, key)
