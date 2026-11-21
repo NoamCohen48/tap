@@ -957,3 +957,35 @@ def test_key_long_held_and_counted_presses(fake, agent):
     assert (args.times, args.interval) == (2, 0.25)
     with pytest.raises(SystemExit):
         cli.parser().parse_args(["key", "power", "--long", "--hold", "1s"])
+
+
+def test_keyboard_hide_reads_back_once_the_keyboard_has_gone(fake, agent, monkeypatch):
+    agent.attach("emulator-5554")
+    reads = {"after_hide": 0, "hidden": False}
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        if op == "hide_keyboard":
+            reads["hidden"] = True
+        if op == "device_info":
+            # The keyboard's window stays on screen for two reads while it animates out.
+            if reads["hidden"]:
+                reads["after_hide"] += 1
+            return pb.CommandResult(device_info=pb.DeviceInfo(keyboard_shown=not reads["hidden"] or reads["after_hide"] <= 2))
+        return None
+
+    fake.devices.responder = respond
+    monkeypatch.setattr("tap_agent.core.time.sleep", lambda _: None)
+    assert agent.keyboard("hide") == "keyboard hidden"
+    assert reads["after_hide"] == 3
+    assert sum(c.WhichOneof("op") == "hide_keyboard" for c in fake.devices.commands) == 1
+
+
+def test_keyboard_hide_says_when_the_keyboard_stays(fake, agent, monkeypatch):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda command: (pb.CommandResult(device_info=pb.DeviceInfo(keyboard_shown=True))
+                                              if command.WhichOneof("op") == "device_info" else None)
+    clock = iter(range(0, 1000))
+    monkeypatch.setattr("tap_agent.core.time.monotonic", lambda: float(next(clock)))
+    monkeypatch.setattr("tap_agent.core.time.sleep", lambda _: None)
+    assert agent.keyboard("hide").startswith("keyboard still shown 2s after Back; read it again")
