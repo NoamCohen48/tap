@@ -389,3 +389,33 @@ read-only hint.
 It is the only device-lifecycle command outside a group. Make it `devices unquarantine SERIAL`,
 next to the listing that shows quarantined devices; remove the top-level verb. Update MCP, docs
 and tests.
+
+## Review of the new API (2026-11-21)
+
+A read-only review of everything above found the items below; all are approved for this branch,
+one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP): the branch's
+`BREAKING_BASELINE` is already its merge-base.
+
+1. `key --list` needs a running server (the step wrappers open a client first). Status: done.
+2. `key 5` is key code 5 (Call), not the digit: digits are the digit keys, `code:N` a raw code.
+3. One key table in both SDKs (Python `Key`, Kotlin `Keys`) instead of only in tap-agent.
+4. Press modes use `tap`'s names everywhere: `count`, `interval`, `duration`; proto `PressKey`
+   takes a `oneof` hold (long press or duration); validation counts a long press at its worst
+   case, so the 30 s cap holds; `key --double` goes.
+5. The soft-keyboard condition takes Android's name: show IME with a hardware keyboard.
+6. The server classifies each window (application, keyboard, status bar, navigation bar,
+   system, …); tap-agent stops guessing bars from their size.
+7. Snapshot: `--keyboard collapse|show|omit` and `--system-bars collapse|show|omit` in place of
+   four flags; collapsed headers name no CLI flag.
+8. `editable` is a node flag (selectable, and in element snapshots), not a separate bool.
+9. `--json` on the remaining reads.
+10. One toast text rule: part of the text, ignoring case, `--exact` for exact.
+11. `history keep` says "kept range", not "recording"; MCP `history_keep` is its own tool.
+12. `device-info --json`: the foreground activity as package and class, its error apart; text
+    keys and on/off spelled as `condition` spells them.
+13. MCP's implicit settle is bounded at 3 s; `app` launches settle too.
+14. `type [TARGET] TEXT`: target first when there are two arguments, as `fill`.
+15. `toast --timeout` without `--wait` is a usage error.
+16. Optional: one name for "stop after" (`--for`), one opaque toast cursor (`--after`), `-L` has
+    `--long`, `watch --until-first KIND`, `capture --name NAME` and list filters of their own,
+    `accepts=` words (`long-tap`, no `check`), MCP `condition` from the condition table.
