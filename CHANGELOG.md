@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `key` accepts every Android key name (`volume-up`, `media-play-pause`, `camera`, …,
+  generated from `KeyEvent` by `clients/agent/scripts/gen_keys.py`), and `key --list` (MCP
+  `press_key(list_keys=true)`) prints them with their codes. Digit keys are `keycode-0` ..
+  `keycode-9`; a bare number is still a raw key code.
 - tap-agent snapshots and `--settle` diffs print a keyboard window as one header line with a
   node count; `snapshot --keyboard` (MCP `keyboard`) or `--window N` shows its keys, and
   `--hide-keyboard` still drops the window.

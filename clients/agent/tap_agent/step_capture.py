@@ -34,9 +34,9 @@ if TYPE_CHECKING:
 
 # Explicit policies make mixed read/write commands reviewable. A coverage test classifies every
 # public Agent method, so new methods cannot accidentally disappear from recordings.
-ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "key", "panel", "rotate", "location", "push", "media", "scroll_until"})
+ACTIONS = frozenset({"tap", "fill", "clear", "scroll", "swipe", "fling", "pinch", "submit", "progress", "drag", "type", "panel", "rotate", "location", "push", "media", "scroll_until"})
 WAITS = frozenset({"wait", "settle", "toast", "watch_first"})
-CONDITIONAL = frozenset({"action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
+CONDITIONAL = frozenset({"key", "action", "keyboard", "screen", "condition", "clipboard", "notification", "permission", "app", "app_data"})
 EXCLUDED = frozenset({"close", "reporting_deaths", "observing_events", "watch", "deaths", "wait_for_death", "attach", "sessions", "release", "detach", "devices", "unquarantine", "server_info", "device_info", "capabilities", "snapshot", "inspect", "exists", "count", "elements", "screenshot", "capture", "recording", "pull", "activity", "history"})
 
 
@@ -53,6 +53,8 @@ def category(name: str, parameters: dict[str, Any]) -> str | None:
         return None if name == "toast" and not parameters.get("wait") else "wait"
     if name == "action":
         return "action" if parameters["name"] is not None else None
+    if name == "key":
+        return None if parameters.get("list_keys") else "action"
     if name in ("keyboard", "screen"):
         return "action" if parameters["action"] not in (None, "") else None
     if name == "condition":

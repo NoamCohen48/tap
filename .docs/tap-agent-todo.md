@@ -182,6 +182,8 @@ Do:
 
 ## `key`: every Android key name, and long, held, double and repeated presses
 
+Status: the full key table and `key --list` are done; the press modes are not.
+
 `key` knows 17 names (`clients/agent/tap_agent/targets.py`, `KEYS`) plus raw key codes, so
 `key volume-up`, `key media-play-pause` or `key camera` fail. A `KEYCODE_` prefix is stripped, so
 `KEYCODE_VOLUME_UP` looks supported but is not. The driver presses with UiAutomator's
