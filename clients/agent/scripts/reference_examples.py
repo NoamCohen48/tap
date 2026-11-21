@@ -176,7 +176,8 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     # Keys, system panels and the display
     "key": [
         ("tap-agent key back", "pressed back"),
-        ("tap-agent key volume-up --double", "pressed volume-up x2"),
+        ("tap-agent key volume-up --count 2", "pressed volume-up x2"),
+        ("tap-agent key volume-down --duration 2s", "long-pressed volume-down for 2s"),
         ("tap-agent key power --long", "long-pressed power"),
         ("tap-agent key --list", "soft-left  1\nsoft-right  2\nhome  3\nback  4\n…"),
     ],
@@ -274,8 +275,8 @@ NOTES: dict[str, list[str]] = {
     "keyboard": ["`hide` sends one Back key only when a keyboard shows, then waits up to 2 s for it to go."],
     "action": ["Click is not an action here: use `tap`. An action the node does not offer is refused before "
                "anything happens."],
-    "key": ["`--long` holds for the device's long-press time, `--hold` for a time you give; `--times N` repeats "
-            "with `--interval` between presses."],
+    "key": ["As for `tap`: `--long` holds for the device's long-press time, `--duration` for a time you give "
+            "(and implies `--long`); `--count N` repeats with `--interval` between presses."],
     "capture": ["`screenshot` saves only the image and `snapshot` saves nothing; `capture` is the bundle to "
                 "attach to a bug. `-o DIR` must be a new directory: nothing is overwritten."],
     "history": [

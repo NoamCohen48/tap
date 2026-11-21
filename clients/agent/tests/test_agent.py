@@ -944,21 +944,23 @@ def test_key_long_held_and_counted_presses(fake, agent):
     agent.attach("emulator-5554")
     assert agent.key("power", long=True) == "long-pressed power"
     assert _last(fake, "press_key").press_key.long_press
-    assert agent.key("volume-down", hold=2.0) == "held volume-down for 2s"
-    assert _last(fake, "press_key").press_key.hold_ms == 2000
-    assert agent.key("back", times=2, interval=0.3) == "pressed back x2"
+    assert agent.key("volume-down", duration=2.0) == "long-pressed volume-down for 2s"
+    assert _last(fake, "press_key").press_key.duration_ms == 2000
+    assert agent.key("back", count=2, interval=0.3) == "pressed back x2"
     key = _last(fake, "press_key").press_key
-    assert (key.presses, key.interval_ms) == (2, 300)
+    assert (key.count, key.interval_ms) == (2, 300)
     sent = len(fake.devices.commands)
-    for bad in ({"long": True, "hold": 1.0}, {"times": 0}, {"interval": 0.3}, {"hold": 31.0},
-                {"times": 2, "interval": 2.0}, {"times": 100, "hold": 1.0}):
+    # A long press counts at its worst case (1.5 s), as the server counts it: 20 do not fit in 30 s.
+    for bad in ({"count": 0}, {"interval": 0.3}, {"duration": 31.0}, {"count": 2, "interval": 2.0},
+                {"count": 100, "duration": 1.0}, {"long": True, "count": 20}):
         with pytest.raises(AgentError):
             agent.key("back", **bad)
     assert len(fake.devices.commands) == sent
-    args = cli.parser().parse_args(["key", "volume-up", "--double", "--interval", "250ms"])
-    assert (args.times, args.interval) == (2, 0.25)
-    with pytest.raises(SystemExit):
-        cli.parser().parse_args(["key", "power", "--long", "--hold", "1s"])
+    args = cli.parser().parse_args(["key", "volume-up", "--count", "2", "--interval", "250ms", "--duration", "1s"])
+    assert (args.count, args.interval, args.duration) == (2, 0.25, 1.0)
+    for gone in ("--double", "--times", "--hold"):
+        with pytest.raises(SystemExit):
+            cli.parser().parse_args(["key", "power", gone, "2"])
 
 
 def test_keyboard_hide_reads_back_once_the_keyboard_has_gone(fake, agent, monkeypatch):

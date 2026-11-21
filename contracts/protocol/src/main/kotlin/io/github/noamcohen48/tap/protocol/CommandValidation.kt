@@ -12,6 +12,7 @@ import io.github.noamcohen48.tap.api.v1.NotificationMatch
 import io.github.noamcohen48.tap.api.v1.Node
 import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Orientation
+import io.github.noamcohen48.tap.api.v1.PressKey
 import io.github.noamcohen48.tap.api.v1.LocationAccuracy
 import io.github.noamcohen48.tap.api.v1.PerformAccessibilityAction
 import io.github.noamcohen48.tap.api.v1.PermissionChoice
@@ -109,14 +110,15 @@ object CommandValidation {
             OpCase.PRESS_KEY -> {
                 val key = command.pressKey
                 if (key.keyCode < 0) invalidRequest("key_code must not be negative")
-                if (key.longPress && key.hasHoldMs()) invalidRequest("long_press and hold_ms exclude each other")
-                if (key.hasHoldMs() && key.holdMs !in 1..MAX_TOUCH_SEQUENCE_MS) {
-                    invalidRequest("hold_ms must be in 1..$MAX_TOUCH_SEQUENCE_MS")
+                if (key.holdCase == PressKey.HoldCase.LONG_PRESS && !key.longPress) invalidRequest("long_press must be true when set")
+                if (key.holdCase == PressKey.HoldCase.DURATION_MS && key.durationMs !in 1..MAX_TOUCH_SEQUENCE_MS) {
+                    invalidRequest("duration_ms must be in 1..$MAX_TOUCH_SEQUENCE_MS")
                 }
-                if (key.hasPresses() && key.presses !in 1..MAX_TAP_COUNT) invalidRequest("presses must be in 1..$MAX_TAP_COUNT")
+                if (key.hasCount() && key.count !in 1..MAX_TAP_COUNT) invalidRequest("count must be in 1..$MAX_TAP_COUNT")
                 if (key.hasIntervalMs() && key.intervalMs !in 40..1_000) invalidRequest("interval_ms must be in 40..1000")
-                if (keyPressesDurationMs(key, longPressMs = 0) > MAX_TOUCH_SEQUENCE_MS) {
-                    invalidRequest("The key sequence must not exceed $MAX_TOUCH_SEQUENCE_MS ms")
+                // A long press is counted at its worst case, so the cap holds on every device.
+                if (keyPressesDurationMs(key, LONG_PRESS_WORST_CASE_MS) > MAX_TOUCH_SEQUENCE_MS) {
+                    invalidRequest("The key sequence must not exceed $MAX_TOUCH_SEQUENCE_MS ms (a long press counts $LONG_PRESS_WORST_CASE_MS ms)")
                 }
             }
 

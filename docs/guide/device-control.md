@@ -12,7 +12,7 @@ These are on `Device`: they act on the device as a whole, not on an element.
 | Method | What happens on the device |
 |---|---|
 | `press_back()`, `press_home()`, `press_key(code)` | a key event (`press_key` takes an Android key code: `Key.ENTER`, or `66`; Kotlin `Keys.ENTER`. `Key` names every Android key) |
-| `press_key(code, presses=2, interval=0.3)`, `press_key(code, hold=2)`, `long_press_key(code)` | a double or counted press; a press held for that long, repeating as a held key does (holding Volume Down steps the volume); a long press, held for the device's long-press timeout (Kotlin: `pressKey(code, presses, interval, hold)`, `longPressKey(code)`) |
+| `press_key(code, count=2, interval=0.3)`, `long_press_key(code)`, `long_press_key(code, duration=2)` | a counted press, `interval` seconds from release to press; a long press, held for the device's long-press timeout; a press held for that long, repeating as a held key does (holding Volume Down steps the volume). The names are `tap`'s: `count`, `interval`, `duration` (Kotlin: `pressKey(code, count, interval)`, `longPressKey(code, duration, count)`) |
 | `type_text(value)` | types into whatever has input focus ([Text](elements.md#text)) |
 | `keyboard_shown()` | whether any soft keyboard is on screen (also `info().keyboard_shown`) |
 | `hide_keyboard()` | hides it with one Back key. No keyboard: nothing is sent, so Back never reaches the app |

@@ -331,9 +331,9 @@ internal fun eventJson(value: io.github.noamcohen48.tap.api.v1.Pinch): JsonObjec
 
 internal fun eventJson(value: io.github.noamcohen48.tap.api.v1.PressKey): JsonObject = buildJsonObject {
     if (value.getKeyCode() != 0) put("key_code", JsonPrimitive(value.getKeyCode()))
-    if (value.getLongPress()) put("long_press", JsonPrimitive(value.getLongPress()))
-    if (value.hasHoldMs()) put("hold_ms", JsonPrimitive(value.getHoldMs().toString()))
-    if (value.hasPresses()) put("presses", JsonPrimitive(value.getPresses()))
+    if (value.hasLongPress()) put("long_press", JsonPrimitive(value.getLongPress()))
+    if (value.hasDurationMs()) put("duration_ms", JsonPrimitive(value.getDurationMs().toString()))
+    if (value.hasCount()) put("count", JsonPrimitive(value.getCount()))
     if (value.hasIntervalMs()) put("interval_ms", JsonPrimitive(value.getIntervalMs().toString()))
 }
 

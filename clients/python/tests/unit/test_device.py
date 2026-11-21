@@ -30,7 +30,7 @@ from tap_e2e import (
     WaitTimeoutError,
 )
 from tap_e2e import _gen as pb
-from tap_e2e import DOWN, STARTS_WITH, Long, enabled, res, text
+from tap_e2e import DOWN, STARTS_WITH, Key, Long, enabled, res, text
 
 from .conftest import TOKEN
 
@@ -862,15 +862,19 @@ def test_press_key_sends_long_held_and_counted_presses(fake, device):
 
     fake.devices.responder = respond
     device.press_key(25)
-    device.press_key(25, presses=2, interval=0.3)
-    device.press_key(25, hold=2)
+    device.press_key(Key.VOLUME_DOWN, count=2, interval=0.3)
+    device.long_press_key(25, duration=2)
     device.long_press_key(26)
     keys = [c.press_key for c in commands]
-    assert not (keys[0].HasField("presses") or keys[0].HasField("hold_ms") or keys[0].long_press)
-    assert (keys[1].presses, keys[1].interval_ms) == (2, 300)
-    assert keys[2].hold_ms == 2000 and commands[2].timeout_ms > 2000
+    assert keys[0].WhichOneof("hold") is None and not keys[0].HasField("count")
+    assert (keys[1].key_code, keys[1].count, keys[1].interval_ms) == (25, 2, 300)
+    assert keys[2].duration_ms == 2000 and commands[2].timeout_ms > 2000
     assert keys[3].long_press and keys[3].key_code == 26
-    for bad in ({"presses": 0}, {"presses": 101}, {"interval": 0.01}, {"hold": 0}, {"hold": 31}, {"presses": 100, "hold": 1}):
+    for bad in ({"count": 0}, {"count": 101}, {"interval": 0.01}):
         with pytest.raises(ValueError):
             device.press_key(25, **bad)
+    # A long press counts at its worst case (1.5 s): twenty do not fit in 30 s, as the server says.
+    for bad in ({"duration": 0}, {"duration": 31}, {"count": 100, "duration": 1}, {"count": 20}):
+        with pytest.raises(ValueError):
+            device.long_press_key(25, **bad)
     assert len(commands) == 4

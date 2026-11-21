@@ -54,8 +54,8 @@ from .screen import Screen
 from .client import TapConnection, mapped_errors
 
 # A long press is the device's long-press timeout: 0.4-0.5 s by default, up to 1.5 s with the
-# accessibility setting. Only pads the default timeout.
-_LONG_PRESS_ESTIMATE = 1.5
+# accessibility setting. The server counts it at 1.5 s against the 30 s key sequence cap, and so do we.
+_LONG_PRESS_WORST_CASE = 1.5
 
 if TYPE_CHECKING:
     # typing.Self is 3.11+; the annotation is never evaluated at runtime (PEP 563).
@@ -256,42 +256,40 @@ class Device:
         """Send ``Key.HOME``."""
         self.press_key(Key.HOME)
 
-    def press_key(self, key_code: int, *, presses: int = 1, interval: float = 0.1, hold: float | None = None,
-                  timeout: float | None = None) -> None:
-        """Presses an Android key code ``presses`` times (a mutation: never replayed on transport
-        loss), ``interval`` seconds (0.04..1) from each release to the next press.
+    def press_key(self, key_code: int, *, count: int = 1, interval: float = 0.1, timeout: float | None = None) -> None:
+        """Presses an Android key code (:class:`Key`) ``count`` times (a mutation: never replayed
+        on transport loss), ``interval`` seconds (0.04..1) from each release to the next press.
+        ``timeout`` defaults to the action timeout plus the sequence. Only whether the key events
+        were injected is reported: what the key does is up to the device and the app in front."""
+        self._press_keys(key_code, None, False, count, interval, timeout)
 
-        With ``hold`` (seconds, up to 30) each press stays down that long and repeats as a held key
-        does: the repeat at the device's long-press timeout is Android's long press, so holding
-        Volume Down steps the volume. The sequence must fit in 30 seconds; ``timeout`` defaults to
-        the action timeout plus the sequence. Only whether the key events were injected is
-        reported: what the key does is up to the device and the app in front.
-        """
-        if hold is not None and (isinstance(hold, bool) or not math.isfinite(hold) or not 0.001 <= hold <= 30):
-            raise ValueError("hold must be in 0.001..30 seconds")
-        self._press_keys(key_code, presses, interval, hold, False, timeout)
+    def long_press_key(self, key_code: int, *, duration: float | None = None, count: int = 1, interval: float = 0.1,
+                       timeout: float | None = None) -> None:
+        """Holds an Android key code down, ``count`` times, as ``press_key``. Without ``duration``
+        each press lasts the device's long-press timeout and sends the repeat Android reports as a
+        long press (``KeyEvent.FLAG_LONG_PRESS``). With ``duration`` (seconds, 0.001..30) it stays
+        down that long and repeats as a held key does, so holding Volume Down steps the volume; the
+        repeat at the long-press timeout is the long press. The sequence must fit in 30 seconds, a
+        long press counted at 1.5 s (the longest long-press timeout Android offers)."""
+        if duration is not None and (isinstance(duration, bool) or not math.isfinite(duration) or not 0.001 <= duration <= 30):
+            raise ValueError("duration must be in 0.001..30 seconds")
+        self._press_keys(key_code, duration, duration is None, count, interval, timeout)
 
-    def long_press_key(self, key_code: int, *, presses: int = 1, interval: float = 0.1, timeout: float | None = None) -> None:
-        """Long-presses an Android key code ``presses`` times: each press is held for the device's
-        long-press timeout and sends the repeat Android reports as a long press
-        (``KeyEvent.FLAG_LONG_PRESS``), as a held key does. Otherwise as ``press_key``."""
-        self._press_keys(key_code, presses, interval, None, True, timeout)
-
-    def _press_keys(self, key_code: int, presses: int, interval: float, hold: float | None, long_press: bool,
+    def _press_keys(self, key_code: int, hold: float | None, long_press: bool, count: int, interval: float,
                     timeout: float | None) -> None:
-        if isinstance(presses, bool) or not isinstance(presses, int) or not 1 <= presses <= 100:
-            raise ValueError("presses must be an integer in 1..100")
+        if isinstance(count, bool) or not isinstance(count, int) or not 1 <= count <= 100:
+            raise ValueError("count must be an integer in 1..100")
         if isinstance(interval, bool) or not math.isfinite(interval) or not 0.04 <= interval <= 1:
             raise ValueError("interval must be in 0.04..1 seconds")
-        press = _LONG_PRESS_ESTIMATE if long_press else (hold or 0.0)
-        sequence = press * presses + interval * (presses - 1)
-        if hold is not None and sequence > 30:
-            raise ValueError("The key sequence must not exceed 30 seconds")
+        press = _LONG_PRESS_WORST_CASE if long_press else (hold or 0.0)
+        sequence = press * count + interval * (count - 1)
+        if sequence > 30:
+            raise ValueError("The key sequence must not exceed 30 seconds (a long press counts 1.5 s)")
         key = pb.PressKey(key_code=key_code)
-        if presses != 1:
-            key.presses, key.interval_ms = presses, round(interval * 1000)
+        if count != 1:
+            key.count, key.interval_ms = count, round(interval * 1000)
         if hold is not None:
-            key.hold_ms = round(hold * 1000)
+            key.duration_ms = round(hold * 1000)
         if long_press:
             key.long_press = True
         self._execute_or_raise(_or(timeout, self.timeouts.action + sequence), press_key=key)

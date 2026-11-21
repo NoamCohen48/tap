@@ -267,7 +267,7 @@ internal class GestureCommands(
     ) {
         val keyCode = command.keyCode
         context.checkpoint()
-        if (!command.longPress && !command.hasHoldMs() && (!command.hasPresses() || command.presses == 1)) {
+        if (command.holdCase == PressKey.HoldCase.HOLD_NOT_SET && (!command.hasCount() || command.count == 1)) {
             context.markMutationStarted()
             val injected = device.pressKeyCode(keyCode)
             if (!injected) throw CommandFailure(ErrorCode.ERR_ACTION_REJECTED, message = "Key $keyCode was not injected")
