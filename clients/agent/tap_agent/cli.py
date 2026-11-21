@@ -215,7 +215,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("value", type=float)
 
     p = verb("keyboard", "whether a soft keyboard shows, or hide it", on_device, settle)
-    p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", default="state")
+    p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", help="omit to read whether a soft keyboard shows")
 
     p = verb("location", "mock the device location until release", on_device)
     p.add_argument("latitude", type=float, help="-90..90")
@@ -281,7 +281,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("how", choices=ROTATIONS)
 
     p = verb("screen", "screen state, or turn it on/off, or wake it and dismiss a keyguard without a PIN", on_device, settle)
-    p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", default="state")
+    p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", help="omit to read the screen and keyguard state")
 
     p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches, languages, stay awake, accessibility display): print or change until release", on_device)
     p.add_argument("name", choices=CONDITIONS, nargs="?", help="omit to print all")

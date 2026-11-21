@@ -54,7 +54,7 @@ def category(name: str, parameters: dict[str, Any]) -> str | None:
     if name == "action":
         return "action" if parameters["name"] is not None else None
     if name in ("keyboard", "screen"):
-        return "action" if parameters["action"] != "state" else None
+        return "action" if parameters["action"] not in (None, "") else None
     if name == "condition":
         return "action" if parameters["value"] is not None else None
     if name == "clipboard":

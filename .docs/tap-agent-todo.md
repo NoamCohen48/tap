@@ -151,6 +151,8 @@ Do:
 
 ## `keyboard` and `screen`: no `state` word; a soft-keyboard condition
 
+Status: the `state` word is gone (done); the soft-keyboard condition is still to do.
+
 `keyboard` takes `state|hide` and `screen` takes `state|on|off|unlock`, with `state` as the
 default. The extra word adds nothing.
 

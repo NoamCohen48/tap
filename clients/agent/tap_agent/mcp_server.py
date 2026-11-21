@@ -577,9 +577,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="keyboard")
     async def keyboard(
         action: Annotated[
-            Literal["state", "hide"],
-            Field(description="state: report whether a soft keyboard shows; hide: hide it (Back, only when one shows)."),
-        ] = "state",
+            Literal["", "hide"],
+            Field(description="Omit to report whether a soft keyboard shows; hide: hide it (Back, only when one shows)."),
+        ] = "",
         settle: Settle = False,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -589,7 +589,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """The soft keyboard: is it showing, or hide it."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.keyboard(action, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.keyboard(action or None, device or None, settle=settle))
 
     @mcp.tool(name="set_location")
     async def set_location(
@@ -758,9 +758,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="screen")
     async def screen(
         action: Annotated[
-            Literal["state", "on", "off", "unlock"],
-            Field(description="state: report; on/off: wake or sleep; unlock: wake and dismiss a keyguard without a PIN."),
-        ] = "state",
+            Literal["", "on", "off", "unlock"],
+            Field(description="Omit to report; on/off: wake or sleep; unlock: wake and dismiss a keyguard without a PIN."),
+        ] = "",
         settle: Settle = False,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -770,7 +770,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """Screen power and lock screen. A keyguard with a PIN, pattern or password is never unlocked."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.screen(action, device or None, settle=settle))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.screen(action or None, device or None, settle=settle))
 
     @mcp.tool(name="permission")
     async def permission(

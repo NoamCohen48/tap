@@ -343,3 +343,12 @@ def test_separate_process_views_preserve_local_steps_when_daemon_is_unavailable(
     assert [issue["kind"] for issue in saved["issues"]] == ["unavailable"]
     text = offline.history()
     assert "step 1: tap" in text and "WARNING: unavailable: the server's history could not be read" in text
+
+
+def test_bare_keyboard_and_screen_reads_are_not_recorded_as_input_steps():
+    from tap_agent.step_capture import category
+    for name in ("keyboard", "screen"):
+        assert category(name, {"action": None}) is None
+        assert category(name, {"action": " "}) is None
+    assert category("keyboard", {"action": "hide"}) == "action"
+    assert category("screen", {"action": "unlock"}) == "action"

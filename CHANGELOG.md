@@ -8,6 +8,8 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `keyboard` and `screen` read with no word and no longer take `state`; `--settle`
+  goes only with an action (`keyboard hide`, `screen on|off|unlock`).
 - tap-agent reads print text by default and take `--json` (MCP `as_json`) for the complete
   structured form. `inspect` prints the node's snapshot line, package, bounds, state, offered
   actions and range; `elements` one line per match (`--texts`: one quoted value a line);
