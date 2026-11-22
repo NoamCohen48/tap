@@ -425,6 +425,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
     keys and on/off spelled as `condition` spells them.
     Status: done (one `CONDITION_FIELDS` table behind both).
 13. MCP's implicit settle is bounded at 3 s; `app` launches settle too.
+    Status: done (`AFTER_INPUT_SETTLE_TIMEOUT`, `APP_SETTLES`; the CLI's `--settle` too).
 14. `type [TARGET] TEXT`: target first when there are two arguments, as `fill`.
 15. `toast --timeout` without `--wait` is a usage error.
    Status: done, with the toast text rule.

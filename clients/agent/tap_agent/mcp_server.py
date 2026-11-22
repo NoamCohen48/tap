@@ -24,6 +24,7 @@ from pydantic import Field, StrictInt
 
 from . import render
 from .core import (
+    APP_SETTLES,
     EXIT_APP_DIED,
     EXIT_NO_DAEMON,
     EXIT_USAGE,
@@ -41,7 +42,8 @@ snapshot prints one line per node: `@e3  [Button] "Log in"  id=login_button  acc
 `target`, or write a selector. A ref keeps naming the same node while it stays on screen. An
 action waits for the screen to settle and returns what changed (+ added, - removed) by default,
 so a fresh snapshot is rarely needed; pass settle=false to skip it (faster, e.g. several inputs
-in a row). A failed settle after an action is reported, and the action still ran. An action needs exactly one matching node.
+in a row). It waits at most 3 s; call settle to wait longer. app launch, cold-launch, foreground
+and open-link settle too. A failed settle after an action is reported, and the action still ran. An action needs exactly one matching node.
 elements reads all current selector matches, one line each (or texts=true for raw text),
 including checkbox state, in one bulk read without a diagnostic snapshot. It accepts written
 selectors with pkg and relations, not refs or first/index. It returns values, not refs.
@@ -985,6 +987,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         any_app: Annotated[bool, Field(description="open-link: let any app handle the link, not only this one.")] = False,
         timeout_seconds: Budget = None,
         as_json: Annotated[bool, Field(description="Reads (granted, running, locale, installed, process): the value as JSON.")] = False,
+        settle: Annotated[bool, Field(description="launch, cold-launch, foreground, open-link: wait for the screen to settle, then return what changed (default true).")] = True,
         extras: Annotated[
             list[str] | None,
             Field(
@@ -1006,7 +1009,8 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         whether the app is running, or read or set the app's own languages (locale, API 33+,
         restored on release); visible waits until the app owns the focused window."""
         return await call(
-            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras or (), timeout=timeout_seconds, as_json=as_json)
+            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.app(action, package, argument or None, device or None, any_app=any_app, extras=extras or (), timeout=timeout_seconds, as_json=as_json,
+                                       settle=settle and action in APP_SETTLES)
         )
 
     @mcp.tool(name="history")

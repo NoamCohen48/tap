@@ -232,7 +232,9 @@ import, inspect/repair or explicitly clear fixture data before launching; do not
 
 Add `--settle` to an action to wait until the screen stops changing and print the difference:
 `+` added nodes, `-` removed ones. That is usually enough to decide the next step without a
-new `snapshot`. `settle` alone does the same without acting. When the settle after an action
+new `snapshot`. `settle` alone does the same without acting. The settle after an action stops
+after 3 s (`settle` waits up to 10 s, `--timeout` more); `app launch|cold-launch|foreground|
+open-link` take `--settle` too. When the settle after an action
 fails, the action still succeeded: the output says `! not settled (...)`; take a `snapshot`
 instead of repeating the action.
 

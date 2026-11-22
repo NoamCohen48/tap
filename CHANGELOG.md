@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent's settle after an action (`--settle`, MCP's default) stops after 3 s instead of 10 s
+  and then says `settle` waits longer, so a screen that keeps moving does not hold every step.
+  `app launch`, `cold-launch`, `foreground` and `open-link` take `--settle` and settle by
+  default over MCP.
 - tap-agent `device-info --json` gives `foreground_activity` as `package_name` and `class_name`
   (null when none is resumed) and a failed read in `foreground_activity_error`, instead of a
   `"pkg/cls"` or `"unavailable: …"` string. Its text keys are hyphenated (`screen-on`,

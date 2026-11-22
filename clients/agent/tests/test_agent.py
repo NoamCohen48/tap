@@ -1076,3 +1076,41 @@ def test_every_read_takes_json(fake, agent, client):
         assert parser.parse_args(argv).as_json, argv
     with pytest.raises(UsageError):
         cli.run(parser.parse_args(["devices", "unquarantine", "x", "--json"]), agent)
+
+
+def test_the_settle_after_input_stops_at_three_seconds_and_says_settle_waits_longer(fake, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda c: (
+        pb.CommandResult(error=pb.Error(code=pb.ERR_WAIT_TIMEOUT)) if c.HasField("wait_screen_stable")
+        else pb.CommandResult(device_info=pb.DeviceInfo(current_package="com.example")) if c.HasField("device_info")
+        else None
+    )
+    _screen(fake, _node("e1", "OK"))
+    output = agent.tap("text=OK", settle=True)
+    assert "(screen still changing after 3s; `settle` waits longer)" in output
+    waits = [c for c in fake.devices.commands if c.HasField("wait_screen_stable")]
+    assert waits[-1].timeout_ms == 3000
+    assert agent.settle().startswith("(screen still changing after 10s)\n")  # the explicit wait keeps its budget
+
+
+@pytest.mark.anyio
+async def test_app_launches_settle_and_other_app_actions_refuse_it(fake, server, agent):
+    agent.attach("emulator-5554")
+    fake.devices.responder = lambda c: (
+        pb.CommandResult(device_info=pb.DeviceInfo(current_package="com.example")) if c.HasField("device_info") else None
+    )
+    _screen(fake, _node("e1", "Welcome"))
+    launched = agent.app("launch", "com.example", settle=True)
+    assert launched.startswith("launched com.example\n") and '"Welcome"' in launched
+    with pytest.raises(AgentError, match="--settle goes with app launch") as info:
+        agent.app("stop", "com.example", settle=True)
+    assert info.value.exit_code == EXIT_USAGE
+    assert cli.parser().parse_args(["app", "launch", "com.example", "--settle"]).settle
+    async with Client(server, mode="legacy") as client:
+        before = sum(c.HasField("wait_screen_stable") for c in fake.devices.commands)
+        result = await client.call_tool("app", {"action": "launch", "package": "com.example"})
+        assert not result.is_error
+        assert sum(c.HasField("wait_screen_stable") for c in fake.devices.commands) == before + 1  # settled by default
+        result = await client.call_tool("app", {"action": "stop", "package": "com.example"})
+        assert not result.is_error  # MCP's default settle is not offered to actions that do not take it
+        assert sum(c.HasField("wait_screen_stable") for c in fake.devices.commands) == before + 1

@@ -22,6 +22,7 @@ from dataclasses import replace
 from typing import Any, Literal, TypeVar
 
 from tap_e2e import (  # pyright: ignore[reportMissingImports]
+    App,
     AppDeath,
     CommandError,
     ConnectionEntry,
@@ -75,6 +76,11 @@ MAX_COMMAND_TIMEOUT = 120.0
 WAIT_STATES = ("visible", "gone", "one", "enabled", "disabled", "checked", "unchecked", "focused", "text", "text-contains", "count")
 SETTLE_STABLE_FOR = 0.5
 SETTLE_TIMEOUT = 10.0
+AFTER_INPUT_SETTLE_TIMEOUT = 3.0
+"""The settle that follows a step's input (`--settle`, MCP's default) stops here: a screen that
+keeps moving (a spinner, a video) would otherwise hold every step for SETTLE_TIMEOUT."""
+APP_SETTLES = ("launch", "cold-launch", "foreground", "open-link")
+"""The `app` actions that bring a screen up, so take `--settle` (MCP: by default)."""
 PANELS = ("notifications", "quick-settings")
 """The system panels `panel` opens."""
 ROTATIONS = ("portrait", "landscape", "natural", "left", "upside-down", "right", "auto")
@@ -495,7 +501,8 @@ class Agent:
         try:
             device.app(package).await_screen_stable(stable_for, timeout, signal)
         except WaitTimeoutError:
-            note = f"(screen still changing after {format_duration(timeout)})\n"
+            longer = "; `settle` waits longer" if timeout < SETTLE_TIMEOUT else ""
+            note = f"(screen still changing after {format_duration(timeout)}{longer})\n"
         output = note + render.diff_text(device.screen_snapshot(), level, full)
         return self._with_toasts(device, output)
 
@@ -504,7 +511,7 @@ class Agent:
         outcome. The input was already sent, so a failed settle is reported in the output, not
         raised: raising would make a step that ran look failed, inviting a repeat."""
         try:
-            return self._settled(device)
+            return self._settled(device, timeout=AFTER_INPUT_SETTLE_TIMEOUT)
         except (AgentError, TapError) as error:
             return f"! not settled ({error}); the input was sent: use snapshot, do not repeat the step"
 
@@ -1827,16 +1834,19 @@ class Agent:
         device: str | None = None,
         any_app: bool = False,
         extras: Sequence[str] = (),
-        *, timeout: float | None = None, as_json: bool = False,
+        *, timeout: float | None = None, as_json: bool = False, settle: bool = False,
     ) -> str:
         """App lifecycle for ``package``: launch [activity], cold-launch
         [activity] (both with ``extras`` on the intent, ``KEY[:TYPE]=VALUE``), foreground, background, open-link URI (``any_app``: any app may handle it),
         stop, clear, install APK, uninstall, grant PERMISSION, revoke PERMISSION, granted PERMISSION, running,
         locale [TAGS] (prints the app's languages; comma-separated BCP-47 tags set them, ``system``
         makes the app follow the system again; API 33+, restored on release), installed, process.
-        The reads print a sentence; ``as_json`` prints the value instead."""
+        The reads print a sentence; ``as_json`` prints the value instead. ``settle`` (launch,
+        cold-launch, foreground, open-link) then waits for the screen and prints what changed."""
         if action not in APP_ACTIONS:
             raise AgentError(f"unknown app action {action!r} (known: {', '.join(APP_ACTIONS)})", EXIT_USAGE)
+        if settle and action not in APP_SETTLES:
+            raise AgentError(f"--settle goes with app {', '.join(APP_SETTLES)}, not {action}", EXIT_USAGE)
         needs = {"install": "APK path", "grant": "permission", "revoke": "permission", "granted": "permission", "open-link": "URI"}
         if action in needs and not argument:
             raise AgentError(f"app {action} needs an argument ({needs[action]})", EXIT_USAGE)
@@ -1855,7 +1865,11 @@ class Agent:
         intent = parse_extras(extras)
 
         def step() -> str:
-            app = self._device(device).app(package)
+            d = self._device(device)
+            done = lifecycle(d.app(package))
+            return f"{done}\n{self._settled_after_input(d)}" if settle else done
+
+        def lifecycle(app: App) -> str:
             name = app.package_name
             if action == "installed":
                 installed = app.is_installed()
