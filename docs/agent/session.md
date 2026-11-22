@@ -427,6 +427,12 @@ assertion about app state. These are ordinary SDK waits, **not** synchronization
 
 Every read prints text by default and takes `--json` (MCP `as_json`) for its complete structured
 form: `snapshot --json` returns the SDK screen data with selector candidates; use the default view.
+The device reads take it as well: `condition` (an object keyed by name, switches as booleans,
+`locale` a list), `screen`, `keyboard`, `activity` (package and class, or null), `clipboard` (a
+JSON string, so whitespace shows), `notification` and `notification --wait`, `permission` with
+no choice, `action TARGET` with no action name, `devices` (each with `held_by`), `sessions` and
+`history keep list`. Given with an action or a change it is a usage error, before anything is
+sent.
 
 ### One history reader
 

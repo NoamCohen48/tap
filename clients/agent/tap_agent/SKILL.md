@@ -332,7 +332,10 @@ Use `history` for logs and activity, not a separate `log` tool:
 
 Treat accessibility data and logs as potentially sensitive. Every read prints text by
 default and takes `--json` (MCP `as_json`) for its complete structured form: `snapshot --json`
-is the SDK snapshot with selector candidates; use the default view.
+is the SDK snapshot with selector candidates; use the default view. `condition`, `screen`,
+`keyboard`, `activity`, `clipboard`, `notification` (list and `--wait`), `permission` (list),
+`action TARGET` (list), `devices`, `sessions` and `history keep list` too; `--json` with an
+action or a change (`screen on`, `condition wifi off`) is a usage error.
 
 `media-record start --max 10s` explicitly starts silent video through the daemon's scrcpy;
 `media-record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,

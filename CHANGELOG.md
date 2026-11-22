@@ -8,6 +8,11 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `--json` (MCP `as_json`) now goes with every read: `condition`, `screen`,
+  `keyboard`, `activity`, `clipboard`, `notification` (list and `--wait`), `permission` and
+  `action TARGET` lists, `devices`, `sessions` and `history keep list`; with an action or a
+  change it is a usage error. `condition` prints one `name value` line per condition instead of
+  one comma-joined line.
 - Selectors take `editable` (`NodeFlag.FLAG_EDITABLE`, Python `editable()` / `.editable()`, Kotlin
   `editable()`, tap-agent `editable=true`): editable text whatever its class, matched by walking
   the tree because `BySelector` has no such predicate. `ElementSnapshot` reports `editable`.

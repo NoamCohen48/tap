@@ -416,6 +416,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 8. `editable` is a node flag (selectable, and in element snapshots), not a separate bool.
    Status: done (`FLAG_EDITABLE`, a traversal-plan predicate; `ElementSnapshot.editable`).
 9. `--json` on the remaining reads.
+   Status: done (eleven reads; `--json` with an action or a change is a usage error).
 10. One toast text rule: part of the text, ignoring case, `--exact` for exact.
 11. `history keep` says "kept range", not "recording"; MCP `history_keep` is its own tool.
 12. `device-info --json`: the foreground activity as package and class, its error apart; text

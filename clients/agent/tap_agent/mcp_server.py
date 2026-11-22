@@ -124,6 +124,7 @@ Direction = Literal["up", "down", "left", "right"]
 Session = Annotated[str, Field(description="Session name; omit for the server's default session.")]
 
 AsJson = Annotated[bool, Field(description="Structured JSON instead of text.")]
+ReadJson = Annotated[bool, Field(description="With a read (no action or value): structured JSON instead of text.")]
 Budget = Annotated[float | None, Field(ge=0.001, le=120, description="SDK command budget in seconds, 1ms..120s.")]
 Percent = Annotated[StrictInt, Field(ge=1, le=100, description="Gesture distance across the node.")]
 
@@ -193,9 +194,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     mcp: MCPServer = MCPServer("tap", instructions=INSTRUCTIONS)
 
     @mcp.tool(name="devices", annotations=READ_ONLY)
-    async def devices() -> CallToolResult:
+    async def devices(as_json: AsJson = False) -> CallToolResult:
         """List the devices ADB sees, their state and the session holding each."""
-        return await call("", report=False, step=lambda a: a.devices())
+        return await call("", report=False, step=lambda a: a.devices(as_json=as_json))
 
     @mcp.tool(name="attach")
     async def attach(
@@ -237,9 +238,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call("", report=False, step=lambda a: a.unquarantine(serial))
 
     @mcp.tool(name="sessions", annotations=READ_ONLY)
-    async def sessions() -> CallToolResult:
+    async def sessions(as_json: AsJson = False) -> CallToolResult:
         """List sessions, how long each has been idle, and their devices."""
-        return await call("", report=False, step=lambda a: a.sessions())
+        return await call("", report=False, step=lambda a: a.sessions(as_json=as_json))
 
     @mcp.tool(name="release")
     async def release(session: Session = "") -> CallToolResult:
@@ -557,6 +558,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             ),
         ] = "",
         custom: Annotated[bool, Field(description="name is a custom action's label (e.g. 'Archive').")] = False,
+        as_json: ReadJson = False,
         timeout_seconds: Budget = None,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
@@ -570,7 +572,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         the actions it offers and its range. Use it for what a node offers instead of a gesture:
         expand/collapse a section, a list item's custom "Archive"/"Delete". An action the node does
         not offer fails before anything happens."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle, timeout=timeout_seconds))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.action(target, name or None, device or None, custom=custom, settle=settle, timeout=timeout_seconds, as_json=as_json))
 
     @mcp.tool(name="set_progress")
     async def set_progress(
@@ -595,6 +597,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["", "hide"],
             Field(description="Omit to report whether a soft keyboard shows; hide: hide it (Back, only when one shows)."),
         ] = "",
+        as_json: ReadJson = False,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -604,7 +607,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """The soft keyboard: is it showing, or hide it."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.keyboard(action or None, device or None, settle=settle and bool(action)))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.keyboard(action or None, device or None, settle=settle and bool(action), as_json=as_json))
 
     @mcp.tool(name="set_location")
     async def set_location(
@@ -621,11 +624,11 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         return await call(session, lambda a: a.location(latitude, longitude, accuracy_m, device or None, altitude=altitude_m))
 
     @mcp.tool(name="foreground_activity", annotations=READ_ONLY)
-    async def foreground_activity(session: Session = "", device: Device = "") -> CallToolResult:
+    async def foreground_activity(as_json: AsJson = False, session: Session = "", device: Device = "") -> CallToolResult:
         """The activity on top of the screen as package/class, or that none is resumed (the
         keyguard shows, or one is starting). Use it to check that a link or a notification opened
         the right screen."""
-        return await call(session, lambda a: a.activity(device or None))
+        return await call(session, lambda a: a.activity(device or None, as_json=as_json))
 
     @mcp.tool(name="push_file")
     async def push_file(
@@ -662,11 +665,12 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="clipboard")
     async def clipboard(
         text: Annotated[str | None, Field(description="Put this on the clipboard; omit to read it.")] = None,
+        as_json: ReadJson = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Read the device clipboard as text, or set it."""
-        return await call(session, lambda a: a.clipboard(text, device or None))
+        return await call(session, lambda a: a.clipboard(text, device or None, as_json=as_json))
 
     @mcp.tool(name="toast", annotations=READ_ONLY)
     async def toast(
@@ -700,6 +704,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         contains: Annotated[bool, Field(description="title/text are only part of it.")] = False,
         package: Annotated[str, Field(description="Only this package's notifications; omit for any app's.")] = "",
         button: Annotated[str, Field(description="open: press the action button with this title instead of the notification.")] = "",
+        as_json: ReadJson = False,
         timeout_seconds: Annotated[float, Field(ge=0.001, le=120, description="Command/wait budget in seconds.")] = 10,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
@@ -717,7 +722,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds),
             step=lambda a: a.notification(
                 action or None, title or None, text or None, device or None, contains=contains, package=package or None,
-                button=button or None, timeout=timeout_seconds, settle=settle and bool(action), wait=wait,
+                button=button or None, timeout=timeout_seconds, settle=settle and bool(action), wait=wait, as_json=as_json,
             ),
         )
 
@@ -785,6 +790,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["", "on", "off", "unlock"],
             Field(description="Omit to report; on/off: wake or sleep; unlock: wake and dismiss a keyguard without a PIN."),
         ] = "",
+        as_json: ReadJson = False,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -794,7 +800,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """Screen power and lock screen. A keyguard with a PIN, pattern or password is never unlocked."""
-        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.screen(action or None, device or None, settle=settle and bool(action)))
+        return await call(session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.screen(action or None, device or None, settle=settle and bool(action), as_json=as_json))
 
     @mcp.tool(name="permission")
     async def permission(
@@ -807,6 +813,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             Literal["precise", "approximate"] | None,
             Field(description="With a choice: pick Precise or Approximate first (location dialog, Android 12+)."),
         ] = None,
+        as_json: ReadJson = False,
         settle: Settle = True,
         expect_death: ExpectDeath = False,
         events: Events = Field(default_factory=list),
@@ -818,7 +825,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Android's runtime-permission dialog: without a choice, wait for it and list the buttons
         (and location accuracies) it offers; with one, press that button."""
         return await call(
-            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle, accuracy=accuracy)
+            session, expect_death=expect_death, observe=(device, events, expect_events, event_timeout_seconds), step=lambda a: a.permission(choice or None, device or None, timeout_seconds, settle=settle, accuracy=accuracy, as_json=as_json)
         )
 
     @mcp.tool(name="wait_for", annotations=READ_ONLY)
@@ -912,6 +919,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
             str,
             Field(description="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/ime-with-hard-keyboard (the soft keyboard shows with a hardware keyboard)/high-contrast-text/color-inversion/bold-text: on or off; font-scale: 0.5..2.0; density: dpi (100..1000) or reset; locale: the device languages as comma-separated BCP-47 tags (fr-FR,en). Omit to read."),
         ] = "",
+        as_json: ReadJson = False,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
@@ -921,7 +929,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         restores what the device had, and the result is the value read back. Dark mode and the
         network switches need API 29+, bold text API 31+; the network switches are real (nothing
         is mocked)."""
-        return await call(session, lambda a: a.condition(name, value or None, device or None))
+        return await call(session, lambda a: a.condition(name, value or None, device or None, as_json=as_json))
 
     @mcp.tool(name="capture", annotations=WRITES_FILES)
     async def capture(
@@ -1026,7 +1034,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         driver_lines: bool = False,
         details: Annotated[bool, Field(description="Show crash and ANR stack traces.")] = False,
         limit: Annotated[int, Field(ge=1, le=5000, description="At most this many entries per page (default 200).")] = 200,
-        as_json: Annotated[bool, Field(description="JSON (tap-history/2) instead of text.")] = False,
+        as_json: Annotated[bool, Field(description="JSON (tap-history/2) instead of text; keep list: the kept ranges.")] = False,
         session: Session = "",
     ) -> CallToolResult:
         """What happened: calls, crashes, ANRs and gaps (plus device logs with logs or a log

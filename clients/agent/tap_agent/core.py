@@ -640,12 +640,15 @@ class Agent:
 
         return self._run(step)
 
-    def sessions(self) -> str:
-        """Held connections (agent sessions) with their idle time and devices."""
+    def sessions(self, *, as_json: bool = False) -> str:
+        """Held connections (agent sessions) with their idle time and devices (``as_json``: the SDK
+        connections and how many other connections there are)."""
 
         def step() -> str:
             entries = self.client.connections()
             held = sorted((c for c in entries if c.hold is not None), key=lambda c: c.name)
+            if as_json:
+                return json_text({"sessions": held, "other_connections": len(entries) - len(held)})
             lines = []
             for c in held:
                 devices = ", ".join(d.serial for d in c.attached_devices) or "no device"
@@ -710,11 +713,17 @@ class Agent:
             )
         return self._run(step)
 
-    def devices(self) -> str:
-        """Every device ADB lists, its state, and the session holding it."""
+    def devices(self, *, as_json: bool = False) -> str:
+        """Every device ADB lists, its state, and the session holding it (``as_json``: the SDK
+        devices, each with ``held_by``, the holding session's name or null)."""
 
         def step() -> str:
             names = {c.id: c.name for c in self.client.connections()}
+            if as_json:
+                return json_text([
+                    {**json_value(d), "held_by": names.get(d.client_connection_id, d.client_connection_id) if d.client_connection_id else None}
+                    for d in self.client.devices()
+                ])
             lines = []
             for d in self.client.devices():
                 line = f"{d.serial}  {d.state.name}"
@@ -1009,12 +1018,16 @@ class Agent:
         return self._act(device, target, "submitted", lambda e: e.ime_action(timeout), settle)
 
     def action(
-        self, target: str, name: str | None = None, device: str | None = None, custom: bool = False, settle: bool = False, *, timeout: float | None = None
+        self, target: str, name: str | None = None, device: str | None = None, custom: bool = False, settle: bool = False, *,
+        timeout: float | None = None, as_json: bool = False,
     ) -> str:
-        """Without ``name``: lists the accessibility actions the node offers (and its range). With
-        one: performs that standard action (expand, collapse, dismiss, scroll-forward, ...), or with
-        ``custom`` the custom action labelled ``name``, as a screen reader does (no touch)."""
+        """Without ``name``: lists the accessibility actions the node offers (and its range;
+        ``as_json``: ``actions``, ``custom_actions`` and ``range``). With one: performs that
+        standard action (expand, collapse, dismiss, scroll-forward, ...), or with ``custom`` the
+        custom action labelled ``name``, as a screen reader does (no touch)."""
         timeout = command_timeout(timeout)
+        if as_json and name is not None:
+            raise AgentError("--json goes with the list (no action name)", EXIT_USAGE)
         if name is None:
             if custom:
                 raise AgentError("action --custom needs the action's label", EXIT_USAGE)
@@ -1023,6 +1036,12 @@ class Agent:
                 d = self._device(device)
                 element, described = self._element(d, target)
                 snapshot = element.snapshot(timeout)
+                if as_json:
+                    return json_text({
+                        "actions": [a.name.lower().replace("_", "-") for a in snapshot.actions],
+                        "custom_actions": list(snapshot.custom_actions),
+                        "range": snapshot.range,
+                    })
                 offered = [a.name.lower().replace("_", "-") for a in snapshot.actions] + [repr(c) for c in snapshot.custom_actions]
                 text = f"{described} offers: {', '.join(offered) if offered else 'no actions Tap can perform'}"
                 if snapshot.range is not None:
@@ -1172,12 +1191,13 @@ class Agent:
 
         return self._run(step)
 
-    def screen(self, action: str | None = None, device: str | None = None, settle: bool = False) -> str:
-        """Without ``action``: reports whether the screen is on and the keyguard showing. ``on``
+    def screen(self, action: str | None = None, device: str | None = None, settle: bool = False, *, as_json: bool = False) -> str:
+        """Without ``action``: reports whether the screen is on and the keyguard showing
+        (``as_json``: ``screen_on``, ``keyguard_locked``, ``keyguard_secure``). ``on``
         wakes it, ``off`` turns it off, ``unlock`` wakes it and dismisses a keyguard without a
         PIN, pattern or password (a secure one is refused, never unlocked); each then reports
         the state read back."""
-        action = _device_action("screen", action, SCREEN_ACTIONS, settle)
+        action = _device_action("screen", action, SCREEN_ACTIONS, settle, as_json)
 
         def step() -> str:
             d = self._device(device)
@@ -1191,6 +1211,8 @@ class Agent:
                 with sending():
                     d.dismiss_keyguard()
             info = d.info()
+            if as_json:
+                return json_text({"screen_on": info.screen_on, "keyguard_locked": info.keyguard_locked, "keyguard_secure": info.keyguard_secure})
             keyguard = "not showing"
             if info.keyguard_locked:
                 keyguard = "showing (secure: needs the PIN, pattern or password)" if info.keyguard_secure else "showing"
@@ -1199,12 +1221,13 @@ class Agent:
 
         return self._run(step)
 
-    def keyboard(self, action: str | None = None, device: str | None = None, settle: bool = False) -> str:
-        """Without ``action``: reports whether a soft keyboard is on screen. ``hide`` hides it
+    def keyboard(self, action: str | None = None, device: str | None = None, settle: bool = False, *, as_json: bool = False) -> str:
+        """Without ``action``: reports whether a soft keyboard is on screen (``as_json``:
+        ``{"shown": bool}``). ``hide`` hides it
         (one Back key, sent only when a keyboard shows) and reports the state read back once the
         keyboard's window has gone, waiting up to ``KEYBOARD_GONE_SECONDS``: right after the key
         it is still on screen while it animates out, and a second hide would send Back to the app."""
-        action = _device_action("keyboard", action, KEYBOARD_ACTIONS, settle)
+        action = _device_action("keyboard", action, KEYBOARD_ACTIONS, settle, as_json)
 
         def step() -> str:
             d = self._device(device)
@@ -1219,13 +1242,15 @@ class Agent:
                         return f"{text}\n{self._settled_after_input(d)}" if settle else text
                     time.sleep(0.1)
                 text = "keyboard hidden"
+            elif as_json:
+                return json_text({"shown": d.keyboard_shown()})
             else:
                 text = f"keyboard {'shown' if d.keyboard_shown() else 'hidden'}"
             return f"{text}\n{self._settled_after_input(d)}" if settle else text
 
         return self._run(step)
 
-    def condition(self, name: str | None = None, value: str | None = None, device: str | None = None) -> str:
+    def condition(self, name: str | None = None, value: str | None = None, device: str | None = None, *, as_json: bool = False) -> str:
         """Without ``name``: reports every device condition. With ``name`` (animations on|off,
         dark-mode on|off, font-scale 0.5..2.0, density DPI|reset, airplane-mode / wifi /
         mobile-data on|off, locale TAGS: the device languages as comma-separated BCP-47 tags,
@@ -1233,12 +1258,16 @@ class Agent:
         keyboard shows while a hardware keyboard is connected, high-contrast-text /
         color-inversion / bold-text on|off: accessibility display, bold text API 31+) and
         ``value``: changes it until release, which restores what the device had. Reports the value
-        read back."""
+        read back. A read prints one ``name value`` line each; ``as_json`` gives an object keyed by
+        name, switches as booleans, ``font-scale`` a number, ``density`` the dpi and ``locale`` a
+        list of tags."""
         if name is not None:
             name = name.strip().lower().replace("_", "-")
             if name not in CONDITIONS:
                 raise AgentError(f"condition takes {', '.join(CONDITIONS)}, not {name!r}", EXIT_USAGE)
         change = None if value is None else _condition_change(name or "", value.strip())
+        if as_json and change is not None:
+            raise AgentError("--json goes with a read, not a change", EXIT_USAGE)
 
         def step() -> str:
             d = self._device(device)
@@ -1246,6 +1275,15 @@ class Agent:
                 with sending():
                     change(d)
             info = d.info()
+            if as_json:
+                values = {
+                    "animations": info.animations_enabled, "dark-mode": info.dark_mode, "font-scale": info.font_scale,
+                    "density": info.density_dpi, "airplane-mode": info.airplane_mode, "wifi": info.wifi_enabled,
+                    "mobile-data": info.mobile_data_enabled, "locale": list(info.system_locales), "stay-awake": info.stay_awake,
+                    "ime-with-hard-keyboard": info.show_ime_with_hard_keyboard, "high-contrast-text": info.high_contrast_text,
+                    "color-inversion": info.color_inversion, "bold-text": info.bold_text,
+                }
+                return json_text({key: values[key] for key in (CONDITIONS if name is None else (name,))})
             shown = {
                 "animations": "on" if info.animations_enabled else "off",
                 "dark-mode": "on" if info.dark_mode else "off",
@@ -1262,7 +1300,7 @@ class Agent:
                 "bold-text": "on" if info.bold_text else "off",
             }
             if name is None:
-                return ", ".join(f"{key} {shown[key]}" for key in CONDITIONS)
+                return "\n".join(f"{key} {shown[key]}" for key in CONDITIONS)
             return f"{name} {shown[name]}" + (" (restored on release)" if change is not None else "")
 
         return self._run(step)
@@ -1297,12 +1335,15 @@ class Agent:
 
         return self._run(step)
 
-    def activity(self, device: str | None = None) -> str:
+    def activity(self, device: str | None = None, *, as_json: bool = False) -> str:
         """The activity on top of the screen (package/class), or that none is resumed (the
-        keyguard is showing, or one is starting). Changes nothing."""
+        keyguard is showing, or one is starting). Changes nothing. ``as_json``: ``package_name``
+        and ``class_name``, or null when none is resumed."""
 
         def step() -> str:
             top = self._device(device).foreground_activity()
+            if as_json:
+                return json_text(top)
             return "no activity is resumed" if top is None else f"{top.package_name}/{top.class_name}"
 
         return self._run(step)
@@ -1351,13 +1392,16 @@ class Agent:
 
         return self._run(step)
 
-    def clipboard(self, text: str | None = None, device: str | None = None) -> str:
-        """Without ``text``: prints the device clipboard. With it: puts it on the clipboard."""
+    def clipboard(self, text: str | None = None, device: str | None = None, *, as_json: bool = False) -> str:
+        """Without ``text``: prints the device clipboard (``as_json``: as a JSON string, so an
+        empty clipboard and trailing whitespace show). With it: puts it on the clipboard."""
+        if as_json and text is not None:
+            raise AgentError("--json goes with a read, not with text to set", EXIT_USAGE)
 
         def step() -> str:
             d = self._device(device)
             if text is None:
-                return d.clipboard()
+                return json_text(d.clipboard()) if as_json else d.clipboard()
             with sending():
                 d.set_clipboard(text)
             return f"clipboard set ({len(text)} characters)"
@@ -1537,20 +1581,22 @@ class Agent:
         button: str | None = None,
         timeout: float = DEFAULT_WAIT,
         settle: bool = False,
-        *, wait: bool = False,
+        *, wait: bool = False, as_json: bool = False,
     ) -> str:
         """The device's notifications, read as data (the shade stays closed). Without ``action``:
         every active one, newest first; with ``wait``: wait until one matches and print it.
         ``open``: open the one that matches as a tap does (or press its ``button``); ``dismiss``:
         swipe it away. ``title`` / ``text`` match exactly, or as parts with ``contains``;
         ``package`` narrows to one app. Notification access is given to the driver for the
-        session."""
+        session. ``as_json`` (reads only): the SDK notifications, or the one waited for."""
         command_timeout(timeout)
         action = action or None
         if action is not None and action not in NOTIFICATION_ACTIONS:
             raise AgentError(f"notification takes {' or '.join(NOTIFICATION_ACTIONS)}, or nothing to read, not {action!r}", EXIT_USAGE)
         if wait and action is not None:
             raise AgentError(f"--wait reads; it does not go with {action}", EXIT_USAGE)
+        if as_json and action is not None:
+            raise AgentError(f"--json goes with a read, not {action}", EXIT_USAGE)
         if settle and action is None:
             raise AgentError("--settle goes with open or dismiss, not a read", EXIT_USAGE)
         if contains and title is None and text is None:
@@ -1565,9 +1611,12 @@ class Agent:
                 shown = d.notifications(timeout=timeout)
                 if package is not None:
                     shown = [n for n in shown if n.package_name == package]
+                if as_json:
+                    return json_text(shown)
                 return "\n".join(_notification_line(n) for n in shown) or "no notifications"
             if action is None:
-                return _notification_line(d.await_notification(title, text, mode, package_name=package, timeout=timeout))
+                found = d.await_notification(title, text, mode, package_name=package, timeout=timeout)
+                return json_text(found) if as_json else _notification_line(found)
             if action == "open":
                 with sending():
                     d.open_notification(title, text, mode, package_name=package, action=button, timeout=timeout)
@@ -1587,11 +1636,14 @@ class Agent:
         timeout: float = DEFAULT_WAIT,
         settle: bool = False,
         accuracy: str | None = None,
+        *, as_json: bool = False,
     ) -> str:
         """Without ``choice``: waits for a runtime-permission dialog and lists the buttons it
-        offers. With one (``allow``, ``allow-foreground-only``, ``deny``, ...): presses it, after
+        offers (``as_json``: ``package_name``, ``choices`` and ``accuracies``). With one (``allow``, ``allow-foreground-only``, ``deny``, ...): presses it, after
         picking ``accuracy`` (precise or approximate) on a location dialog that offers it."""
         command_timeout(timeout)
+        if as_json and choice is not None:
+            raise AgentError("--json goes with the list, not a choice to press", EXIT_USAGE)
         chosen = None
         if choice is not None:
             name = choice.strip().upper().replace("-", "_")
@@ -1610,6 +1662,12 @@ class Agent:
             d = self._device(device)
             if chosen is None:
                 prompt = d.await_permission_prompt(timeout)
+                if as_json:
+                    return json_text({
+                        "package_name": prompt.package_name,
+                        "choices": [c.name.lower().replace("_", "-") for c in prompt.choices],
+                        "accuracies": [a.name.lower() for a in prompt.accuracies],
+                    })
                 offered = ", ".join(c.name.lower().replace("_", "-") for c in prompt.choices)
                 text = f"permission dialog ({prompt.package_name}) offers: {offered}"
                 if prompt.accuracies:
@@ -1877,8 +1935,9 @@ class Agent:
         return self._run(step)
 
 
-def _device_action(command: str, action: str | None, actions: tuple[str, ...], settle: bool) -> str | None:
-    """The normalized action, None for a read; ``settle`` only goes with an action."""
+def _device_action(command: str, action: str | None, actions: tuple[str, ...], settle: bool, as_json: bool = False) -> str | None:
+    """The normalized action, None for a read; ``settle`` only goes with an action, ``as_json``
+    only with a read."""
     if action is None or not action.strip():
         if settle:
             raise AgentError(f"--settle goes with a {command} action ({', '.join(actions)}), not a read", EXIT_USAGE)
@@ -1886,6 +1945,8 @@ def _device_action(command: str, action: str | None, actions: tuple[str, ...], s
     action = action.strip().lower()
     if action not in actions:
         raise AgentError(f"{command} takes {' or '.join(actions)}, or nothing to read, not {action!r}", EXIT_USAGE)
+    if as_json:
+        raise AgentError(f"--json goes with a read, not {command} {action}", EXIT_USAGE)
     return action
 
 

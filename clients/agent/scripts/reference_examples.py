@@ -206,9 +206,10 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     # Device conditions and location
     "condition": [
         ("tap-agent condition",
-         "animations on, dark-mode off, font-scale 1, density 420 dpi, airplane-mode off, wifi on, "
-         "mobile-data on, locale en-US, stay-awake on, ime-with-hard-keyboard on, high-contrast-text off, "
-         "color-inversion off, bold-text off"),
+         "animations on\ndark-mode off\nfont-scale 1\ndensity 420 dpi\nairplane-mode off\nwifi on\n"
+         "mobile-data on\nlocale en-US\nstay-awake on\nime-with-hard-keyboard on\nhigh-contrast-text off\n"
+         "color-inversion off\nbold-text off"),
+        ("tap-agent condition locale --json", '{\n  "locale": [\n    "en-US"\n  ]\n}'),
         ("tap-agent condition dark-mode on", "dark-mode on (restored on release)"),
     ],
     "location": [("tap-agent location 52.37 4.89", "location mocked at 52.37, 4.89 (ends on release)")],

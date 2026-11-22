@@ -130,11 +130,13 @@ def parser() -> argparse.ArgumentParser:
         help="attach a quarantined device to inspect and fix it (it stays quarantined until unquarantine)",
     )
 
-    verb("sessions", "list sessions with their devices", common)
+    p = verb("sessions", "list sessions with their devices", common)
+    p.add_argument("--json", dest="as_json", action="store_true", help="the SDK connections as JSON")
     verb("release", "end the session and detach its devices", common)
     p = verb("devices", "list devices, properties and who holds them; or unquarantine SERIAL: put a checked quarantined device back in service (retries its cleanup first)", common)
     p.add_argument("action", nargs="?", choices=("unquarantine",), help="omit to list")
     p.add_argument("serial", nargs="?", help="unquarantine: the device's serial")
+    p.add_argument("--json", dest="as_json", action="store_true", help="list: the devices as JSON, each with held_by")
     verb("detach", "detach one device without ending its session", on_device)
     p = verb("server-info", "daemon version, compatibility and configuration", common)
     p.add_argument("--json", dest="as_json", action="store_true", help="structured JSON instead of text")
@@ -220,6 +222,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("target", help=TARGET_HELP)
     p.add_argument("name", nargs="?", help="a standard action (expand, collapse, dismiss, scroll-forward, ...) or, with --custom, a label")
     p.add_argument("--custom", action="store_true", help="NAME is a custom action's label (e.g. 'Archive')")
+    p.add_argument("--json", dest="as_json", action="store_true", help="list: actions, custom_actions and range as JSON")
 
     p = verb("progress", "set a slider (SeekBar, Slider, RatingBar) to a value in its own units", on_device, settle, budget)
     p.add_argument("target", help=TARGET_HELP)
@@ -227,6 +230,7 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("keyboard", "whether a soft keyboard shows, or hide it", on_device, settle)
     p.add_argument("action", choices=KEYBOARD_ACTIONS, nargs="?", help="omit to read whether a soft keyboard shows")
+    p.add_argument("--json", dest="as_json", action="store_true", help="read: {\"shown\": bool}")
 
     p = verb("location", "mock the device location until release", on_device)
     p.add_argument("latitude", type=float, help="-90..90")
@@ -234,7 +238,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--accuracy", type=float, help="in meters (default 5)")
     p.add_argument("--altitude", type=float, help="in meters")
 
-    verb("activity", "print the activity on top of the screen (package/class)", on_device)
+    p = verb("activity", "print the activity on top of the screen (package/class)", on_device)
+    p.add_argument("--json", dest="as_json", action="store_true", help="package_name and class_name, or null")
 
     p = verb("push", "copy a local file to the device until release", on_device)
     p.add_argument("local", help="the file on this machine")
@@ -250,6 +255,7 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("clipboard", "print the device clipboard, or set it", on_device)
     p.add_argument("text", nargs="?", help="put this on the clipboard (omit to print it)")
+    p.add_argument("--json", dest="as_json", action="store_true", help="read: the text as a JSON string")
 
     for name, help in (
         ("scroll", "scroll a node towards a content edge (down reveals content below)"),
@@ -301,15 +307,18 @@ def parser() -> argparse.ArgumentParser:
 
     p = verb("screen", "screen state, or turn it on/off, or wake it and dismiss a keyguard without a PIN", on_device, settle)
     p.add_argument("action", choices=SCREEN_ACTIONS, nargs="?", help="omit to read the screen and keyguard state")
+    p.add_argument("--json", dest="as_json", action="store_true", help="read: screen_on, keyguard_locked, keyguard_secure")
 
     p = verb("condition", "device conditions (animations, dark mode, font scale, density, network switches, languages, stay awake, accessibility display): print or change until release", on_device)
     p.add_argument("name", choices=CONDITIONS, nargs="?", help="omit to print all")
     p.add_argument("value", nargs="?", help="animations/dark-mode/airplane-mode/wifi/mobile-data/stay-awake/ime-with-hard-keyboard/high-contrast-text/color-inversion/bold-text: on|off; font-scale: 0.5..2.0; density: dpi or reset; locale: comma-separated BCP-47 tags, e.g. fr-FR,en (omit to print)")
+    p.add_argument("--json", dest="as_json", action="store_true", help="read: an object keyed by name (switches as booleans)")
 
     p = verb("permission", "list the permission dialog's buttons, or press one", on_device, settle)
     p.add_argument("choice", choices=PERMISSION_CHOICES, nargs="?", help="the button to press (omit to list them)")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="dialog wait/action budget, at most 120s (default 10s)")
     p.add_argument("--accuracy", choices=ACCURACIES, help="pick Precise or Approximate first (location dialog, Android 12+)")
+    p.add_argument("--json", dest="as_json", action="store_true", help="list: package_name, choices and accuracies")
 
     p = verb("toast", "read retained toasts (oldest first, never consumes), or --wait for one", on_device)
     p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
@@ -324,6 +333,7 @@ def parser() -> argparse.ArgumentParser:
     p = verb("notification", "list the device's notifications, --wait for one, or open or dismiss one (read as data; the shade stays closed)", on_device, settle)
     p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", help="omit to list (or --wait)")
     p.add_argument("--wait", action="store_true", help="wait until one matches and print it")
+    p.add_argument("--json", dest="as_json", action="store_true", help="list/--wait: the SDK notifications as JSON")
     p.add_argument("--title", help="the notification's title")
     p.add_argument("--text", help="the notification's text")
     p.add_argument("--contains", action="store_true", help="title/text are only part of it")
@@ -422,7 +432,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--driver-lines", action="store_true", help="keep the Tap driver's own logcat lines")
     p.add_argument("--details", action="store_true", help="show crash and ANR stack traces")
     p.add_argument("--limit", type=int, default=200, metavar="N", help="at most N server entries per page, 1 to 5000 (default 200); a step's calls print as its one line")
-    p.add_argument("--json", dest="as_json", action="store_true", help="JSON (tap-history/2) instead of text, on stdout")
+    p.add_argument("--json", dest="as_json", action="store_true", help="JSON (tap-history/2) instead of text, on stdout; keep list: the kept ranges")
 
     verb("mcp", "run the MCP server on stdio (same sessions as the CLI)")
     verb("skill", "print the agent skill (SKILL.md)")
@@ -445,12 +455,14 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
             driver_start=args.driver_start, **kwargs
         )
     if v == "sessions":
-        return agent.sessions()
+        return agent.sessions(as_json=args.as_json)
     if v == "release":
         return agent.release()
     if v == "devices":
         if args.action is None:  # argparse gives a lone word to action, so serial is None here
-            return agent.devices()
+            return agent.devices(as_json=args.as_json)
+        if args.as_json:
+            raise UsageError("--json goes with the device list")
         if args.serial is None:
             raise UsageError("devices unquarantine needs the device's SERIAL")
         return agent.unquarantine(args.serial)
@@ -493,15 +505,15 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "submit":
         return agent.submit(args.target, device, settle=settle, timeout=args.timeout)
     if v == "action":
-        return agent.action(args.target, args.name, device, custom=args.custom, settle=settle, timeout=args.timeout)
+        return agent.action(args.target, args.name, device, custom=args.custom, settle=settle, timeout=args.timeout, as_json=args.as_json)
     if v == "progress":
         return agent.progress(args.target, args.value, device, settle=settle, timeout=args.timeout)
     if v == "keyboard":
-        return agent.keyboard(args.action, device, settle=settle)
+        return agent.keyboard(args.action, device, settle=settle, as_json=args.as_json)
     if v == "location":
         return agent.location(args.latitude, args.longitude, args.accuracy, device, altitude=args.altitude)
     if v == "activity":
-        return agent.activity(device)
+        return agent.activity(device, as_json=args.as_json)
     if v == "push":
         return agent.push(args.local, args.device_path, device)
     if v == "pull":
@@ -509,11 +521,11 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "media":
         return agent.media(args.local, args.name, device)
     if v == "clipboard":
-        return agent.clipboard(args.text, device)
+        return agent.clipboard(args.text, device, as_json=args.as_json)
     if v == "notification":
         return agent.notification(
             args.action, args.title, args.text, device, contains=args.contains, package=args.package,
-            button=args.button, timeout=args.timeout, settle=settle, wait=args.wait,
+            button=args.button, timeout=args.timeout, settle=settle, wait=args.wait, as_json=args.as_json,
         )
     if v == "toast":
         return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout,
@@ -538,11 +550,11 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "rotate":
         return agent.rotate(args.how, device, settle=settle)
     if v == "condition":
-        return agent.condition(args.name, args.value, device)
+        return agent.condition(args.name, args.value, device, as_json=args.as_json)
     if v == "screen":
-        return agent.screen(args.action, device, settle=settle)
+        return agent.screen(args.action, device, settle=settle, as_json=args.as_json)
     if v == "permission":
-        return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy)
+        return agent.permission(args.choice, device, args.timeout, settle=settle, accuracy=args.accuracy, as_json=args.as_json)
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value, until=args.until)
     if v == "watch":  # --until-first; a plain watch streams from main
