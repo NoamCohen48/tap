@@ -105,7 +105,7 @@ GROUPS: list[tuple[str, str, list[str]]] = [
         "The server keeps every call, crash, ANR and device-log line after release; `history` shows "
         "them with this agent's own steps, page by page, as text or JSON on stdout. `history keep start` / "
         "`history keep stop` keep a named range past the server's retention; read it with "
-        "`history --kept NAME`. See [History and recordings](export.md).",
+        "`history --kept NAME`. See [History and kept ranges](export.md).",
         ["history"],
     ),
     (
@@ -165,8 +165,9 @@ def mcp_tools() -> dict[str, Tool]:
 
 
 # MCP tools documented under a verb whose CLI form they cover: `devices unquarantine SERIAL` is
-# the MCP `unquarantine` tool, so MCP `devices` stays a read-only tool.
-ALSO: dict[str, str] = {"unquarantine": "devices"}
+# the MCP `unquarantine` tool, so MCP `devices` stays a read-only tool; `history keep` is the
+# MCP `history_keep` tool, so MCP `history`'s value means one thing.
+ALSO: dict[str, str] = {"unquarantine": "devices", "history_keep": "history"}
 
 
 def mcp_name(verb: str) -> str | None:

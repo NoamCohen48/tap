@@ -1,4 +1,4 @@
-"""`history keep` and `history --kept`: named recordings of a session's history, on the server."""
+"""`history keep` and `history --kept`: named kept ranges of a session's history, on the server."""
 # pyright: reportMissingImports=false
 from __future__ import annotations
 
@@ -15,7 +15,7 @@ def test_a_recording_follows_devices_attached_after_it_started(fake, agent):
     assert "devices attached later join it" in agent.history("keep", "start", name="checkout")
     agent.attach("second")
     agent.tap("id=pay", device="second")  # no refusal: the recording is the connection's, not a device set
-    assert agent.history("keep", "stop", name="checkout") == "stopped recording 'checkout'"
+    assert agent.history("keep", "stop", name="checkout") == "stopped keeping 'checkout'"
 
     (saved,) = fake.history.recordings.values()
     assert saved.HasField("stopped_at_ms")
@@ -36,8 +36,8 @@ def test_history_reads_a_recording_by_name_also_after_release(fake, agent):
     assert saved.HasField("stopped_at_ms")
     document = json.loads(agent.history(kept="checkout", as_json=True))
     assert fake.history.requests[-1].selection.recording_id == saved.id
-    assert document["recording"]["name"] == "checkout" and document["recording"]["stopped_at"]
-    assert agent.history(kept="checkout").splitlines()[0] == "recording checkout (stopped)"
+    assert document["kept"]["name"] == "checkout" and document["kept"]["stopped_at"]
+    assert agent.history(kept="checkout").splitlines()[0] == "kept range checkout (stopped)"
 
 
 def test_the_same_name_on_two_sessions_needs_its_id_outside_them(fake, client, agent, tmp_path):
@@ -59,10 +59,10 @@ def test_the_same_name_on_two_sessions_needs_its_id_outside_them(fake, client, a
 def test_clean_needs_a_stopped_recording_and_keep_refuses_other_words(fake, agent):
     agent.attach("first")
     agent.history("keep", "start", name="checkout")
-    with pytest.raises(AgentError, match="stop the recording"):
+    with pytest.raises(AgentError, match="stop keeping 'checkout' before cleaning"):
         agent.history("keep", "clean", name="checkout")
     agent.history("keep", "stop", name="checkout")
-    assert agent.history("keep", "clean", name="checkout") == "cleaned recording 'checkout'"
+    assert agent.history("keep", "clean", name="checkout") == "cleaned kept range 'checkout'"
     assert not fake.history.recordings
     with pytest.raises(AgentError, match="history keep takes start, stop, list, clean"):
         agent.history("keep", "export", name="checkout")
@@ -74,8 +74,8 @@ def test_clean_needs_a_stopped_recording_and_keep_refuses_other_words(fake, agen
         agent.history(long=True)
     with pytest.raises(SystemExit):
         cli.parser().parse_args(["record", "list"])
-    assert cli.run(cli.parser().parse_args(["history", "keep", "list"]), agent) == "no recordings"
-    with pytest.raises(AgentError, match="no recording named"):
+    assert cli.run(cli.parser().parse_args(["history", "keep", "list"]), agent) == "no kept ranges"
+    with pytest.raises(AgentError, match="no kept range named"):
         agent.history("keep", "stop", name="checkout")
 
 
@@ -198,6 +198,22 @@ def test_a_step_read_shows_only_markers_written_during_it(fake, agent):
     agent.history("mark", "after-a")
     agent.tap("id=b")
     assert "marker" not in agent.history(step="1") and "marker after-a" in agent.history()
+
+
+@pytest.mark.anyio
+async def test_mcp_history_keep_is_its_own_tool(fake, agent):
+    from mcp import Client
+    from tap_agent.mcp_server import create_server
+
+    agent.attach("first")
+    async with Client(create_server(lambda _: agent), mode="legacy") as client:
+        tools = {tool.name: tool for tool in (await client.list_tools()).tools}
+        assert "name" not in tools["history"].input_schema["properties"]
+        assert "keep" not in tools["history"].input_schema["properties"]["action"]["enum"]
+        started = await client.call_tool("history_keep", {"action": "start", "name": "checkout"})
+        assert not started.is_error and "keeping 'checkout'" in started.content[0].text
+        listed = await client.call_tool("history_keep", {"action": "list", "as_json": True})
+        assert [row["name"] for row in json.loads(listed.content[0].text)] == ["checkout"]
 
 
 def test_a_kept_range_holds_only_the_steps_taken_while_it_was_kept(fake, agent):

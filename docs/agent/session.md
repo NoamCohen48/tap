@@ -372,7 +372,7 @@ notifies: the death stays for the next step to report and take. The wait runs on
 does not count as use of the session, so a forgotten waiter never keeps the device held past
 the idle timeout. MCP has no background calls, so it is a CLI command only.
 
-## History, recordings and release
+## History, kept ranges and release
 
 Every action and explicit wait is recorded automatically, and the server keeps the session's
 calls, crashes and device logs. `history` reads them; `history keep start NAME` keeps a named range of
@@ -386,11 +386,11 @@ tap-agent release
 tap-agent history --kept checkout --logs --json > checkout.json
 ```
 
-Release frees devices and stops an open recording; it writes no file. History stays readable
+Release frees devices and stops an open kept range; it writes no file. History stays readable
 after release and restart while it is kept. `history [--logs] [--json] [--from TIME]
-[--until TIME] [--limit N]` reads ordinary activity; `history keep list [-L]` lists recordings.
+[--until TIME] [--limit N]` reads ordinary activity; `history keep list [-L]` lists the kept ranges.
 Default output is readable stdout text. Only actions and explicit waits are steps, not internal
-inspections or polls. [History and recordings](export.md) explains pages, retention, redaction
+inspections or polls. [History and kept ranges](export.md) explains pages, retention, redaction
 and unknown outcomes.
 
 ## SDK workflows and diagnostics
@@ -492,7 +492,7 @@ still contain secrets; keep artifacts local.
 driver diagnostics, logcat/crashes and current activity/task/window state. It creates a new
 mode-0700 directory and mode-0600 files, refusing existing destinations. Its timestamped history
 reference lists available/failed parts and external local paths, not file contents. History and
-protected recording exports show those references; cleaning a recording does not delete the
+kept-range exports show those references; cleaning a kept range does not delete the
 separately saved files. An index failure preserves saved files and warns, without repeating capture.
 A history read never captures a fresh screen or runs current-state dumpsys.
 

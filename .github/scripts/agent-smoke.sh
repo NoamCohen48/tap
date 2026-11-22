@@ -55,7 +55,7 @@ def calls(document):
 with open(sys.argv[3]) as source:
     recording = json.load(source)
 assert recording["format"] == "tap-history/2", recording["format"]
-assert recording["recording"]["stopped_at"], recording["recording"]
+assert recording["kept"]["stopped_at"], recording["kept"]
 steps = [(s["action"], s["outcome"]["status"]) for s in recording["steps"]]
 print("recorded:", steps)
 assert [a for a, _ in steps] == ["tap", "wait"], steps

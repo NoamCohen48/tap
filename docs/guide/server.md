@@ -200,7 +200,7 @@ directory; policy settings are in `logging-policy.properties`. Keep the director
 inspect redacted evidence before sharing. Media and exported copies are separate artifacts.
 
 See [Device logs](logs.md#retention-and-protected-recordings) for SDK controls and
-[Agent recordings](../agent/export.md#named-recordings) for intentional reproduction capture.
+[Agent kept ranges](../agent/export.md#kept-ranges) for intentional reproduction capture.
 
 ## Client and server versions
 

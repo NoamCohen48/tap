@@ -239,10 +239,10 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
          "2026-11-21T19:56:51.610Z  emulator-5554  CRASH com.shop (pid 23554): java.lang.IllegalStateException: Out of stock\n"
          '2026-11-21T19:58:56.721Z  emulator-5554  step 98: wait res("receipt") → failed (WAIT_TIMEOUT)'),
         ("tap-agent history mark checkout", "mark emulator-5554 'checkout' at d01dda20-5b45-4b6e-847b-b51d15b486d5:3959"),
-        ("tap-agent history keep start checkout", "recording 'checkout' (devices attached later join it)"),
-        ("tap-agent history keep stop checkout", "stopped recording 'checkout'"),
+        ("tap-agent history keep start checkout", "keeping 'checkout' (devices attached later join it)"),
+        ("tap-agent history keep stop checkout", "stopped keeping 'checkout'"),
         ("tap-agent history --kept checkout",
-         "recording checkout (stopped)\n"
+         "kept range checkout (stopped)\n"
          '2026-11-21T19:56:42.242Z  emulator-5554  step 93: fill res("email") me@example.com → succeeded\n'
          "…"),
     ],

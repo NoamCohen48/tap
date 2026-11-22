@@ -420,6 +420,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 10. One toast text rule: part of the text, ignoring case, `--exact` for exact.
    Status: done (the wait sends an RE2 `(?is)` pattern: `MatchMode` has no ignore-case).
 11. `history keep` says "kept range", not "recording"; MCP `history_keep` is its own tool.
+   Status: done (the SDK keeps `history.recordings()`: the server API is unchanged).
 12. `device-info --json`: the foreground activity as package and class, its error apart; text
     keys and on/off spelled as `condition` spells them.
 13. MCP's implicit settle is bounded at 3 s; `app` launches settle too.
