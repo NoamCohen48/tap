@@ -829,20 +829,21 @@ class Agent:
 
     def capture(self, action: str | None = None, name: str | None = None, device: str | None = None,
                 out: str | os.PathLike[str] | None = None, *, last: str | None = None, start: str | None = None,
-                long: bool = False, older_than: str | None = None, all_captures: bool = False, as_json: bool = False) -> str:
+                long: bool = False, older_than: str | None = None, all_captures: bool = False, as_json: bool = False,
+                newer_than: str | None = None, since: str | None = None) -> str:
         """Without ``action``: one evidence bundle in a new private directory, labelled ``name``
         when given: the device's state now (screenshot, hierarchy, device info, driver log,
         logcat, crashes, activities, windows) and what happened on it, as ``history.txt``
         (``history --logs --details``) and ``history.json`` (``tap-history/2``): this session's
         whole kept history on the device, or from ``start`` (an ISO time) / the ``last``
         duration. A part that fails is reported and the rest are saved; the bundle is indexed
-        in history. ``list`` (``long``, ``device``, ``last``/``start``, ``as_json``) shows the
+        in history. ``list`` (``long``, ``device``, ``newer_than`` a duration / ``since`` a time, ``as_json``) shows the
         bundles newest first; ``show NAME|ID`` its folder and files; ``clean NAME|ID`` (or
         ``older_than`` a duration, or ``all_captures``) deletes their files, never a file the
         agent did not save."""
         from .captures import capture
         return capture(self, action, name, device, None if out is None else str(out), last=last, start=start,
-            long=long, older_than=older_than, all_captures=all_captures, as_json=as_json)
+            long=long, older_than=older_than, all_captures=all_captures, as_json=as_json, newer_than=newer_than, since=since)
 
     def history(self, action: str = "read", value: str | None = None, *, start: str | None = None, until: str | None = None,
                 last: str | None = None, limit: int = 200, logs: bool = False, as_json: bool = False, details: bool = False,

@@ -436,3 +436,5 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 16. Optional: one name for "stop after" (`--for`), one opaque toast cursor (`--after`), `-L` has
     `--long`, `watch --until-first KIND`, `capture --name NAME` and list filters of their own,
     `accepts=` words (`long-tap`, no `check`), MCP `condition` from the condition table.
+    Status: done, in four commits (time limits and `--until-first`, the toast cursor, `capture --name`,
+    `accepts=` words) and one for MCP `condition`.

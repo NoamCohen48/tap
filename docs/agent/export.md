@@ -191,8 +191,9 @@ still saved. The current screen is perishable, so when it matters take a `captur
 history stays readable afterward.
 
 ```sh
-tap-agent capture checkout        # a named bundle; its first line says where it went
+tap-agent capture --name checkout # a named bundle; its first line says where it went
 tap-agent capture list -L         # newest first: time, name or id, device, size, folder
+tap-agent capture list --newer-than 1h   # or --since TIME
 tap-agent capture show checkout   # the folder and each file
 tap-agent capture clean checkout  # or --older-than 2h, or --all
 ```
