@@ -67,14 +67,14 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
         ("tap-agent snapshot",
          "# com.shop · window 1\n"
          '@e1  [TextView]  "Checkout"\n'
-         '@e2  [EditText]  empty  hint="Email"  id=email  accepts=tap,long,edit\n'
-         '@e3  [CheckBox]  "Save card"  accepts=check\n'
+         '@e2  [EditText]  empty  hint="Email"  id=email  accepts=tap,long-tap,edit\n'
+         '@e3  [CheckBox]  "Save card"  accepts=tap\n'
          '@e4  [Button]  "PAY $12.40"  id=pay  accepts=tap\n'
          "# com.android.systemui · window 2 · status bar (6 nodes, collapsed)"),
         ("tap-agent snapshot -i --package com.shop",
          "# com.shop · window 1\n"
-         '@e2  [EditText]  empty  hint="Email"  id=email  accepts=tap,long,edit\n'
-         '@e3  [CheckBox]  "Save card"  accepts=check\n'
+         '@e2  [EditText]  empty  hint="Email"  id=email  accepts=tap,long-tap,edit\n'
+         '@e3  [CheckBox]  "Save card"  accepts=tap\n'
          '@e4  [Button]  "PAY $12.40"  id=pay  accepts=tap'),
     ],
     "inspect": [

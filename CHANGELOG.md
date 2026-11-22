@@ -79,8 +79,8 @@ name the components affected. Earlier releases used independent version lines. T
   `collapse` (the default), `show` or `omit` (MCP `keyboard`, `system_bars`), in place of
   `--keyboard`/`--hide-keyboard` and `--system-bars`/`--hide-system-chrome`; `--window N` shows
   one window in full.
-- tap-agent snapshot lines end in `accepts=` with what the node takes (`tap`, `long`, `check`,
-  `edit`, `scroll`, `actions`), in every view and in `--settle` diffs; `accepts=scroll` replaces
+- tap-agent snapshot lines end in `accepts=` with what the node takes, each word a command
+  (`tap`, checkboxes included; `long-tap`; `edit`; `scroll`; `actions`), in every view and in `--settle` diffs; `accepts=scroll` replaces
   the `scrollable` word.
 - Screen snapshots decide `interactive` from the node itself: the driver's dump reports
   `editable` and the actions a node offers, and `ScreenNode` carries the `FLAG_EDITABLE` flag,
@@ -110,7 +110,7 @@ name the components affected. Earlier releases used independent version lines. T
 - tap-agent `type [TARGET] TEXT` takes its optional target first, as `fill TARGET TEXT` does, in
   place of `--target`; with one argument it types into the focused field.
 - tap-agent `record start|stop|list|clean NAME` (MCP `record`) moves under `history keep
-  start|stop|list|clean NAME` (MCP `history` with `action="keep"`, `value`, `name`, `long`), and
+  start|stop|list|clean NAME` (MCP `history_keep`), and
   `history --recording NAME` is now `history --kept NAME`, so "recording" means only
   `media-record` video and audio.
 - tap-agent event commands read by default and wait with `--wait`: `toast` reads retained toasts

@@ -46,13 +46,17 @@ _PASSIVE = frozenset({StandardAction.FOCUS, StandardAction.CLEAR_FOCUS, Standard
 
 
 def accepts(node: ScreenNode) -> list[str]:
-    """What the node itself accepts, in a fixed order: ``tap`` (clickable), ``long``
-    (long-clickable), ``check`` (checkable), ``edit`` (editable), ``scroll`` (scrollable, or a
-    scroll or page action) and ``actions`` (another accessibility action, standard or custom:
-    see ``action @eN``). Focus, selection, copy and show-on-screen alone are not listed."""
+    """What the node itself accepts, in a fixed order, each word a command: ``tap`` (clickable or
+    checkable: a box is checked by tapping it), ``long-tap`` (long-clickable: ``tap --long``),
+    ``edit`` (editable: ``fill``, ``type``), ``scroll`` (scrollable, or a scroll or page action)
+    and ``actions`` (another accessibility action, standard or custom: see ``action @eN``).
+    Focus, selection, copy and show-on-screen alone are not listed."""
     flags = node.flags
-    words = [word for flag, word in ((NodeFlag.CLICKABLE, "tap"), (NodeFlag.LONG_CLICKABLE, "long"),
-                                      (NodeFlag.CHECKABLE, "check")) if flag in flags]
+    words = []
+    if NodeFlag.CLICKABLE in flags or NodeFlag.CHECKABLE in flags:
+        words.append("tap")
+    if NodeFlag.LONG_CLICKABLE in flags:
+        words.append("long-tap")
     if NodeFlag.EDITABLE in node.flags:
         words.append("edit")
     if NodeFlag.SCROLLABLE in flags or any(a in _SCROLLS for a in node.actions):
