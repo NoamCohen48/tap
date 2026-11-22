@@ -85,6 +85,7 @@ internal fun ElementSnapshotProto.toModel(): ElementSnapshot =
         // An action this client does not know yet is left out rather than guessed.
         actions = actionsList.mapNotNull { action -> StandardAction.entries.find { "A11Y_${it.name}" == action.name } },
         customActions = customActionsList,
+        editable = editable,
         range =
             if (hasRange()) {
                 Range(RangeType.entries.find { "RANGE_${it.name}" == range.type.name } ?: RangeType.UNKNOWN, range.min, range.max, range.current)

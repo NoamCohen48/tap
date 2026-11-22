@@ -395,6 +395,9 @@ class CommandValidationTest {
                 // A traversal-only predicate anywhere in the tree makes the whole selector traversal.
                 Selectors.of(Nodes.text("OK") and Nodes.descendant(Nodes.text("x.*", MatchMode.MATCH_REGEX))),
                 Selectors.of(Nodes.child(Nodes.text("a") or Nodes.text("b"))),
+                // BySelector has no `editable`: the driver walks the tree for it.
+                Selectors.of(Nodes.flag(NodeFlag.FLAG_EDITABLE)),
+                Selectors.of(Nodes.resource("email") and Nodes.flag(NodeFlag.FLAG_EDITABLE, false)),
             )
         traversal.forEach { assertEquals(SelectorPlanKind.TRAVERSAL, CommandValidation.validateSelector(it), it.render()) }
     }

@@ -89,6 +89,7 @@ internal class QueryCommands(
                 .setSelected(element.isSelected)
                 .setChildCount(element.childCount)
                 .setShowingHint(node.isShowingHintText)
+                .setEditable(node.isEditable)
                 .apply {
                     val (standard, custom) = AccessibilityActionCommands.offered(node)
                     addAllActions(standard)

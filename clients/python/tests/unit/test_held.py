@@ -119,7 +119,7 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
                 ),
                 _node("e4", text="Hello", change=pb.NODE_UNCHANGED, by_index=True),
                 _node("e5", text="Name", hint="Name", showing_hint=True, content_invalid=True, error="Required",
-                      editable=True, actions=[pb.A11Y_FOCUS, pb.A11Y_PASTE], custom_actions=["Clear"]),
+                      flags=[pb.FLAG_EDITABLE], actions=[pb.A11Y_FOCUS, pb.A11Y_PASTE], custom_actions=["Clear"]),
             ],
             removed=[_node("e1", text="Gone", change=pb.NODE_REMOVED)],
         )
@@ -140,8 +140,8 @@ def test_screen_snapshot_maps_nodes_and_changes(fake, client):
         assert not (hello.showing_hint or hello.content_invalid) and hello.error is None
         field = snapshot.node("e5")
         assert field is not None and (field.showing_hint, field.content_invalid, field.error) == (True, True, "Required")
-        assert field.editable and field.actions == (StandardAction.FOCUS, StandardAction.PASTE) and field.custom_actions == ("Clear",)
-        assert not hello.editable and hello.actions == () and hello.custom_actions == ()
+        assert NodeFlag.EDITABLE in field.flags and field.actions == (StandardAction.FOCUS, StandardAction.PASTE) and field.custom_actions == ("Clear",)
+        assert NodeFlag.EDITABLE not in hello.flags and hello.actions == () and hello.custom_actions == ()
         assert [n.ref for n in snapshot.removed] == ["e1"]
         assert snapshot.node("e1") is None
         assert not fake.devices.snapshot_requests[-1].selector_candidates and login.candidates == ()

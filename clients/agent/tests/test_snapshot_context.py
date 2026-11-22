@@ -143,7 +143,7 @@ def _keyboard_screen():
     from tap_e2e import _gen as pb
     from tap_e2e._proto import screen_snapshot
     app = pb.ScreenNode(ref="e1", window_package="com.shop", window_index=1, window_kind=1, text="Search",
-                        editable=True, interactive=True, flags=[pb.FLAG_ENABLED], change=pb.NODE_UNCHANGED)
+                        interactive=True, flags=[pb.FLAG_ENABLED, pb.FLAG_EDITABLE], change=pb.NODE_UNCHANGED)
     keys = [pb.ScreenNode(ref=f"e{i}", window_package="com.android.inputmethod", window_index=2, window_kind=2, depth=1 if i > 2 else 0,
                           text=key, interactive=True, flags=[pb.FLAG_ENABLED, pb.FLAG_CLICKABLE], change=pb.NODE_ADDED)
             for i, key in enumerate(["", "q", "w", "e"], start=2)]

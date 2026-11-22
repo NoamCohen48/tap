@@ -59,13 +59,13 @@ class ScreenSnapshotStateTest {
                         "</node></hierarchy>",
                 ).nodes
         val (field, row, label, readOnly, future) = nodes.drop(1)
-        assertTrue(field.editable && field.interactive)
-        assertTrue(row.interactive && !row.editable)
+        assertTrue((NodeFlag.FLAG_EDITABLE in field.flagsList) && field.interactive)
+        assertTrue(row.interactive && NodeFlag.FLAG_EDITABLE !in row.flagsList)
         assertEquals(listOf(StandardAction.A11Y_EXPAND, StandardAction.A11Y_FOCUS), row.actionsList)
         assertEquals(listOf("Archive", "Pin"), row.customActionsList)
         assertFalse(label.interactive)
         assertEquals(listOf(StandardAction.A11Y_FOCUS, StandardAction.A11Y_SELECT), label.actionsList)
-        assertFalse(readOnly.interactive || readOnly.editable)
+        assertFalse(readOnly.interactive || NodeFlag.FLAG_EDITABLE in readOnly.flagsList)
         assertTrue(future.actionsList.isEmpty() && !future.interactive)
     }
 

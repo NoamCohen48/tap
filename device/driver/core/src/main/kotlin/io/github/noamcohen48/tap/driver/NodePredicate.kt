@@ -74,6 +74,7 @@ internal class NodePredicate(
                         NodeFlag.FLAG_LONG_CLICKABLE -> info.isLongClickable
                         NodeFlag.FLAG_SCROLLABLE -> info.isScrollable
                         NodeFlag.FLAG_SELECTED -> info.isSelected
+                        NodeFlag.FLAG_EDITABLE -> info.isEditable
                         NodeFlag.FLAG_UNSPECIFIED, NodeFlag.UNRECOGNIZED, null -> return false
                     }
                 return actual == flag.value

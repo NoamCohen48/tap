@@ -160,6 +160,7 @@ internal class DumpMatcher(
                 NodeFlag.FLAG_FOCUSED -> node.focused
                 NodeFlag.FLAG_FOCUSABLE -> node.focusable
                 NodeFlag.FLAG_LONG_CLICKABLE -> node.longClickable
+                NodeFlag.FLAG_EDITABLE -> node.editable
                 NodeFlag.FLAG_SCROLLABLE -> node.scrollable
                 NodeFlag.FLAG_SELECTED -> node.selected
                 NodeFlag.FLAG_UNSPECIFIED, NodeFlag.UNRECOGNIZED -> null

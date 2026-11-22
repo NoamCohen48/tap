@@ -296,6 +296,7 @@ def element_snapshot(snapshot: pb.ElementSnapshot) -> ElementSnapshot:
         selected=snapshot.selected,
         child_count=snapshot.child_count,
         showing_hint=snapshot.showing_hint,
+        editable=snapshot.editable,
         # Actions this client version does not know are left out.
         actions=tuple(
             a for a in (_named(StandardAction, pb.StandardAction, n, "A11Y_", None) for n in snapshot.actions) if a is not None
@@ -522,7 +523,6 @@ def screen_node(node: pb.ScreenNode) -> ScreenNode:
         showing_hint=node.showing_hint,
         content_invalid=node.content_invalid,
         error=_optional(node, "error"),
-        editable=node.editable,
         actions=tuple(a for a in (_named(StandardAction, pb.StandardAction, n, "A11Y_", None) for n in node.actions) if a is not None),
         custom_actions=tuple(node.custom_actions),
     )

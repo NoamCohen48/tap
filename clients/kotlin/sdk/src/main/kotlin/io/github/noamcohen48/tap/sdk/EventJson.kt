@@ -189,6 +189,7 @@ internal fun eventJson(value: io.github.noamcohen48.tap.api.v1.ElementSnapshot):
     if (value.getActionsList().isNotEmpty()) put("actions", JsonArray(value.getActionsList().mapIndexed { index, item -> if (item.name == "UNRECOGNIZED") JsonPrimitive(value.getActionsValueList()[index]) else JsonPrimitive(item.name) }))
     if (value.getCustomActionsList().isNotEmpty()) put("custom_actions", JsonArray(value.getCustomActionsList().mapIndexed { index, item -> JsonPrimitive(item) }))
     if (value.hasRange()) put("range", eventJson(value.getRange()))
+    if (value.getEditable()) put("editable", JsonPrimitive(value.getEditable()))
 }
 
 internal fun eventJson(value: io.github.noamcohen48.tap.api.v1.Error): JsonObject = buildJsonObject {

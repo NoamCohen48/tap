@@ -110,7 +110,7 @@ code-based bounded collector, use Python SDK `Element.scan`; there is no `tap-ag
   the whole screen, other apps' windows included; add `pkg=` when another window has a match too.
 
 Also supported: boolean flags (`enabled=true`, `checked=false`, `focused=true`, checkable,
-clickable, focusable, long_clickable, scrollable, selected), and `text:starts_with=Order` /
+clickable, focusable, long_clickable, scrollable, selected, editable), and `text:starts_with=Order` /
 `text:regex=Order \\d+` (modes exact/contains/starts_with/ends_with/regex on text/desc/hint/class/pkg).
 Nested JSON selector strings support all/any groups and parent/ancestor/child/descendant predicates,
 e.g. `'{"text":"Save","enabled":true,"ancestor":{"id":"dialog"}}'`. Only the outer selector may

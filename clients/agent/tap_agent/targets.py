@@ -45,7 +45,7 @@ class Target:
 _REF = re.compile(r"@?(e\d+)")
 _QUALIFIED_ID = re.compile(r"([\w.]+):id/(.+)")
 
-FLAGS = ("enabled", "checked", "checkable", "clickable", "focused", "focusable", "long_clickable", "scrollable", "selected")
+FLAGS = ("enabled", "checked", "checkable", "clickable", "focused", "focusable", "long_clickable", "scrollable", "selected", "editable")
 SELECTOR_KEYS = "id, text, text~, desc, desc~, class, hint, pkg, index; boolean flags; text/desc/hint/class/pkg:MODE"
 MAX_TARGET_BYTES = 65536
 MODES = {mode.name.lower(): mode for mode in MatchMode}

@@ -207,6 +207,7 @@ internal fun redactElementSnapshot(value: io.github.noamcohen48.tap.api.v1.Eleme
         addAllActionsValue(value.getActionsValueList())
         addAllCustomActions(value.getCustomActionsList().map { redactedString(it, redact) })
         if (value.hasRange()) setRange(redactRange(value.getRange(), redact))
+        setEditable(value.getEditable())
     }.build()
 
 internal fun redactError(value: io.github.noamcohen48.tap.api.v1.Error, redact: (String) -> String): io.github.noamcohen48.tap.api.v1.Error =

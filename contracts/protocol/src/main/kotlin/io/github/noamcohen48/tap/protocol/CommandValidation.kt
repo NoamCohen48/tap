@@ -375,7 +375,8 @@ object CommandValidation {
                     if (node.flag.property == NodeFlag.FLAG_UNSPECIFIED || node.flag.property == NodeFlag.UNRECOGNIZED) {
                         invalidSelector(ErrorDetail.UNSPECIFIED_VALUE, "flag needs a known property")
                     }
-                    false
+                    // BySelector has no `editable`: the driver walks the tree for it.
+                    node.flag.property == NodeFlag.FLAG_EDITABLE
                 }
 
                 Node.KindCase.RESOURCE -> {

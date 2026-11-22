@@ -45,6 +45,9 @@ enum NodeFlag {
   FLAG_LONG_CLICKABLE = 7;
   FLAG_SCROLLABLE = 8;
   FLAG_SELECTED = 9;
+  // Editable text (AccessibilityNodeInfo.isEditable), whatever its class. UiAutomator's BySelector
+  // has no such predicate, so a selector with it is matched by walking the tree (as regex is).
+  FLAG_EDITABLE = 10;
 }
 
 // Which relative a Related constrains.

@@ -396,7 +396,7 @@ message ScreenNode {
   optional string content_description = 7;
   optional string hint = 8;
   Bounds bounds = 9;
-  // The boolean properties that are true.
+  // The boolean properties that are true (FLAG_EDITABLE for editable text, whatever its class).
   repeated NodeFlag flags = 10;
   bool password = 11;
   // The node accepts input of its own: editable, clickable, long-clickable, checkable or
@@ -424,8 +424,6 @@ message ScreenNode {
   int32 window_index = 20;
   // What the node's window is, decided by the server for every client alike.
   WindowKind window_kind = 21;
-  // The node is editable text (`AccessibilityNodeInfo.isEditable`), whatever its class.
-  bool editable = 22;
   // The standard actions the node offers that Tap can perform (`Element.perform_action`), in
   // StandardAction order.
   repeated StandardAction actions = 23;

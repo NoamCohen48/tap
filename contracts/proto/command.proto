@@ -497,6 +497,8 @@ message ElementSnapshot {
   repeated string custom_actions = 20;
   // A range node's (SeekBar, Slider, RatingBar, ProgressBar) RangeInfo.
   optional Range range = 21;
+  // Editable text (`AccessibilityNodeInfo.isEditable`), whatever its class.
+  bool editable = 22;
 }
 
 // Immutable values in the match order of `snapshots`; no persistent node identities.

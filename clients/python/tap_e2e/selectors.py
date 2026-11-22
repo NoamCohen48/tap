@@ -172,6 +172,10 @@ class Selector:
         """Require ``isScrollable == value``."""
         return self._also(_flag(pb.FLAG_SCROLLABLE, value))
 
+    def editable(self, value: bool = True) -> Selector:
+        """Require ``isEditable == value``: editable text, whatever its class."""
+        return self._also(_flag(pb.FLAG_EDITABLE, value))
+
     def selected(self, value: bool = True) -> Selector:
         """Require ``isSelected == value``."""
         return self._also(_flag(pb.FLAG_SELECTED, value))
@@ -380,6 +384,11 @@ def long_clickable(value: bool = True) -> Selector:
 def selected(value: bool = True) -> Selector:
     """A node that is selected (or not)."""
     return _selector(_flag(pb.FLAG_SELECTED, value))
+
+
+def editable(value: bool = True) -> Selector:
+    """Editable text (or not), whatever its class: ``EditText``, a Compose text field, a WebView input."""
+    return _selector(_flag(pb.FLAG_EDITABLE, value))
 
 
 def any_of(first: Selector, *rest: Selector) -> Selector:

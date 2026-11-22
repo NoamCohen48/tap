@@ -30,6 +30,7 @@ internal object Dumps {
         hint: String = "",
         packageName: String = AUT,
         clickable: Boolean = false,
+        editable: Boolean = false,
         visible: Boolean = true,
         bounds: String = "[0,0][100,100]",
         children: String = "",
@@ -38,7 +39,7 @@ internal object Dumps {
             """index="0" text="$text" resource-id="$resourceId" class="$className" package="$packageName" """ +
                 """content-desc="$desc" checkable="false" checked="false" clickable="$clickable" enabled="true" """ +
                 """focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" """ +
-                """selected="false" visible-to-user="$visible" bounds="$bounds" drawing-order="0" hint="$hint" display-id="0""""
+                """selected="false" visible-to-user="$visible" bounds="$bounds" drawing-order="0" hint="$hint" display-id="0" editable="$editable""""
         return if (children.isEmpty()) "<node $attributes />" else "<node $attributes>$children</node>"
     }
 }

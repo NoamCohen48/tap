@@ -15,6 +15,7 @@ const FLAG_NAMES: Partial<Record<NodeFlag, string>> = {
   [NodeFlag.FLAG_LONG_CLICKABLE]: "long-clickable",
   [NodeFlag.FLAG_SCROLLABLE]: "scrollable",
   [NodeFlag.FLAG_SELECTED]: "selected",
+  [NodeFlag.FLAG_EDITABLE]: "editable",
 };
 
 /** The selected element's properties, and every element of the screen as a tree. */
