@@ -909,7 +909,8 @@ def test_devices_unquarantine_is_the_cli_form_and_the_verb_is_gone(fake, agent):
 
 
 @pytest.mark.parametrize("fields,words", [
-    ({"flags": [pb.FLAG_CLICKABLE, pb.FLAG_LONG_CLICKABLE, pb.FLAG_CHECKABLE]}, "accepts=tap,long,check"),
+    ({"flags": [pb.FLAG_CLICKABLE, pb.FLAG_LONG_CLICKABLE, pb.FLAG_CHECKABLE]}, "accepts=tap,long-tap"),
+    ({"flags": [pb.FLAG_CHECKABLE]}, "accepts=tap"),  # a box is checked by tapping it
     ({"flags": [pb.FLAG_EDITABLE]}, "accepts=edit"),
     ({"flags": [pb.FLAG_SCROLLABLE]}, "accepts=scroll"),
     ({"actions": [pb.A11Y_SCROLL_FORWARD]}, "accepts=scroll"),

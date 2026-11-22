@@ -105,7 +105,8 @@ $ tap-agent snapshot -i
 ```
 
 A **snapshot** prints a compact outline grouped by window (`# package · window N`). `accepts=`
-says what a node itself takes (`tap`, `long`, `check`, `edit`, `scroll`, `actions`), from the
+says what a node itself takes, each word a command (`tap`, checkboxes included; `long-tap`; `edit`;
+`scroll`; `actions`), from the
 node's accessibility facts, never its class name; `action @eN` lists the actions.
 Indentation follows the nearest displayed ancestor; uninformative layout wrappers collapse.
 `-i` keeps interactive controls and labeled ancestor groups (marked `(group)`). Controls borrow

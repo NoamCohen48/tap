@@ -37,8 +37,8 @@ API 34 device check, run only when the user agrees.
 Status: done. Device check (2026-11-21, API 34 emulator and API 29 Samsung): the fixture's
 custom-action card ("Archive", "Mark unread", no click) and its expand/collapse header, both plain
 TextViews the class-name rule left out of `snapshot -i`, are listed with `accepts=actions`;
-EditTexts read `accepts=tap,long,edit`, the SeekBar `accepts=scroll`, SystemUI's Back and Recents
-`accepts=tap,long`. The fixture has no `AutoCompleteTextView`; editable comes from `isEditable`,
+EditTexts read `accepts=tap,long-tap,edit`, the SeekBar `accepts=scroll`, SystemUI's Back and Recents
+`accepts=tap,long-tap`. The fixture has no `AutoCompleteTextView`; editable comes from `isEditable`,
 whatever the class.
 
 The daemon sets `ScreenNode.interactive` in

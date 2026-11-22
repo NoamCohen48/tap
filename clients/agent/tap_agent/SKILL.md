@@ -43,9 +43,9 @@ prove media capture will work.
 @e9  [TextView]  "Welcome"
 ```
 
-`accepts=` lists what the node itself takes, from its own accessibility facts: `tap`, `long`,
-`check`, `edit`, `scroll`, and `actions` for other accessibility actions (`action @eN` lists
-them). A line without it accepts no input of its own: act on its row or container instead.
+`accepts=` lists what the node itself takes, from its own accessibility facts, each word a
+command: `tap` (checkboxes and switches too), `long-tap` (`tap --long`), `edit` (`fill`,
+`type`), `scroll`, and `actions` for other accessibility actions (`action @eN` lists them). A line without it accepts no input of its own: act on its row or container instead.
 
 `-i` shows interactive controls plus labeled ancestor `(group)` rows; `--all` adds layout
 containers. Indentation preserves displayed ancestry. A container's `context="…"` borrows
