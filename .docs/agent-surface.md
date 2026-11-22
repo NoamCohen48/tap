@@ -22,10 +22,10 @@ there is no client polling worker, hierarchy polling or background ref-state mut
 `ReadToastHistory` returns the last 128 observations, no age expiry, in sequence order with
 stream identity, timestamps, explicit gaps/resets and text truncation metadata. Driver loss
 ends the buffer; parked-runtime reuse clears it and starts a new stream for the next owner.
-`await_toast` keeps its 3.5-second lookback; `toast --history` reads without consuming.
+`await_toast` keeps its 3.5-second lookback; `toast` reads without consuming (`toast --wait` waits).
 
 Successful `snapshot`, `settle` and `--settle` action responses deliver and acknowledge
-unread toasts, clearly labeled as historical evidence. Explicit reads use `toast --history`;
+unread toasts, clearly labeled as historical evidence. Explicit reads use `toast`;
 there is no separate `events` command/tool while the inbox only observes toasts.
 Candidate snapshots stay JSON and add `toast_events` (or `toast_events_error`). Screen filters
 do not filter toast events. Collection values and snapshot refs are unaffected. A failed inbox
@@ -34,8 +34,8 @@ read is explicit and does not hide a successful screen snapshot or advance its c
 Acknowledgement is a local stream/sequence cursor, keyed by unique attachment id under
 `TAP_AGENT_DIR` / the configured agent output directory, shared by CLI processes and MCP.
 Cross-process file locks serialize read/render/ack; atomic owner-only files hold only cursor
-metadata, not toast text. A new attachment has a new cursor. `toast --history`, including
-explicit `--after-seq N --stream ID` reads, does not acknowledge. Cursor corruption is reported,
+metadata, not toast text. A new attachment has a new cursor. A `toast` read, including one with
+`--after CURSOR` (`STREAM:SEQUENCE`, opaque to the caller), does not acknowledge. Cursor corruption is reported,
 not silently treated as an empty inbox. Transport/read/render/write failure leaves unread
 observations available for another read. Delivery is not exactly-once: a process can die after
 persisting acknowledgement but before its caller receives stdout; non-consuming history is

@@ -48,7 +48,7 @@ def test_events_command_is_not_exposed():
 def test_explicit_cursor_does_not_consume_and_candidates_stays_json(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = responder
-    assert "Saved 2" in agent.toast(after_seq=1, stream="one")
+    assert "Saved 2" in agent.toast(after="one:1")
     data = json.loads(agent.snapshot(as_json=True))
     assert [e["sequence"] for e in data["toast_events"]["events"]] == [1, 2]
     assert "nodes" in data

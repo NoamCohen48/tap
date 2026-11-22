@@ -1416,12 +1416,13 @@ class Agent:
         exact: bool = False,
         package: str | None = None,
         timeout: float | None = None,
-        *, wait: bool = False, after_seq: int = 0, stream: str = "", as_json: bool = False,
+        *, wait: bool = False, after: str | None = None, as_json: bool = False,
     ) -> str:
         """Reads the retained toast observations immediately, oldest first, of any app (only
         ``package``'s when given) whose text contains ``text``, ignoring case (the rule
         ``watch --text`` and ``--expect toast:TEXT`` use), or equals it with ``exact``;
-        ``after_seq``/``stream`` form a non-consuming cursor. History is not current UI state.
+        ``after`` is the opaque cursor a previous read printed (``next: --after CURSOR``; JSON
+        ``next``), read without consuming anything. History is not current UI state.
         With ``wait``: waits instead for a matching toast shown in the last 3.5 s or arriving
         within ``timeout`` (default ``DEFAULT_WAIT``)."""
         timeout = command_timeout(timeout)
@@ -1430,11 +1431,9 @@ class Agent:
         timeout = DEFAULT_WAIT if timeout is None else timeout
         if exact and text is None:
             raise AgentError("toast --exact needs a text", EXIT_USAGE)
-        _integer(after_seq, "after_seq", 0, 2**63 - 1)
-        if not isinstance(stream, str) or len(stream) > 128:
-            raise AgentError("stream must be a string of at most 128 characters", EXIT_USAGE)
-        if wait and (after_seq or stream or as_json):
-            raise AgentError("after_seq, stream and json read toast history; --wait takes none of them", EXIT_USAGE)
+        if wait and (after is not None or as_json):
+            raise AgentError("--after and --json read toast history; --wait takes neither", EXIT_USAGE)
+        stream, after_seq = _toast_cursor(after)
 
         def step() -> str:
             d = self._device(device)
@@ -1443,7 +1442,9 @@ class Agent:
                 kept = tuple(e for e in page.events if (package is None or e.toast.package_name == package)
                              and (text is None or _toast_matches(text, e.toast.text, exact)))
                 page = replace(page, events=kept)
-                return json_text(page) if as_json else _toast_history_text(page)
+                if as_json:
+                    return json_text(dict(json_value(page), next=_toast_next(page)))
+                return _toast_history_text(page)
             if text is None or exact:
                 seen = d.await_toast(text, MatchMode.EXACT, package_name=package, timeout=timeout)
             else:  # MatchMode has no ignore-case; an RE2 pattern says "contains, any case"
@@ -2053,8 +2054,23 @@ def _toast_history_text(page) -> str:
         lines.append(f"#{event.sequence} {event.at_epoch_ms} toast {event.toast.text!r} from {event.toast.package_name!r}{note}")
     if not page.events:
         lines.append("No retained toasts matched.")
-    lines.append(f"toast cursor: --after-seq {page.next_sequence} --stream {page.stream_id}")
+    lines.append(f"next: --after {_toast_next(page)}")
     return "\n".join(lines)
+
+
+def _toast_next(page) -> str:
+    """The cursor after ``page``: its stream and sequence, opaque to the reader (``toast --after``)."""
+    return f"{page.stream_id}:{page.next_sequence}"
+
+
+def _toast_cursor(after: str | None) -> tuple[str, int]:
+    """``(stream, after_sequence)`` from a cursor ``_toast_next`` printed; none starts at the beginning."""
+    if after is None:
+        return "", 0
+    stream, colon, sequence = after.rpartition(":") if isinstance(after, str) else ("", "", "")
+    if not colon or not sequence.isascii() or not sequence.isdigit() or len(stream) > 128 or int(sequence) > 2**63 - 1:
+        raise AgentError(f"--after takes the cursor a previous toast read printed after next:, not {after!r}", EXIT_USAGE)
+    return stream, int(sequence)
 
 
 def _notification_line(n: Notification) -> str:

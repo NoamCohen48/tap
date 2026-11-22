@@ -24,7 +24,7 @@ include them without approval.
   `AppDeath.toModel` / `LogLine.toModel` / `LogAction.toModel` for entries. Needs a fake
   `HistoryService` in the SDK tests and the Kotlin page in `docs/guide/logs.md`.
 - [ ] **Agent event inbox beyond toasts.** Add `tap-agent events` / an MCP `events` tool only
-  when it reports more than toast history. Today `toast --history` covers retained toast reads;
+  when it reports more than toast history. Today `toast` covers retained toast reads;
   snapshots and settle responses automatically deliver unread toasts. Candidate observations:
   - Toasts, reusing the current accessibility listener and bounded history.
   - Window/panel appearance and dismissal: dialogs, permission prompts, menus, drawers,
