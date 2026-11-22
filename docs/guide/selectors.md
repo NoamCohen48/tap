@@ -33,7 +33,7 @@ Where the selector looks, one app's nodes or the whole screen, is chosen by what
 | `desc(value, mode)` | content description | all five |
 | `hint(value, mode)` | hint of an empty text field | all five |
 | `class_name(value, mode)` | widget class name | all five |
-| `clickable()`, `scrollable()`, `enabled()`, `checked()`, `checkable()`, `focused()`, `focusable()`, `long_clickable()`, `selected()` | any node with that property (all but the first two take an optional `bool`); also the building blocks of a wait's [`until` condition](waits.md#which-node-then-what-it-must-become) | |
+| `clickable()`, `scrollable()`, `enabled()`, `checked()`, `checkable()`, `focused()`, `focusable()`, `long_clickable()`, `selected()`, `editable()` | any node with that property (all but the first two take an optional `bool`); also the building blocks of a wait's [`until` condition](waits.md#which-node-then-what-it-must-become) | |
 
 The five match modes are `EXACT` (the default), `CONTAINS`, `STARTS_WITH`, `ENDS_WITH` and
 `REGEX`, also exported as plain constants:
@@ -91,7 +91,9 @@ better, and it builds exactly the same selector: `text("Add").clickable()` is
 - `.and_text(v)`, `.and_desc(v)`, `.and_hint(v)`, `.and_class_name(v)`, `.and_res(name)`,
   `.and_res(pkg, name)`
 - `.clickable()`, `.long_clickable()`, `.scrollable()`, `.checkable()`, `.checked()`,
-  `.enabled()`, `.focusable()`, `.focused()`, `.selected()`, each with an optional `bool`
+  `.enabled()`, `.focusable()`, `.focused()`, `.selected()`, `.editable()`, each with an optional
+  `bool`; `editable` is editable text whatever its class (an `EditText`, a Compose text field,
+  a WebView input), matched by walking the tree since `BySelector` has no such predicate
 
 ```python
 text("Remember me").checkable().checked(False)   # an unchecked checkbox labelled "Remember me"

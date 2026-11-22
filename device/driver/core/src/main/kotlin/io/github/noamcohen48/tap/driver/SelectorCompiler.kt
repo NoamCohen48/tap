@@ -36,8 +36,8 @@ internal sealed interface CompiledSelector {
 
     /**
      * Evaluated by walking the searched windows' node trees. Only used for predicates
-     * `BySelector` cannot express safely: RE2 regex matching, `any_of`, and conjunctions that
-     * repeat one of its single-valued constraints.
+     * `BySelector` cannot express safely: RE2 regex matching, `any_of`, `editable`, and
+     * conjunctions that repeat one of its single-valued constraints.
      */
     class Traversal(
         override val pick: SelectorPick,
@@ -151,6 +151,7 @@ internal class SelectorCompiler {
                         NodeFlag.FLAG_LONG_CLICKABLE -> builder.add({ By.longClickable(v) }, { longClickable(v) })
                         NodeFlag.FLAG_SCROLLABLE -> builder.add({ By.scrollable(v) }, { scrollable(v) })
                         NodeFlag.FLAG_SELECTED -> builder.add({ By.selected(v) }, { selected(v) })
+                        NodeFlag.FLAG_EDITABLE -> error("validation sends editable to traversal: BySelector has no such predicate")
                         NodeFlag.FLAG_UNSPECIFIED, NodeFlag.UNRECOGNIZED, null -> error("validation rejects an unknown flag")
                     }
                 }

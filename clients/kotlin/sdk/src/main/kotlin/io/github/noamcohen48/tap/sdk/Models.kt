@@ -498,6 +498,8 @@ data class ElementSnapshot(
     val customActions: List<String> = emptyList(),
     /** The node's range, when it is a range node ([Element.setProgress]). */
     val range: Range? = null,
+    /** Editable text (`isEditable`), whatever its class. */
+    val editable: Boolean = false,
 )
 
 /** A process of an app as the host sees it: PID plus the `/proc` start token that tells reused PIDs apart. */

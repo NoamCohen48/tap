@@ -894,12 +894,12 @@ def test_devices_unquarantine_is_the_cli_form_and_the_verb_is_gone(fake, agent):
 
 @pytest.mark.parametrize("fields,words", [
     ({"flags": [pb.FLAG_CLICKABLE, pb.FLAG_LONG_CLICKABLE, pb.FLAG_CHECKABLE]}, "accepts=tap,long,check"),
-    ({"editable": True}, "accepts=edit"),
+    ({"flags": [pb.FLAG_EDITABLE]}, "accepts=edit"),
     ({"flags": [pb.FLAG_SCROLLABLE]}, "accepts=scroll"),
     ({"actions": [pb.A11Y_SCROLL_FORWARD]}, "accepts=scroll"),
     ({"actions": [pb.A11Y_EXPAND]}, "accepts=actions"),
     ({"custom_actions": ["Archive"]}, "accepts=actions"),
-    ({"editable": True, "flags": [pb.FLAG_CLICKABLE], "actions": [pb.A11Y_PASTE]}, "accepts=tap,edit,actions"),
+    ({"flags": [pb.FLAG_EDITABLE, pb.FLAG_CLICKABLE], "actions": [pb.A11Y_PASTE]}, "accepts=tap,edit,actions"),
 ])
 def test_snapshot_lines_say_what_a_node_accepts(fields, words):
     from tap_e2e._proto import screen_node

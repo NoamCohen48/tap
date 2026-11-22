@@ -362,7 +362,7 @@ class SelectorCandidate(_message.Message):
     def __init__(self, selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., kind: _Optional[_Union[SelectorKind, str]] = ...) -> None: ...
 
 class ScreenNode(_message.Message):
-    __slots__ = ("ref", "depth", "window_package", "class_name", "resource_name", "text", "content_description", "hint", "bounds", "flags", "password", "interactive", "selector", "by_index", "change", "candidates", "showing_hint", "content_invalid", "error", "window_index", "window_kind", "editable", "actions", "custom_actions")
+    __slots__ = ("ref", "depth", "window_package", "class_name", "resource_name", "text", "content_description", "hint", "bounds", "flags", "password", "interactive", "selector", "by_index", "change", "candidates", "showing_hint", "content_invalid", "error", "window_index", "window_kind", "actions", "custom_actions")
     REF_FIELD_NUMBER: _ClassVar[int]
     DEPTH_FIELD_NUMBER: _ClassVar[int]
     WINDOW_PACKAGE_FIELD_NUMBER: _ClassVar[int]
@@ -384,7 +384,6 @@ class ScreenNode(_message.Message):
     ERROR_FIELD_NUMBER: _ClassVar[int]
     WINDOW_INDEX_FIELD_NUMBER: _ClassVar[int]
     WINDOW_KIND_FIELD_NUMBER: _ClassVar[int]
-    EDITABLE_FIELD_NUMBER: _ClassVar[int]
     ACTIONS_FIELD_NUMBER: _ClassVar[int]
     CUSTOM_ACTIONS_FIELD_NUMBER: _ClassVar[int]
     ref: str
@@ -408,10 +407,9 @@ class ScreenNode(_message.Message):
     error: str
     window_index: int
     window_kind: WindowKind
-    editable: bool
     actions: _containers.RepeatedScalarFieldContainer[_command_pb2.StandardAction]
     custom_actions: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, ref: _Optional[str] = ..., depth: _Optional[int] = ..., window_package: _Optional[str] = ..., class_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[_command_pb2.Bounds, _Mapping]] = ..., flags: _Optional[_Iterable[_Union[_selector_pb2.NodeFlag, str]]] = ..., password: _Optional[bool] = ..., interactive: _Optional[bool] = ..., selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., by_index: _Optional[bool] = ..., change: _Optional[_Union[NodeChange, str]] = ..., candidates: _Optional[_Iterable[_Union[SelectorCandidate, _Mapping]]] = ..., showing_hint: _Optional[bool] = ..., content_invalid: _Optional[bool] = ..., error: _Optional[str] = ..., window_index: _Optional[int] = ..., window_kind: _Optional[_Union[WindowKind, str]] = ..., editable: _Optional[bool] = ..., actions: _Optional[_Iterable[_Union[_command_pb2.StandardAction, str]]] = ..., custom_actions: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, ref: _Optional[str] = ..., depth: _Optional[int] = ..., window_package: _Optional[str] = ..., class_name: _Optional[str] = ..., resource_name: _Optional[str] = ..., text: _Optional[str] = ..., content_description: _Optional[str] = ..., hint: _Optional[str] = ..., bounds: _Optional[_Union[_command_pb2.Bounds, _Mapping]] = ..., flags: _Optional[_Iterable[_Union[_selector_pb2.NodeFlag, str]]] = ..., password: _Optional[bool] = ..., interactive: _Optional[bool] = ..., selector: _Optional[_Union[_selector_pb2.Selector, _Mapping]] = ..., by_index: _Optional[bool] = ..., change: _Optional[_Union[NodeChange, str]] = ..., candidates: _Optional[_Iterable[_Union[SelectorCandidate, _Mapping]]] = ..., showing_hint: _Optional[bool] = ..., content_invalid: _Optional[bool] = ..., error: _Optional[str] = ..., window_index: _Optional[int] = ..., window_kind: _Optional[_Union[WindowKind, str]] = ..., actions: _Optional[_Iterable[_Union[_command_pb2.StandardAction, str]]] = ..., custom_actions: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class ScreenSnapshotResponse(_message.Message):
     __slots__ = ("snapshot_id", "nodes", "removed", "rotation", "display_width", "display_height", "density_dpi")

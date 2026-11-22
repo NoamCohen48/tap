@@ -286,6 +286,8 @@ class NodeFlag(enum.Enum):
     LONG_CLICKABLE = "LONG_CLICKABLE"
     SCROLLABLE = "SCROLLABLE"
     SELECTED = "SELECTED"
+    EDITABLE = "EDITABLE"
+    """Editable text (``isEditable``), whatever its class."""
 
 
 class NodeChange(enum.Enum):
@@ -449,6 +451,8 @@ class ElementSnapshot:
     """The labels of the custom actions the node offers (``Element.perform_custom_action``)."""
     range: Range | None = None
     """The node's range, when it is a range node (``Element.set_progress``)."""
+    editable: bool = False
+    """Editable text (``isEditable``), whatever its class."""
 
 
 @dataclass(frozen=True)
@@ -730,8 +734,6 @@ class ScreenNode:
     """One-based window ordinal in this dump, not a persistent window ID; zero if unknown."""
     window_kind: WindowKind = WindowKind.UNKNOWN
     """What the node's window is: an app, the keyboard, the status or navigation bar, …"""
-    editable: bool = False
-    """The node is editable text (``AccessibilityNodeInfo.isEditable``), whatever its class."""
     actions: tuple[StandardAction, ...] = ()
     """The standard actions the node offers that Tap can perform (``Element.perform_action``)."""
     custom_actions: tuple[str, ...] = ()

@@ -63,6 +63,7 @@ export const FLAGS: Record<NodeFlag, string> = {
   [NodeFlag.FLAG_LONG_CLICKABLE]: "longClickable",
   [NodeFlag.FLAG_SCROLLABLE]: "scrollable",
   [NodeFlag.FLAG_SELECTED]: "selected",
+  [NodeFlag.FLAG_EDITABLE]: "editable",
 };
 
 export const RELATIONS: Record<Relation, string> = {

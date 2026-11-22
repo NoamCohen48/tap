@@ -208,7 +208,8 @@ A **target** is a ref or `key=value` terms joined by commas: `id=`, `text=`, `te
 on the screen; `pkg=` keeps it to one app's nodes.
 
 Boolean predicates include `enabled=true`, `checked=false`, `focused=true`, `checkable`,
-`clickable`, `focusable`, `long_clickable`, `scrollable` and `selected` (each true/false).
+`clickable`, `focusable`, `long_clickable`, `scrollable`, `selected` and `editable` (each
+true/false; `editable` is editable text whatever its class).
 Use `text:starts_with=Order`, `desc:ends_with=button` or `text:regex=Order \\d+` for other
 match modes; `exact`, `contains`, `starts_with`, `ends_with` and RE2 full-match `regex` work
 with text, desc, hint, class and pkg. Escape a comma as `\,`; other regex backslashes stay

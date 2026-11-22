@@ -53,7 +53,7 @@ def accepts(node: ScreenNode) -> list[str]:
     flags = node.flags
     words = [word for flag, word in ((NodeFlag.CLICKABLE, "tap"), (NodeFlag.LONG_CLICKABLE, "long"),
                                       (NodeFlag.CHECKABLE, "check")) if flag in flags]
-    if node.editable:
+    if NodeFlag.EDITABLE in node.flags:
         words.append("edit")
     if NodeFlag.SCROLLABLE in flags or any(a in _SCROLLS for a in node.actions):
         words.append("scroll")

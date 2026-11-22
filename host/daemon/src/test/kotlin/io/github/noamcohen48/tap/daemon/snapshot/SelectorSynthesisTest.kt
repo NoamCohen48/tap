@@ -1,6 +1,7 @@
 package io.github.noamcohen48.tap.daemon.snapshot
 
 import io.github.noamcohen48.tap.api.v1.Node
+import io.github.noamcohen48.tap.api.v1.NodeFlag
 import io.github.noamcohen48.tap.api.v1.Relation
 import io.github.noamcohen48.tap.api.v1.Selector
 import io.github.noamcohen48.tap.daemon.snapshot.Dumps.AUT
@@ -135,6 +136,17 @@ class SelectorSynthesisTest {
         assertEquals(SelectorKind.BY_INDEX, at("Clone", 1).kind)
         assertEquals(1, at("Clone", 1).selector.at.index)
         assertEquals(owned(Nodes.allOf(Nodes.text("Clone"), Nodes.className("android.widget.TextView"))).node, at("Clone", 1).selector.node)
+    }
+
+    @Test
+    fun `an editable selector matches editable text whatever its class`() {
+        val field = node(className = "android.view.View", resourceId = "$AUT:id/email", editable = true)
+        val hierarchy = HierarchyParser.parse(wrap(node(className = "android.widget.FrameLayout", children = field + node(text = "Email"))))
+        val matcher = DumpMatcher(hierarchy)
+        val editable = matcher.matches(owned(Nodes.flag(NodeFlag.FLAG_EDITABLE)))
+        assertEquals(listOf("$AUT:id/email"), editable.map { it.resourceName })
+        assertTrue(matcher.matches(owned(Nodes.allOf(Nodes.text("Email"), Nodes.flag(NodeFlag.FLAG_EDITABLE)))).isEmpty())
+        assertEquals(1, matcher.matches(owned(Nodes.allOf(Nodes.text("Email"), Nodes.flag(NodeFlag.FLAG_EDITABLE, false)))).size)
     }
 
     @Test

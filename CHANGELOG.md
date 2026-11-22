@@ -8,6 +8,9 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- Selectors take `editable` (`NodeFlag.FLAG_EDITABLE`, Python `editable()` / `.editable()`, Kotlin
+  `editable()`, tap-agent `editable=true`): editable text whatever its class, matched by walking
+  the tree because `BySelector` has no such predicate. `ElementSnapshot` reports `editable`.
 - Both SDKs carry every Android key code by name, generated from `KeyEvent` by
   `clients/python/scripts/gen_keys.py`: Python `Key` (`Key.VOLUME_UP`, an `IntEnum`) and Kotlin
   `Keys` (`Keys.VOLUME_UP`). Names that would start with a digit keep `KEYCODE_` (`Key.KEYCODE_0`).
@@ -56,8 +59,8 @@ name the components affected. Earlier releases used independent version lines. T
   `edit`, `scroll`, `actions`), in every view and in `--settle` diffs; `accepts=scroll` replaces
   the `scrollable` word.
 - Screen snapshots decide `interactive` from the node itself: the driver's dump reports
-  `editable` and the actions a node offers, and `ScreenNode` carries `editable`, `actions` and
-  `custom_actions`. An editable field whose class is not an `EditText`, or a row reachable only
+  `editable` and the actions a node offers, and `ScreenNode` carries the `FLAG_EDITABLE` flag,
+  `actions` and `custom_actions`. An editable field whose class is not an `EditText`, or a row reachable only
   through accessibility actions, is now interactive; an `EditText` class name alone no longer
   makes a node interactive. Python `ScreenNode` has the same fields.
 - tap-agent `capture NAME` labels a bundle, `capture list [-L]` lists them newest first,

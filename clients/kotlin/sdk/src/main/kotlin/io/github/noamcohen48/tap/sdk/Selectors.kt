@@ -99,6 +99,9 @@ class Selector internal constructor(
     /** Require `isScrollable == value`. */
     fun scrollable(value: Boolean = true): Selector = also(flag(NodeFlag.FLAG_SCROLLABLE, value))
 
+    /** Require `isEditable == value`: editable text, whatever its class. */
+    fun editable(value: Boolean = true): Selector = also(flag(NodeFlag.FLAG_EDITABLE, value))
+
     /** Require `isSelected == value`. */
     fun selected(value: Boolean = true): Selector = also(flag(NodeFlag.FLAG_SELECTED, value))
 
@@ -361,6 +364,9 @@ fun longClickable(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG
 
 /** A node that is selected (or not). */
 fun selected(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_SELECTED, value))
+
+/** Editable text (or not), whatever its class: `EditText`, a Compose text field, a WebView input. */
+fun editable(value: Boolean = true): Selector = selector(flag(NodeFlag.FLAG_EDITABLE, value))
 
 /**
  * Any of the selectors may match: `anyOf(text("OK"), text("Allow"), desc("Accept"))`. Match

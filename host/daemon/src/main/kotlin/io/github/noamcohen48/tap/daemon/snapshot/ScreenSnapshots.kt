@@ -63,7 +63,6 @@ internal object ScreenSnapshots {
                 showingHint = node.showingHint
                 contentInvalid = node.contentInvalid
                 node.error?.let { error = it }
-                editable = node.editable
                 val actions = node.actions.mapNotNull(::standardAction)
                 addAllActions(actions)
                 addAllCustomActions(node.customActions)
@@ -112,6 +111,7 @@ internal object ScreenSnapshots {
             NodeFlag.FLAG_FOCUSED.takeIf { node.focused },
             NodeFlag.FLAG_FOCUSABLE.takeIf { node.focusable },
             NodeFlag.FLAG_LONG_CLICKABLE.takeIf { node.longClickable },
+            NodeFlag.FLAG_EDITABLE.takeIf { node.editable },
             NodeFlag.FLAG_SCROLLABLE.takeIf { node.scrollable },
             NodeFlag.FLAG_SELECTED.takeIf { node.selected },
         )

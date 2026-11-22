@@ -373,7 +373,7 @@ Node.kind =
   | match    {property: TEXT | CONTENT_DESCRIPTION | HINT | CLASS_NAME | PACKAGE_NAME,
               value, mode (default EXACT)}
   | flag     {property: ENABLED | CHECKED | CHECKABLE | CLICKABLE | FOCUSED | FOCUSABLE
-                        | LONG_CLICKABLE | SCROLLABLE | SELECTED, value}
+                        | LONG_CLICKABLE | SCROLLABLE | SELECTED | EDITABLE, value}
   | resource {name, package_name?}   with package_name: exactly `pkg:id/name`; without: `name`
                                      in any package (`<any>:id/name`) or the bare name (a
                                      Compose testTag); `name` never contains `:id/`
@@ -407,7 +407,7 @@ is `QUALIFIED_RESOURCE_NAME`: the package goes in `package_name`, so one id has 
 carries. On the device,
 `CommandValidation.validateSelector(selector)` also returns the query plan. A selector compiles
 to one `BySelector` (`ByBuilder`, run by `UiDevice.findObjects` over every window's root) unless it contains something `BySelector` cannot hold: a `REGEX` match, an
-`any_of`, or a conjunction that repeats one of `BySelector`'s single-valued slots (the same
+`any_of`, an `EDITABLE` flag (`BySelector` has no `editable`), or a conjunction that repeats one of `BySelector`'s single-valued slots (the same
 text property twice, the same flag twice, two resources, two parents or two ancestors —
 children and descendants are lists and stay native). Those take the traversal plan, which
 walks the windows' object trees once, reading each node's `AccessibilityNodeInfo` once

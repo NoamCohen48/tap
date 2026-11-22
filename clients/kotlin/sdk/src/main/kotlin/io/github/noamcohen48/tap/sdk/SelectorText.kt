@@ -245,6 +245,7 @@ private fun observed(
                 NodeFlag.FLAG_LONG_CLICKABLE -> state.longClickable
                 NodeFlag.FLAG_SCROLLABLE -> state.scrollable
                 NodeFlag.FLAG_SELECTED -> state.selected
+                NodeFlag.FLAG_EDITABLE -> state.editable
                 else -> null
             }?.toString()
         }

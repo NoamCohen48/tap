@@ -103,7 +103,7 @@
       {"methods": ["element", "wait"], "tools": ["tap", "wait_for"], "reason": "Whole-screen default, no implicit app scope."}
     ],
     "Selector": [
-      {"methods": ["and_text", "and_desc", "and_class_name", "and_hint", "and_res", "checkable", "checked", "clickable", "enabled", "focusable", "focused", "long_clickable", "scrollable", "selected", "has_descendant", "has_child", "has_parent", "has_ancestor", "descendant", "child", "first", "at"], "tools": ["tap"], "reason": "Shared bounded target grammar for all selector-taking tools; logical/relational forms and match modes."},
+      {"methods": ["and_text", "and_desc", "and_class_name", "and_hint", "and_res", "checkable", "checked", "clickable", "enabled", "focusable", "focused", "long_clickable", "scrollable", "selected", "editable", "has_descendant", "has_child", "has_parent", "has_ancestor", "descendant", "child", "first", "at"], "tools": ["tap"], "reason": "Shared bounded target grammar for all selector-taking tools; logical/relational forms and match modes."},
       {"methods": ["from_proto", "to_proto", "render"], "tools": [], "reason": "Representation helpers, not an agent-facing raw protobuf API."}
     ]
   },

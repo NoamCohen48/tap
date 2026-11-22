@@ -125,7 +125,7 @@ export function scrollableAround(nodes: readonly ScreenNode[], node: ScreenNode)
 
 export const isScrollable = (node: ScreenNode) => node.flags.includes(NodeFlag.FLAG_SCROLLABLE);
 
-export const isEditable = (node: ScreenNode) => /EditText$/.test(node.className ?? "");
+export const isEditable = (node: ScreenNode) => node.flags.includes(NodeFlag.FLAG_EDITABLE);
 
 export const isCheckable = (node: ScreenNode) => node.flags.includes(NodeFlag.FLAG_CHECKABLE);
 

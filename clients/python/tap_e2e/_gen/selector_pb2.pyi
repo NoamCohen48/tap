@@ -38,6 +38,7 @@ class NodeFlag(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     FLAG_LONG_CLICKABLE: _ClassVar[NodeFlag]
     FLAG_SCROLLABLE: _ClassVar[NodeFlag]
     FLAG_SELECTED: _ClassVar[NodeFlag]
+    FLAG_EDITABLE: _ClassVar[NodeFlag]
 
 class Relation(int, metaclass=_enum_type_wrapper.EnumTypeWrapper):
     __slots__ = ()
@@ -68,6 +69,7 @@ FLAG_FOCUSABLE: NodeFlag
 FLAG_LONG_CLICKABLE: NodeFlag
 FLAG_SCROLLABLE: NodeFlag
 FLAG_SELECTED: NodeFlag
+FLAG_EDITABLE: NodeFlag
 RELATION_UNSPECIFIED: Relation
 RELATION_PARENT: Relation
 RELATION_ANCESTOR: Relation

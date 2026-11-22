@@ -414,6 +414,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
    four flags; collapsed headers name no CLI flag.
    Status: done.
 8. `editable` is a node flag (selectable, and in element snapshots), not a separate bool.
+   Status: done (`FLAG_EDITABLE`, a traversal-plan predicate; `ElementSnapshot.editable`).
 9. `--json` on the remaining reads.
 10. One toast text rule: part of the text, ignoring case, `--exact` for exact.
 11. `history keep` says "kept range", not "recording"; MCP `history_keep` is its own tool.

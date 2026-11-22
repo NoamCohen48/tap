@@ -56,6 +56,7 @@ function node(
 const SEARCH = node("e2", [100, 200, 980, 320], {
   className: "android.widget.EditText",
   resourceName: "com.example:id/search",
+  flags: [NodeFlag.FLAG_EDITABLE],
   selector: resSelector("search"),
 });
 const BUTTON = node("e3", [100, 400, 500, 520], {
