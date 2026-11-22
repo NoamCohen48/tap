@@ -280,9 +280,13 @@ def test_cli_forwards_new_parameters(fake, agent):
     run(["scroll", "id=list", "down", "--percent", "40", "--timeout", "4s"])
     assert fake.devices.commands[-1].scroll.distance_percent == 40
     assert fake.devices.commands[-1].timeout_ms == 4000
-    run(["type", "hello", "id=input", "--no-await-focus", "--sensitive"])
+    run(["type", "id=input", "hello", "--no-await-focus", "--sensitive"])  # target first, as for fill
     assert fake.devices.commands[-1].type_text.text == "hello"
     assert fake.devices.commands[-1].type_text.sensitive
+    assert [c.WhichOneof("op") for c in fake.devices.commands[-2:]] == ["tap", "type_text"]
+    run(["type", "id=input"])  # one word is the text, typed into the focused field
+    assert fake.devices.commands[-1].type_text.text == "id=input"
+    assert fake.devices.commands[-2].WhichOneof("op") != "tap"
     with pytest.raises(SystemExit):
         cli.parser().parse_args(["type", "hello", "--target", "id=input"])
     run(["settle", "--package", "com.example", "--signal", "all", "--stable-for", "100ms"])

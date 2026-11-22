@@ -153,7 +153,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
         ("tap-agent fill id=card 4111111111111111 --sensitive", "filled id=card"),
     ],
     "type": [
-        ("tap-agent type ' extra' id=email", "typed 6 characters"),
+        ("tap-agent type id=email ' extra'", "typed 6 characters"),
         ("tap-agent type 1234", "typed 4 characters"),
     ],
     "clear": [("tap-agent clear id=email", "cleared id=email")],
@@ -274,7 +274,7 @@ NOTES: dict[str, list[str]] = {
         "A refusal says what to do next, for example `several nodes match; use a ref from snapshot or a "
         "narrower selector`. Nothing is sent to the device.",
     ],
-    "type": ["The text comes first: `type TEXT [TARGET]`. `fill TARGET TEXT` replaces the field's text instead."],
+    "type": ["The target comes first, as for `fill`: `type [TARGET] TEXT`; alone, TEXT goes to the focused field. `fill TARGET TEXT` replaces the field's text instead."],
     "keyboard": ["`hide` sends one Back key only when a keyboard shows, then waits up to 2 s for it to go."],
     "action": ["Click is not an action here: use `tap`. An action the node does not offer is refused before "
                "anything happens."],
