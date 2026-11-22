@@ -43,7 +43,8 @@ guarantee that every Android/OEM/custom toast is observable.
 
 ```sh
 tap-agent toast                                   # retained toasts, oldest first
-tap-agent toast Saved --contains --package com.example
+tap-agent toast saved --package com.example       # part of the text, any case
+tap-agent toast 'Card saved' --exact              # the whole text, case included
 tap-agent toast --after-seq 12 --stream STREAM_ID --json
 ```
 

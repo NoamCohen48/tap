@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `toast TEXT` (read and `--wait`) matches part of the toast ignoring case, as
+  `watch --text` and `--expect toast:TEXT` do; `--exact` (MCP `exact`) replaces `--contains` and
+  asks for the whole text, case included. `toast --timeout` without `--wait` is a usage error
+  instead of being ignored.
 - tap-agent `--json` (MCP `as_json`) now goes with every read: `condition`, `screen`,
   `keyboard`, `activity`, `clipboard`, `notification` (list and `--wait`), `permission` and
   `action TARGET` lists, `devices`, `sessions` and `history keep list`; with an action or a

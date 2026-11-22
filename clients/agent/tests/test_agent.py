@@ -517,10 +517,15 @@ def test_keyboard_submit_clipboard_and_toast(fake, agent):
     assert fake.devices.commands[-1].perform_ime_action.selector == res("search")._proto
     assert agent.clipboard("copied") == "clipboard set (6 characters)"
     assert agent.clipboard() == "copied"
-    assert agent.toast("Saved", contains=True, timeout=2, wait=True) == "toast 'Saved order' from com.example"
+    assert agent.toast("saved (2)", timeout=2, wait=True) == "toast 'Saved order' from com.example"
     toast = fake.devices.commands[-1].await_toast
-    assert (toast.text, toast.mode, toast.HasField("package_name")) == ("Saved", pb.MATCH_CONTAINS, False)
+    # Part of the text, any case: MatchMode has no ignore-case, so the agent sends an RE2 pattern.
+    assert (toast.text, toast.mode, toast.HasField("package_name")) == (r"(?is).*saved \(2\).*", pb.MATCH_REGEX, False)
     assert fake.devices.commands[-1].timeout_ms == 2000
+    agent.toast("Saved order", exact=True, wait=True)
+    toast = fake.devices.commands[-1].await_toast
+    assert (toast.text, toast.mode) == ("Saved order", pb.MATCH_EXACT)
+    assert fake.devices.commands[-1].timeout_ms == 10000
     agent.toast(package="com.example", wait=True)
     toast = fake.devices.commands[-1].await_toast
     assert not toast.HasField("text") and toast.package_name == "com.example"
@@ -529,7 +534,7 @@ def test_keyboard_submit_clipboard_and_toast(fake, agent):
     )
     assert fake.apps.revokes[-1].permission == "android.permission.CAMERA"
     assert agent.app("granted", "com.example", "android.permission.CAMERA") == "android.permission.CAMERA is granted to com.example"
-    for bad in (lambda: agent.keyboard("show"), lambda: agent.toast(contains=True), lambda: agent.app("revoke", "com.example")):
+    for bad in (lambda: agent.keyboard("show"), lambda: agent.toast(exact=True), lambda: agent.toast("x", timeout=2), lambda: agent.app("revoke", "com.example")):
         with pytest.raises(AgentError) as info:
             bad()
         assert info.value.exit_code == EXIT_USAGE

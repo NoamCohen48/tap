@@ -19,7 +19,7 @@ def page():
 def test_history_read_filters_without_losing_the_high_water_mark(fake, agent):
     agent.attach("emulator-5554")
     fake.devices.responder = lambda command: pb.CommandResult(toast_history=page())
-    output = agent.toast("Saved", contains=True, package="com.shop", after_seq=2, stream="stream-one")
+    output = agent.toast("saved", package="com.shop", after_seq=2, stream="stream-one")
     assert "history gap" in output
     assert "#8 1000 toast 'Saved order' from 'com.shop'" in output
     assert "Done" not in output
@@ -31,6 +31,7 @@ def test_history_read_filters_without_losing_the_high_water_mark(fake, agent):
     assert [e["sequence"] for e in data["events"]] == [8, 9]
     assert data["events"][1]["text_truncated"]
     assert "[text truncated]" in agent.toast()
+    assert "Saved order" not in agent.toast("saved", exact=True) and "Saved order" in agent.toast("Saved order", exact=True)
 
 
 def test_history_empty_reset_and_validation(fake, agent):
@@ -38,7 +39,7 @@ def test_history_empty_reset_and_validation(fake, agent):
     fake.devices.responder = lambda _: pb.CommandResult(toast_history=pb.ToastHistory(stream_id="new", reset=True, gap=True))
     assert "stream reset" in agent.toast()
     assert "No retained toasts" in agent.toast()
-    for kwargs in ({"after_seq": -1}, {"after_seq": True}, {"after_seq": 2**63}, {"stream": "x" * 129}, {"contains": True}):
+    for kwargs in ({"after_seq": -1}, {"after_seq": True}, {"after_seq": 2**63}, {"stream": "x" * 129}, {"exact": True}, {"timeout": 2}):
         with pytest.raises(AgentError):
             agent.toast(**kwargs)
     with pytest.raises(AgentError):

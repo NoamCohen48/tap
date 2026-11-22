@@ -674,21 +674,21 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="toast", annotations=READ_ONLY)
     async def toast(
-        text: Annotated[str, Field(description="The toast's text; omit for any toast.")] = "",
-        contains: Annotated[bool, Field(description="text is only part of the toast.")] = False,
+        text: Annotated[str, Field(description="Part of the toast's text, any case; omit for any toast.")] = "",
+        exact: Annotated[bool, Field(description="text is the whole toast, case included.")] = False,
         package: Annotated[str, Field(description="Only this package's toasts; omit for any app's.")] = "",
         wait: Annotated[bool, Field(description="Wait for a matching toast (one shown in the last 3.5 s counts) instead of reading.")] = False,
         after_seq: Annotated[StrictInt, Field(ge=0, le=2**63 - 1, description="Read: exclusive sequence cursor.")] = 0,
         stream: Annotated[str, Field(max_length=128, description="Read: stream ID from the previous read.")] = "",
         as_json: Annotated[bool, Field(description="Read: structured observations and cursor metadata.")] = False,
-        timeout_seconds: Annotated[float, Field(ge=0.001, le=120, description="With wait: how long.")] = 10,
+        timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="With wait only: how long; omit for 10.")] = None,
         session: Session = "",
         device: Device = "",
     ) -> CallToolResult:
         """Read the last 128 retained toast observations, oldest first (never consumes the
         inbox), or with wait=true wait for a toast."""
         return await call(
-            session, lambda a: a.toast(text or None, device or None, contains=contains, package=package or None, timeout=timeout_seconds,
+            session, lambda a: a.toast(text or None, device or None, exact=exact, package=package or None, timeout=timeout_seconds,
                                       wait=wait, after_seq=after_seq, stream=stream, as_json=as_json)
         )
 

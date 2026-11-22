@@ -222,7 +222,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     ],
     "toast": [
         ("tap-agent toast", "#1 1795275040120 toast 'Card saved' from 'com.shop'\ntoast cursor: --after-seq 1 --stream 6793fef1-…"),
-        ("tap-agent toast saved --contains --wait", "toast 'Card saved' from com.shop"),
+        ("tap-agent toast saved --wait", "toast 'Card saved' from com.shop"),
     ],
     "clipboard": [("tap-agent clipboard SAVE20", "clipboard set (6 characters)"), ("tap-agent clipboard", "SAVE20")],
     # Files and the gallery

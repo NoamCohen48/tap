@@ -62,9 +62,14 @@ the toast inbox. `snapshot --json` adds `toast_events` metadata.
 ```sh
 tap-agent toast                  # inspect retained history without acknowledging
 tap-agent toast --json           # structured observations, stream/cursor, gap/reset flags
-tap-agent toast Saved --contains --package com.example
+tap-agent toast saved --package com.example   # part of the text, any case
+tap-agent toast 'Card saved' --exact          # the whole text, case included
 tap-agent toast Saved --wait     # wait for one instead (one shown in the last 3.5 s counts)
 ```
+
+Toast text matches as `watch --text` and `--expect toast:TEXT` do: part of the text, ignoring
+case; `--exact` (MCP `exact`) asks for the whole text, case included. `--timeout` goes with
+`--wait` only.
 
 CLI and MCP share the unread cursor when they use the same `TAP_AGENT_DIR` (or output
 directory). Each attachment has its own cursor; reads are serialized across processes.
