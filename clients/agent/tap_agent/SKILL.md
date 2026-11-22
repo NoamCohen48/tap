@@ -378,9 +378,9 @@ when a watched app dies, 0 when the session ends (or after `--timeout 30m`), and
 idle session alive. It only notifies: the next step still reports the death with its frames. `deaths` lists every death since
 attach (`--all` adds unwatched apps, `--trace SEQ` prints one full trace, `--json`).
 
-## History and recordings
+## History and kept ranges
 
-Activity is kept automatically; a recording keeps a named range of it past rolling eviction.
+Activity is kept automatically; a kept range (`history keep`, MCP `history_keep`) keeps a named range of it past rolling eviction.
 All these commands belong to `tap-agent`, not the daemon-admin `tap` CLI:
 
 ```sh
@@ -410,9 +410,9 @@ evidence that was not captured.
 
 `history keep start` keeps this session's calls, crashes and the logs of every device attached to it,
 including devices attached later. `release` stops it. Names are per session; elsewhere use the
-id from `history keep list -L` when a name is not unique. Reading a live recording does not stop it.
+id from `history keep list -L` when a name is not unique. Reading a range still being kept does not stop it.
 `-L` adds state, times, id and shared bytes, not guaranteed reclaimable space. Clean requires a
-stopped recording. When the server is unreachable, `history` shows local steps with an
+stopped range. When the server is unreachable, `history` shows local steps with an
 `unavailable` warning. SDKs call `client.history` directly, not this CLI. `media-record` is separate.
 
 Defaults: one hour / 256 MiB rolling, 1 GiB hard budget, 256 MiB free-space reserve. Configure

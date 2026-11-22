@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `history keep` says "kept range" throughout (`keeping 'checkout'`, `stopped keeping`,
+  `no kept ranges`, the `keeping` state), so it is not mistaken for `media-record`; history JSON
+  names the range `kept` instead of `recording`. MCP `history_keep(action, name, long, as_json)`
+  is its own tool, and MCP `history` no longer takes `keep`, `name` or `long`.
 - tap-agent `toast TEXT` (read and `--wait`) matches part of the toast ignoring case, as
   `watch --text` and `--expect toast:TEXT` do; `--exact` (MCP `exact`) replaces `--contains` and
   asks for the whole text, case included. `toast --timeout` without `--wait` is a usage error

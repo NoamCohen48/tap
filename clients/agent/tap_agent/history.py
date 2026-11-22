@@ -109,9 +109,9 @@ def _named(agent: Agent, name: str) -> HistoryRecording:
             mine = None
         found = [r for r in found if r.connection_id == mine] or found
     if not found:
-        _usage(f"no recording named {name!r}; `history keep list` shows them")
+        _usage(f"no kept range named {name!r}; `history keep list` shows them")
     if len(found) > 1:
-        _usage(f"several connections have a recording named {name!r}: give its id ({', '.join(r.id for r in found)})")
+        _usage(f"several connections have a kept range named {name!r}: give its id ({', '.join(r.id for r in found)})")
     return found[0]
 
 
@@ -123,7 +123,7 @@ KEEP_ACTIONS = ("start", "stop", "list", "clean")
 
 
 def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = False, as_json: bool = False) -> str:
-    """``history keep start|stop|list|clean``: a named recording, a range of the session's history
+    """``history keep start|stop|list|clean``: a named kept range, a range of the session's history
     the server keeps past its retention policy. Read one with ``history --kept NAME``."""
     _flags(long=long)
     if action not in KEEP_ACTIONS:
@@ -147,12 +147,12 @@ def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = Fal
                 if not long:
                     rows.append(row.name)
                     continue
-                state = "recording" if row.active else "stopped"
+                state = "keeping" if row.active else "stopped"
                 rows.append(f"{row.name}  {state}  id={row.id}  connection={row.connection_id}  started={_at(row.started_at)}  "
                     f"stopped={_at(row.stopped_at)}  disk={row.retained_bytes}B" + "".join(f"  [{issue}]" for issue in row.issues))
             if long and rows:
-                rows.append("Disk counts the stored files a recording needs; others may share them, so cleaning it can free less.")
-            return "\n".join(rows) or "no recordings"
+                rows.append("Disk counts the stored files a kept range needs; others may share them, so cleaning it can free less.")
+            return "\n".join(rows) or "no kept ranges"
         assert name is not None
         if action == "start":
             connection = agent._connection()
@@ -160,9 +160,9 @@ def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = Fal
             try:
                 agent.records.start(name, agent.session, connection.id, {}, log_status={"recording_id": saved.id})
             except RecordError as error:
-                raise RecordError(f"the server is recording {name!r}, but the agent could not save its steps for it; "
+                raise RecordError(f"the server keeps {name!r}, but the agent could not save its steps for it; "
                     "`history keep stop`/`history keep clean` still work") from error
-            return f"recording {name!r} (devices attached later join it)"
+            return f"keeping {name!r} (devices attached later join it)"
         saved = _named(agent, name)
         if action == "stop":
             stopped: list[HistoryRecording] = []
@@ -174,15 +174,15 @@ def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = Fal
                 agent.records.stop(name, agent.session, before_stop=stop_server)
             except UnknownHistoryError:
                 stop_server()
-            return f"stopped recording {name!r}" + _issues(stopped[-1])
+            return f"stopped keeping {name!r}" + _issues(stopped[-1])
         if saved.active:
-            _usage("stop the recording before cleaning it")
+            _usage(f"stop keeping {name!r} before cleaning it (`history keep stop {name}`)")
         agent.client.history.delete_recording(saved)
         try:
             agent.records.clean(name, agent.session)
         except UnknownHistoryError:
             pass
-        return f"cleaned recording {name!r}"
+        return f"cleaned kept range {name!r}"
     return agent._run(run)
 
 
@@ -410,7 +410,7 @@ def _render(agent: Agent, page: HistoryPage, *, backward: bool, devices: tuple[s
         del document["next_cursor"]  # `next` is what --after takes
         document["entries"] = [entry.to_dict() for entry in entries]
         document.update(steps=steps, markers=markers, artifacts=artifacts, next=position,
-            order="oldest_first", recording=recording.to_dict() if recording is not None else None)
+            order="oldest_first", kept=recording.to_dict() if recording is not None else None)
         return json_text(document)
     by_id = {step["id"]: step for step in steps if step.get("id")}
     rows: list[tuple[float, int, str]] = []  # (time, server order, text)
@@ -437,7 +437,7 @@ def _render(agent: Agent, page: HistoryPage, *, backward: bool, devices: tuple[s
     rows.sort(key=lambda row: (row[0], row[1]))
     lines = [text for _, _, text in rows]
     if recording is not None:
-        lines.insert(0, f"recording {recording.name} ({'recording' if recording.active else 'stopped'})")
+        lines.insert(0, f"kept range {recording.name} ({'keeping' if recording.active else 'stopped'})")
     lines += [f"WARNING: {issue}" for issue in page.issues]
     if recording is not None:
         lines += [f"WARNING: {issue}" for issue in recording.issues]
@@ -536,7 +536,7 @@ def _value(value: Any) -> str:
 
 
 def release(agent: Agent) -> str:
-    """Release the held connection and stop the session's recording, if one is running."""
+    """Release the held connection and stop keeping the session's kept range, if one is open."""
     def run() -> str:
         entry = agent._held()
         if entry is None:
@@ -554,6 +554,6 @@ def release(agent: Agent) -> str:
                 before_stop=(lambda: {"recording_id": recording_id, "stopped": agent.client.history.stop_recording(recording_id).id})
                 if recording_id else None)
         except (RecordError, TapError, OSError, ValueError):
-            text += "\nWARNING: released, but the session's recording could not be stopped; `history keep stop NAME` stops it"
+            text += "\nWARNING: released, but the session's kept range could not be stopped; `history keep stop NAME` stops it"
         return text
     return agent._run(run)

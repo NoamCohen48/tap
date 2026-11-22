@@ -173,7 +173,7 @@ nav:
   - Tap agent:
       - agent/index.md
       - A session, step by step: agent/session.md
-      - History and recordings: agent/export.md
+      - History and kept ranges: agent/export.md
       - Commands: agent/commands.md
       - Commands on one page: agent/command-reference.html
   - Tap Studio:

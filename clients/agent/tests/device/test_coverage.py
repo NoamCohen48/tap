@@ -128,4 +128,4 @@ def test_named_steps_across_cli_processes_and_export_after_release(real_agent, t
     assert json.loads(path.read_text())["name"] == "fixture-steps"
     assert stat.S_IMODE(path.stat().st_mode) == 0o600
     cli("history", "keep", "clean", "fixture-steps")
-    assert "no step recordings" in cli("history", "keep", "list")
+    assert "no kept ranges" in cli("history", "keep", "list")

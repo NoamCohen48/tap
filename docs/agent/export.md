@@ -1,8 +1,9 @@
-# History and recordings
+# History and kept ranges
 
 The server keeps what every session did automatically: its calls, the crashes and ANRs on its
 devices, capture gaps and each attachment's device log. `tap-agent history` reads it, merged with
-the agent's own steps. A **recording** keeps a named range of it past rolling eviction. Neither
+the agent's own steps. A **kept range** (`history keep`) keeps a named range of it past rolling
+eviction. Neither
 starts a second capture or replays anything.
 
 ## Read history
@@ -53,7 +54,7 @@ Android delivery is not guessed to be instantaneous.
 
 Crashes and ANRs are independent durable observations, including background deaths with no
 active step and deaths of unwatched apps. They appear as explicit **CRASH** / **ANR** entries
-in text and `death` entries in JSON for every history read, recordings included, with or
+in text and `death` entries in JSON for every history read, kept ranges included, with or
 without `--logs` or log filters. The read's bounds (times, markers, `--step`) and retention
 still apply. The original attachment ID disambiguates reattachments of the same serial.
 
@@ -64,7 +65,7 @@ unexpected incident. The SDK equivalent is `page.render_text(details=True)`. An 
 source supplied no stack; full ANR thread dumps are not promised by the public logcat source. Interrupted death
 followers and failed catch-up reads leave explicit evidence gaps.
 
-## Recordings
+## Kept ranges
 
 ```sh
 tap-agent history keep start checkout
@@ -79,8 +80,8 @@ tap-agent history --kept checkout --logs --json > checkout.json
 
 `history keep start NAME` keeps the session's history from now on: its calls, crashes and the device
 logs of every device attached to it, including devices attached after the start. `history keep stop
-NAME` ends the range; it does not release devices, and `release` stops an open recording.
-Reading a live recording is allowed and shows what it has so far. `history --kept NAME`
+NAME` ends the range; it does not release devices, and `release` stops an open one.
+Reading a range that is still being kept is allowed and shows what it has so far. `history --kept NAME`
 takes every other flag, including bounds inside the range.
 
 ```sh
@@ -90,11 +91,11 @@ tap-agent history keep clean checkout
 ```
 
 Names are per session: another session may use the same name. Outside the session that made it,
-`--kept` needs the recording's id (printed by `history keep list -L`) when the name is not unique.
+`--kept` needs the kept range's id (printed by `history keep list -L`) when the name is not unique.
 `-L` adds state, times, the id and retained disk bytes; ranges can share stored segments, so the
-bytes are not what cleaning one will reclaim. `history keep clean NAME` deletes a stopped recording;
-its range then expires like the rest. Recordings bypass rolling eviction, not hard storage or
-free-space limits. `media-record` is separate video/audio capture.
+bytes are not what cleaning one will reclaim. `history keep clean NAME` deletes a stopped kept range;
+its entries then expire like the rest. Kept ranges bypass rolling eviction, not hard storage or
+free-space limits. `media-record` is separate video/audio capture. MCP: `history_keep`.
 
 ## What survives release and restart
 
@@ -128,14 +129,14 @@ History generates no tests and invents no checks.
 Check the gaps and the `issues`. A **gap** entry marks where capture was interrupted. An
 **issue** is missing evidence with no place in time, printed as `WARNING:`: `expired` (retention
 removed entries the read asked for; JSON has their count when the server knows it), `unavailable` (a source could not be read), `incomplete` (a
-recording's capture failed, such as a storage limit) or `package_unknown` (a package filter the
+kept range's capture failed, such as a storage limit) or `package_unknown` (a package filter the
 server cannot resolve). No issues is not a passing test.
 
 ## Retention and privacy
 
 Defaults are **one hour / 256 MiB rolling**, **1 GiB hard budget**, and **256 MiB free-space
 reserve**. The daemon's administrative policy is configured with `tap config logging-policy`;
-history/recording commands stay under `tap-agent`. Agent history also has bounded local
+history and kept-range commands stay under `tap-agent`. Agent history also has bounded local
 partitions. Full/expired partitions, interrupted writes and failed capture remain explicit.
 
 Redaction happens before durable storage. Mark input secrets with `--sensitive`; clipboard
