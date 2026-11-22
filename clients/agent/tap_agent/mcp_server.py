@@ -936,8 +936,10 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         action: Annotated[Literal["", "list", "show", "clean"], Field(description="Omit to take a bundle; list, show or clean the ones taken.")] = "",
         name: Annotated[str, Field(description="Taking: a label for the bundle; show/clean: its name or id.")] = "",
         session: Session = "", device: Device = "", path: str = "",
-        last: Annotated[str, Field(description="Taking: only the last duration of history, e.g. 5m (default: all that is kept); list: bundles taken in it.")] = "",
-        start: Annotated[str, Field(description="Taking: history from this ISO time with a time zone; list: bundles taken since.")] = "",
+        last: Annotated[str, Field(description="Taking: only the last duration of history, e.g. 5m (default: all that is kept).")] = "",
+        start: Annotated[str, Field(description="Taking: history from this ISO time with a time zone.")] = "",
+        newer_than: Annotated[str, Field(description="list: bundles taken in the last duration, e.g. 1h.")] = "",
+        since: Annotated[str, Field(description="list: bundles taken since this ISO time with a time zone.")] = "",
         long: Annotated[bool, Field(description="list: id, folder, parts and failed parts.")] = False,
         older_than: Annotated[str, Field(description="clean: every bundle taken longer ago than this duration, e.g. 2h.")] = "",
         all_captures: Annotated[bool, Field(description="clean: every bundle.")] = False,
@@ -950,7 +952,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         show and clean manage the bundles; clean deletes only files the agent saved."""
         return await call(session, lambda a: a.capture(action or None, name or None, device or None, path or None,
             last=last or None, start=start or None, long=long, older_than=older_than or None,
-            all_captures=all_captures, as_json=as_json))
+            all_captures=all_captures, as_json=as_json, newer_than=newer_than or None, since=since or None))
 
     @mcp.tool(name="app_data")
     async def app_data(

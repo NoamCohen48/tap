@@ -110,7 +110,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     "activity": [("tap-agent activity", "com.shop/com.shop.CheckoutActivity")],
     "screenshot": [("tap-agent screenshot -o checkout.png", "checkout.png")],
     "capture": [
-        ("tap-agent capture checkout-bug",
+        ("tap-agent capture --name checkout-bug",
          "capture checkout-bug saved to .tap/agent/capture-emulator-5554-checkout-bug-20261121-215915-931\n"
          ".tap/agent/capture-…/emulator-5554.screenshot.png\n"
          ".tap/agent/capture-…/emulator-5554.hierarchy.xml\n"

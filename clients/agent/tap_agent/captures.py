@@ -23,13 +23,13 @@ def _usage(message: str) -> None:
     raise AgentError(message, EXIT_USAGE)
 
 
-def _since(last: str | None, start: str | None) -> float | None:
+def _since(last: str | None, start: str | None, flags: tuple[str, str] = ("--last", "--from")) -> float | None:
     from .history import _time
     if last is not None and start is not None:
-        _usage("capture takes --last or --from, not both")
+        _usage(f"capture takes {flags[0]} or {flags[1]}, not both")
     try:
         if start is not None:
-            return _time("--from", start)
+            return _time(flags[1], start)
         return time.time() - parse_duration(last) if last is not None else None
     except UsageError as error:
         _usage(str(error))
@@ -44,24 +44,29 @@ def _iso(seconds: float | None) -> str | None:
 
 def capture(agent: Agent, action: str | None = None, name: str | None = None, device: str | None = None,
             out: str | None = None, *, last: str | None = None, start: str | None = None, long: bool = False,
-            older_than: str | None = None, all_captures: bool = False, as_json: bool = False) -> str:
-    """Without ``action``: take a bundle, labelled ``name`` when given. ``list``, ``show NAME|ID``
-    and ``clean NAME|ID`` (or ``older_than`` / ``all_captures``) manage the bundles taken."""
+            older_than: str | None = None, all_captures: bool = False, as_json: bool = False,
+            newer_than: str | None = None, since: str | None = None) -> str:
+    """Without ``action``: take a bundle, labelled ``name`` when given, with the history of the
+    ``last`` duration or from ``start``. ``list`` (``newer_than`` a duration or ``since`` a time),
+    ``show NAME|ID`` and ``clean NAME|ID`` (or ``older_than`` / ``all_captures``) manage the
+    bundles taken."""
     if action is not None and action not in ACTIONS:
-        if name is not None:
-            _usage(f"capture takes {', '.join(ACTIONS)} or a NAME, not {action!r}")
-        action, name = None, action  # `capture NAME`
+        _usage(f"capture takes {', '.join(ACTIONS)}, or nothing to take a bundle (--name NAME labels it), not {action!r}")
     if action is None:
-        if long or older_than is not None or all_captures or as_json:
-            _usage("-L, --older-than, --all and --json go with capture list, show or clean")
+        if long or older_than is not None or all_captures or as_json or newer_than is not None or since is not None:
+            _usage("-L, --newer-than, --since, --older-than, --all and --json go with capture list, show or clean")
         return _take(agent, name, device, out, _since(last, start))
     if out is not None:
         _usage(f"-o is for taking a capture, not capture {action}")
+    if last is not None or start is not None:
+        _usage(f"--last and --from choose the history a new bundle holds; capture list filters with --newer-than or --since")
     if action == "list":
         if name is not None or older_than is not None or all_captures:
-            _usage("capture list takes -L, --device, --last/--from and --json")
-        return _list(agent, device, _since(last, start), long=long, as_json=as_json)
-    if long or last is not None or start is not None:
+            _usage("capture list takes -L, --device, --newer-than/--since and --json")
+        return _list(agent, device, _since(newer_than, since, ("--newer-than", "--since")), long=long, as_json=as_json)
+    if newer_than is not None or since is not None:
+        _usage(f"--newer-than and --since go with capture list, not {action}")
+    if long:
         _usage(f"capture {action} takes NAME or ID" + (", --older-than or --all" if action == "clean" else ""))
     if action == "show":
         if name is None or older_than is not None or all_captures:

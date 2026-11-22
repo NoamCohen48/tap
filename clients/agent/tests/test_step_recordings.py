@@ -14,6 +14,7 @@ from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
 from tap_agent.records import RecordError
+from tap_agent.targets import UsageError
 from tap_agent.step_capture import ACTIONS, CONDITIONAL, EXCLUDED, WAITS
 
 
@@ -433,6 +434,8 @@ def test_captures_are_named_listed_shown_and_cleaned(fake, agent, tmp_path):
     lambda a: a.capture("clean", "x", all_captures=True), lambda a: a.capture(long=True),
     lambda a: a.capture("clean", "x", as_json=True), lambda a: a.capture("list", out="o"),
     lambda a: a.capture(name="list"), lambda a: a.capture(name="bad name"),
+    lambda a: a.capture("login"), lambda a: a.capture("list", last="1h"), lambda a: a.capture(newer_than="1h"),
+    lambda a: a.capture("show", "x", since="2026-11-21T12:00:00Z"), lambda a: a.capture("list", newer_than="1h", since="2026-11-21T12:00:00Z"),
 ])
 def test_capture_management_refuses_mixed_forms(fake, agent, call):
     agent.attach("first")
@@ -440,13 +443,21 @@ def test_capture_management_refuses_mixed_forms(fake, agent, call):
         call(agent)
 
 
-def test_capture_cli_takes_a_name_or_a_management_word(fake, agent, tmp_path):
+def test_capture_cli_names_a_bundle_with_name_and_lists_with_filters_of_its_own(fake, agent, tmp_path):
     agent.attach("first")
     parser = cli.parser()
-    out = cli.run(parser.parse_args(["capture", "login", "-o", str(tmp_path / "x")]), agent)
+    out = cli.run(parser.parse_args(["capture", "--name", "login", "-o", str(tmp_path / "x")]), agent)
     assert out.startswith("capture login saved to ")
     assert cli.run(parser.parse_args(["capture", "list"]), agent).split()[1] == "login"
+    assert cli.run(parser.parse_args(["capture", "list", "--newer-than", "1h"]), agent).split()[1] == "login"
+    assert cli.run(parser.parse_args(["capture", "list", "--since", "2999-01-01T00:00:00Z"]), agent) == "no captures"
     assert "directory " in cli.run(parser.parse_args(["capture", "show", "login"]), agent)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["capture", "login"])  # a name is --name: the word slot holds list, show or clean
+    with pytest.raises(UsageError):
+        cli.run(parser.parse_args(["capture", "show", "login", "--name", "x"]), agent)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["capture", "list", "--newer-than", "1h", "--since", "2026-11-21T12:00:00Z"])
 
 
 def test_capture_saves_the_snapshot_outline_and_survives_a_failed_one(fake, agent, tmp_path, monkeypatch):

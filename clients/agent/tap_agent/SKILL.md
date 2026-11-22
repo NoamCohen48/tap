@@ -302,8 +302,8 @@ the session's steps, calls, crashes, ANRs, gaps and device log, all that is kept
 `--last 10m` / `--from TIME`. A part that fails is listed (`history failed: …`) and the rest are
 saved. When something goes wrong and the screen matters, `capture` first: the screen does not
 wait. `history --last 30s --logs --details` reads what led up to it at any time.
-`capture NAME` labels a bundle; its first line names it (`capture NAME saved to DIR`, or its
-id). `capture list [-L]` lists bundles newest first, `capture show NAME|ID` its files,
+`capture --name NAME` labels a bundle; its first line names it (`capture NAME saved to DIR`, or
+its id). `capture list [-L] [--newer-than 1h | --since TIME]` lists bundles newest first, `capture show NAME|ID` its files,
 `capture clean NAME|ID` (or `--older-than 2h`, `--all`) deletes the files the agent saved,
 refusing a folder that holds anything else. It creates a new private directory (0700)
 and files (0600), refusing existing destinations. Files go under `.tap/agent/` unless `-o`
