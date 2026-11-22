@@ -8,6 +8,8 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent MCP `condition` takes its names from the CLI's condition table, so the two cannot
+  drift; its description now names the soft keyboard with a hardware keyboard.
 - tap-agent's settle after an action (`--settle`, MCP's default) stops after 3 s instead of 10 s
   and then says `settle` waits longer, so a screen that keeps moving does not hold every step.
   `app launch`, `cold-launch`, `foreground` and `open-link` take `--settle` and settle by
