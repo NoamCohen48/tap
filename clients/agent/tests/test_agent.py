@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import json
 import pytest  # type: ignore[import-not-found]
 from mcp import Client
 from mcp_types import ImageContent, TextContent
@@ -11,7 +12,7 @@ from tap_e2e import _gen as pb
 
 from tap_agent import Agent, AgentError, cli
 from tap_agent.targets import UsageError
-from tap_agent.core import EXIT_FAILED, EXIT_NO_DAEMON, EXIT_USAGE
+from tap_agent.core import CONDITIONS, EXIT_FAILED, EXIT_NO_DAEMON, EXIT_USAGE
 from tap_agent.mcp_server import create_server
 
 from .conftest import TOKEN
@@ -645,10 +646,18 @@ def test_condition_reads_back_and_app_locale(fake, agent):
         if command.HasField("device_info")
         else None
     )
-    assert agent.condition() == (
-        "animations off, dark-mode off, font-scale 1.25, density 320 dpi, airplane-mode off, wifi on, mobile-data off, locale fr-FR,en, "
-        "stay-awake off, ime-with-hard-keyboard unknown, high-contrast-text unknown, color-inversion on, bold-text off"
-    )
+    assert agent.condition().splitlines() == [
+        "animations off", "dark-mode off", "font-scale 1.25", "density 320 dpi", "airplane-mode off", "wifi on", "mobile-data off",
+        "locale fr-FR,en", "stay-awake off", "ime-with-hard-keyboard unknown", "high-contrast-text unknown", "color-inversion on",
+        "bold-text off",
+    ]
+    values = json.loads(agent.condition(as_json=True))
+    assert list(values) == list(CONDITIONS)
+    assert values["animations"] is False and values["wifi"] is True and values["font-scale"] == 1.25 and values["density"] == 320
+    assert values["locale"] == ["fr-FR", "en"] and values["ime-with-hard-keyboard"] is None
+    assert json.loads(agent.condition("density", as_json=True)) == {"density": 320}
+    with pytest.raises(AgentError, match="--json goes with a read"):
+        agent.condition("animations", "off", as_json=True)
     assert agent.condition("animations", "off") == "animations off (restored on release)"
     assert agent.condition("font_scale", "1.25") == "font-scale 1.25 (restored on release)"
     assert agent.condition("density", "reset") == "density 320 dpi (restored on release)"
@@ -1006,3 +1015,59 @@ def test_key_list_needs_no_server(monkeypatch, capsys):
     assert cli.main(["key", "--list", "--session", "nowhere"]) == 0
     assert "volume-up  24" in capsys.readouterr().out
     assert cli.main(["key", "back", "--list", "--session", "nowhere"]) == 2
+
+
+def test_every_read_takes_json(fake, agent, client):
+    """The reads that print text also print their complete structured form with as_json, and an
+    action given with as_json is a usage error before anything is sent."""
+    agent.attach("emulator-5554")
+    message = pb.DeviceNotification(package_name="com.example", title="New message", text="from Ada")
+
+    def respond(command):
+        op = command.WhichOneof("op")
+        if op == "device_info":
+            return pb.CommandResult(device_info=pb.DeviceInfo(screen_on=True, keyguard_locked=True, keyguard_secure=True, keyboard_shown=True))
+        if op == "get_clipboard":
+            return pb.CommandResult(text="  two spaces  ")
+        if op == "list_notifications":
+            return pb.CommandResult(notifications=pb.NotificationList(notifications=[message]))
+        if op == "await_notification":
+            return pb.CommandResult(notification=message)
+        if op == "snapshot":
+            return pb.CommandResult(snapshot=pb.ElementSnapshot(actions=[pb.A11Y_EXPAND], custom_actions=["Archive"]))
+        return None
+
+    fake.devices.responder = respond
+    assert json.loads(agent.screen(as_json=True)) == {"screen_on": True, "keyguard_locked": True, "keyguard_secure": True}
+    assert json.loads(agent.keyboard(as_json=True)) == {"shown": True}
+    assert json.loads(agent.clipboard(as_json=True)) == "  two spaces  "
+    (listed,) = json.loads(agent.notification(as_json=True))
+    assert listed["title"] == "New message" and listed["package_name"] == "com.example"
+    assert json.loads(agent.notification(title="New message", wait=True, as_json=True))["text"] == "from Ada"
+    assert json.loads(agent.action("id=card", as_json=True)) == {"actions": ["expand"], "custom_actions": ["Archive"], "range": None}
+    (session,) = json.loads(agent.sessions(as_json=True))["sessions"]
+    assert session["name"] == "agent" and json.loads(agent.sessions(as_json=True))["other_connections"] == 0
+    (session_id,) = [c.id for c in client.connections() if c.name == "agent"]
+    fake.devices.listed = [pb.DeviceEntry(serial="emulator-5554", state=pb.DEVICE_LEASED, client_connection_id=session_id),
+                           pb.DeviceEntry(serial="b", state=pb.DEVICE_FREE)]
+    held, free = json.loads(agent.devices(as_json=True))
+    assert held["serial"] == "emulator-5554" and held["held_by"] == "agent" and free["held_by"] is None
+    sent = len(fake.devices.commands)
+    for refused in (
+        lambda: agent.screen("on", as_json=True),
+        lambda: agent.keyboard("hide", as_json=True),
+        lambda: agent.clipboard("x", as_json=True),
+        lambda: agent.notification("dismiss", "x", as_json=True),
+        lambda: agent.action("id=card", "expand", as_json=True),
+        lambda: agent.permission("allow", as_json=True),
+    ):
+        with pytest.raises(AgentError, match="--json goes with") as info:
+            refused()
+        assert info.value.exit_code == EXIT_USAGE
+    assert len(fake.devices.commands) == sent
+    parser = cli.parser()
+    for argv in (["screen", "--json"], ["keyboard", "--json"], ["activity", "--json"], ["clipboard", "--json"], ["notification", "--json"],
+                 ["permission", "--json"], ["condition", "--json"], ["action", "id=card", "--json"], ["sessions", "--json"], ["devices", "--json"]):
+        assert parser.parse_args(argv).as_json, argv
+    with pytest.raises(UsageError):
+        cli.run(parser.parse_args(["devices", "unquarantine", "x", "--json"]), agent)

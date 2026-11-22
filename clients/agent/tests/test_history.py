@@ -22,6 +22,8 @@ def test_a_recording_follows_devices_attached_after_it_started(fake, agent):
     assert {span.source_id for span in saved.spans} >= {"attached-first", "attached-second"}
     assert agent.history("keep", "list") == "checkout"
     assert f"id={saved.id}" in agent.history("keep", "list", long=True)
+    (listed,) = json.loads(agent.history("keep", "list", as_json=True))
+    assert listed["name"] == "checkout" and listed["id"] == saved.id and listed["stopped_at"] is not None
 
 
 def test_history_reads_a_recording_by_name_also_after_release(fake, agent):
@@ -65,7 +67,9 @@ def test_clean_needs_a_stopped_recording_and_keep_refuses_other_words(fake, agen
     with pytest.raises(AgentError, match="history keep takes start, stop, list, clean"):
         agent.history("keep", "export", name="checkout")
     with pytest.raises(AgentError, match="history keep takes only"):
-        agent.history("keep", "list", as_json=True)
+        agent.history("keep", "list", logs=True)
+    with pytest.raises(AgentError, match="--json is only for history keep list"):
+        agent.history("keep", "stop", name="checkout", as_json=True)
     with pytest.raises(AgentError, match="NAME and -L go with history keep"):
         agent.history(long=True)
     with pytest.raises(SystemExit):

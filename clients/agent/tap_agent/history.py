@@ -31,6 +31,7 @@ from tap_e2e import _gen as pb
 from tap_e2e._proto import describe_selector
 
 from .records import RecordError, UnknownHistoryError
+from .output import json_text
 from .targets import UsageError, parse_duration
 
 if TYPE_CHECKING:
@@ -121,7 +122,7 @@ def _issues(recording: HistoryRecording) -> str:
 KEEP_ACTIONS = ("start", "stop", "list", "clean")
 
 
-def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = False) -> str:
+def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = False, as_json: bool = False) -> str:
     """``history keep start|stop|list|clean``: a named recording, a range of the session's history
     the server keeps past its retention policy. Read one with ``history --kept NAME``."""
     _flags(long=long)
@@ -134,9 +135,13 @@ def keep(agent: Agent, action: str | None, name: str | None, *, long: bool = Fal
         _usage(f"history keep {action} needs NAME")
     if long and action != "list":
         _usage("-L is only for history keep list")
+    if as_json and action != "list":
+        _usage("--json is only for history keep list")
 
     def run() -> str:
         if action == "list":
+            if as_json:
+                return json_text([row.to_dict() for row in agent.client.history.recordings()])
             rows = []
             for row in agent.client.history.recordings():
                 if not long:
@@ -210,9 +215,9 @@ def history(agent: Agent, action: str = "read", value: str | None = None, *, sta
     ends = [flag for flag, bound in {"--until": until, "--until-marker": until_marker}.items() if bound is not None]
     filters = bool(packages or priority or tags or grep is not None or not actions or driver_lines)
     if action == "keep":
-        if given or ends or recording or devices or logs or details or filters or as_json or limit != 200:
-            _usage("history keep takes only start|stop|list|clean, NAME and -L")
-        return keep(agent, value, name, long=long)
+        if given or ends or recording or devices or logs or details or filters or limit != 200:
+            _usage("history keep takes only start|stop|list|clean, NAME, -L and --json")
+        return keep(agent, value, name, long=long, as_json=as_json)
     if name is not None or long:
         _usage("NAME and -L go with history keep")
     if action != "read":
@@ -401,7 +406,6 @@ def _render(agent: Agent, page: HistoryPage, *, backward: bool, devices: tuple[s
         position = _position(page.next_cursor, backward=backward, logs=logs,
             edge=(span_low if backward else span_high) or page.through, devices=devices)
     if as_json:
-        from .output import json_text
         document = page.to_dict()
         del document["next_cursor"]  # `next` is what --after takes
         document["entries"] = [entry.to_dict() for entry in entries]

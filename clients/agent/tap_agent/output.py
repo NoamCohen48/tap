@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import dataclasses
+import datetime
 import enum
 import json
 import os
@@ -37,6 +38,8 @@ def json_value(value: Any) -> Any:
         return sorted(items) if isinstance(value, (set, frozenset)) else items
     if value is None or isinstance(value, (str, int, float, bool)):
         return value
+    if isinstance(value, datetime.datetime):
+        return value.isoformat()
     raise TypeError(f"Cannot render {type(value).__name__} as agent JSON")
 
 
