@@ -92,7 +92,7 @@ tap-agent history keep clean checkout
 
 Names are per session: another session may use the same name. Outside the session that made it,
 `--kept` needs the kept range's id (printed by `history keep list -L`) when the name is not unique.
-`-L` adds state, times, the id and retained disk bytes; ranges can share stored segments, so the
+`-L` (`--long`) adds state, times, the id and retained disk bytes; ranges can share stored segments, so the
 bytes are not what cleaning one will reclaim. `history keep clean NAME` deletes a stopped kept range;
 its entries then expire like the rest. Kept ranges bypass rolling eviction, not hard storage or
 free-space limits. `media-record` is separate video/audio capture. MCP: `history_keep`.

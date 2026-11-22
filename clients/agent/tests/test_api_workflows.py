@@ -370,9 +370,9 @@ def test_device_info_includes_the_top_activity_in_text_and_json(fake, agent, mon
 
 def test_media_record_max_is_a_whole_second_duration():
     parser = cli.parser()
-    assert parser.parse_args(["media-record", "start", "--max", "20s"]).max == 20
-    assert parser.parse_args(["media-record", "start", "--max", "1m"]).max == 60
-    for bad in (["--max", "1500ms"], ["--max-seconds", "20"]):
+    assert parser.parse_args(["media-record", "start", "--for", "20s"]).duration == 20
+    assert parser.parse_args(["media-record", "start", "--for", "1m"]).duration == 60
+    for bad in (["--for", "1500ms"], ["--max-seconds", "20"], ["--max", "20s"]):
         with pytest.raises(SystemExit):
             parser.parse_args(["media-record", "start", *bad])
 

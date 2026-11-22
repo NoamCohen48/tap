@@ -299,14 +299,14 @@ may arrive after collection ends, and stream loss is reported. Unrelated events 
 so observations do not prove causality. `--expect KIND[:TEXT]` fails the
 step (exit 1, still listing what did happen) when no such event arrives within
 `--event-timeout` (10 s). Kinds are `toast`, `window`, `content`, `click`, `scroll` and `text`.
-`watch KIND --until-first [--text TEXT]` waits for the next event from now on, and `watch KIND…` streams them,
+`watch --until-first KIND [--text TEXT]` waits for the next event from now on, and `watch KIND…` streams them,
 one line each, until you stop it: run it in the background to hear about a push message or a
 background sync while the session goes on. Events are hints: check the screen before acting on
 one. Event options are available on element inputs, gestures other than `scroll-until`, keys,
 panels, rotation, screen, keyboard, permission, notification and app commands; check each
 command's [options](commands.md). MCP tools that support observation take `events`,
 `expect_events` and `event_timeout_seconds`; MCP `watch` collects for at most 120 s, or with
-`until_first` returns the first event.
+`until_first=KIND` returns the first event of that kind.
 
 ## When a step fails
 
@@ -512,7 +512,7 @@ See [Device logs](../guide/logs.md).
 ## Record an owned device
 
 ```sh
-tap-agent media-record start --max 10s
+tap-agent media-record start --for 10s
 # Perform explicit app actions.
 tap-agent media-record stop -o evidence.mp4
 ```
