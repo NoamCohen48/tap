@@ -4,7 +4,39 @@ From 0.1.0, every Tap component shares one version (`docs/reference/releases.md`
 name the components affected. Earlier releases used independent version lines. Tap is alpha:
 0.x minor releases may change the API, and experimental parts may change in any release.
 
-## Unreleased
+## 0.3.0 — 2026-11-22
+
+All components use 0.3.0. Install the server and clients from this release together: the
+`tap.v1` API compatibility epoch is now 2, so 0.3.0 clients refuse a 0.2.0 server and 0.2.0
+clients refuse a 0.3.0 one, with an error that says so. Tap agent, Studio and watcher require
+`tap-e2e>=0.3.0`. The internal device protocol is unchanged (5.3, also negotiating 5.2 and 5.1).
+Downloads are published only after main CI and the release pipeline succeed.
+
+### Breaking
+
+Compared with 0.2.0:
+
+- **API epoch 2.** Screen snapshot nodes carry `window_kind` (`APPLICATION`, `INPUT_METHOD`,
+  `STATUS_BAR`, `NAVIGATION_BAR`, `SYSTEM`, …), decided by the server for every client, instead of
+  the raw `window_type` number. Upgrade the server and every client together.
+- **tap-agent `log` is now `history`** (`history mark`, `history redact`, `history --logs`), and
+  `history keep start|stop|list|clean NAME` (MCP `history_keep`) protects a named range.
+- **tap-agent event commands read by default.** `toast` reads retained toasts and `--wait` waits
+  (it used to wait unless given `--history`); `notification --wait` replaces `notification
+  await`. `toast TEXT` matches part of the text in any case, with `--exact` for the whole text
+  (instead of exact by default and `--contains`), and pages with `--after CURSOR` instead of
+  `--after-seq N --stream ID`.
+- **tap-agent `key 0` .. `key 9` are the digit keys**; a raw key code is `code:N` (a bare
+  number used to be a key code, so `key 5` pressed `KEYCODE_CALL`).
+- **tap-agent `type [TARGET] TEXT`** takes its target first, as `fill` does, instead of
+  `type TEXT --target TARGET`.
+- **tap-agent `snapshot --keyboard` / `--system-bars collapse|show|omit`** replace
+  `--hide-keyboard` and `--hide-system-chrome`; the keyboard and the bars are now one header
+  line each by default.
+- **tap-agent `swipe TARGET --finger DIRECTION`** replaces the positional direction.
+- **tap-agent `media-record start --for DURATION`** replaces `--max-seconds N`.
+- **tap-agent `devices unquarantine SERIAL`** replaces `unquarantine SERIAL`, and `keyboard` and
+  `screen` no longer take the `state` word.
 
 ### Engine
 

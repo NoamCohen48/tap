@@ -37,7 +37,7 @@ sharing a release version does not require an app team to update it for every se
 ## Stability
 
 Tap is **alpha** software. Every component, including the experimental synchronization SDK,
-uses the shared **0.2.0** release version.
+uses the shared **0.3.0** release version.
 
 - **0.x:** features and breaking changes increment the minor version (0.1.0 → 0.2.0);
   fixes increment the patch (0.1.0 → 0.1.1). Release notes identify affected components.
@@ -70,7 +70,7 @@ A version bump alone is not proof that a release is available: check its release
 ## Checking what you have
 
 ```bash
-tap version                      # tap daemon 0.2.0
+tap version                      # tap daemon 0.3.0
 python -c "import tap_e2e; print(tap_e2e.__version__)"
 python -c "import tap_agent; print(tap_agent.__version__)"
 tap-studio --version

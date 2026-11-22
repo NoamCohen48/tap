@@ -28,7 +28,7 @@ repositories {
 }
 
 dependencies {
-    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.2.0")   // brings tap-client
+    testImplementation("io.github.noamcohen48.tap:tap-junit5:0.3.0")   // brings tap-client
     testImplementation("org.junit.jupiter:junit-jupiter:5.13.4")
 }
 
