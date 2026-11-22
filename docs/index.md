@@ -121,16 +121,20 @@ and emulators. Your app stays as it is: Tap drives it from the outside.
 
     [Tap watcher](watcher/index.md){ .md-button }
 
-## New in 0.2.0
+## New in 0.3.0
 
-- **See what happened between screens.** [Device events](guide/events.md) observe toasts,
-  window changes and edits; [device logs](guide/logs.md) join app output with Tap's steps.
-- **Catch crashes, not just missing buttons.** [Crashes and ANRs](guide/app-deaths.md) carry
-  the app's failure into test results, with explicit opt-ins for tests that expect a death.
-- **Read lists with limits.** [Bulk reads and bounded scans](guide/gestures.md#read-a-scrollable-collection)
-  collect exposed rows without pretending a virtualized list is a complete dataset.
-- **Run the same test across phones.** The [pytest matrix](sdk/python.md#device-matrix-execution)
-  selects devices explicitly and reports each run separately.
+- **Look back at what happened.** The server keeps every call, crash, gap and device log after
+  release and restart; [history](guide/logs.md#history-after-the-script) reads it as one timeline,
+  and a named [kept range](agent/export.md#kept-ranges) survives rolling eviction.
+- **Press keys as a user does.** [Keys](guide/device-control.md#keys) can be counted, long or
+  held for a duration, with every Android key by name in both SDKs.
+- **Know what each window is.** Snapshot nodes say whether they are in the app, the keyboard,
+  the status bar or the navigation bar; select editable text with
+  [`editable()`](guide/selectors.md#entry-points), whatever its class.
+- **A steadier agent surface.** Tap agent reads by default and waits with `--wait`, takes
+  `--json` on every read, settles after app launches, and prints the keyboard and system bars
+  as one line each. Upgrading from 0.2.0? Read the
+  [breaking changes](https://github.com/NoamCohen48/tap/blob/main/CHANGELOG.md#breaking).
 
 ## How it works
 

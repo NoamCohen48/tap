@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "tap-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "CLI and MCP server for coding agents driving Android devices through the Tap daemon"
 readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "Apache-2.0" }
-# tap-e2e 0.2.0: app deaths, device logs, events and collection reads used by CLI/MCP.
+# tap-e2e 0.3.0: key press modes, window kinds, the editable flag and the renamed
+# show_ime_with_hard_keyboard condition used by CLI/MCP (plus 0.2.0's logs, deaths and events).
 # mcp 2.x (the server class is mcp.server.mcpserver.MCPServer); built and tested on 2.2.0.
-dependencies = ["tap-e2e>=0.2.0", "mcp>=2.2,<3"]
+dependencies = ["tap-e2e>=0.3.0", "mcp>=2.2,<3"]
 classifiers = ["Development Status :: 3 - Alpha", "License :: OSI Approved :: Apache Software License"]
 
 [project.urls]

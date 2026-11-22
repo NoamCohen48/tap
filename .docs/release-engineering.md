@@ -20,7 +20,7 @@ New releases use only `vX.Y.Z`. The Release set and Bundle workflows are removed
 
 ## Version sources
 
-- `gradle.properties`: **`tap.version=0.2.0`**, the canonical release version.
+- `gradle.properties`: **`tap.version=0.3.0`**, the canonical release version.
 - Root `build.gradle.kts`: every project uses that value and group
   `io.github.noamcohen48.tap`, including `device/sync-sdk` (version only; no synchronization
   behavior changes).
@@ -71,7 +71,7 @@ Entry points:
    the existing tag or republish it. `GITHUB_TOKEN` tag pushes do not create another run.
 2. **Explicit `v*` tag push:** also requires successful main CI for the tagged SHA and
    ancestry on `main`.
-3. **Recovery:** `gh workflow run Release --ref main -f tag=v0.2.0`. The tag must exist;
+3. **Recovery:** `gh workflow run Release --ref main -f tag=v0.3.0`. The tag must exist;
    checkout, assets and notes follow that tag, not the dispatch branch. It still checks CI.
 
 A repository-wide release concurrency group prevents two runs from mutating release state
@@ -124,7 +124,7 @@ dispatch failed, repair the access/transient issue and run `gh workflow run Docs
    together on a branch, and merge through a PR after its checks pass.
 2. Main CI must pass, including device and native lanes. The release workflow then tags and
    publishes the version automatically; a version-preparation commit alone is not a release.
-3. Wait for Release to succeed. Check `gh release view v0.2.0`, all three bundle downloads,
+3. Wait for Release to succeed. Check `gh release view v0.3.0`, all three bundle downloads,
    `SHA256SUMS`, and the website's Download page.
 4. For an interrupted run, use the recovery dispatch above; do not manually create per-family
    or bundle tags.
@@ -134,7 +134,7 @@ no device or credentials). Actionlint silently skips shell validation without Sh
 so check its presence explicitly, as the hosted job does:
 
 ```bash
-python .github/scripts/release_version.py v0.2.0
+python .github/scripts/release_version.py v0.3.0
 python -m unittest discover -s .github/scripts/tests -v
 shellcheck --version
 actionlint -shellcheck "$(command -v shellcheck)"
@@ -142,7 +142,7 @@ actionlint -shellcheck "$(command -v shellcheck)"
 
 The regression suite tests tag/mirror rejection, main-CI gating, immutable/resumable
 publication, every bundle's contents/checksums/modes and website download asset names.
-A real local Gradle staging build additionally proves all POMs and artifacts use 0.2.0.
+A real local Gradle staging build additionally proves all POMs and artifacts use 0.3.0.
 No local device matrix is required for this release-tooling change unless requested.
 
 ## CI and documentation deployment
@@ -176,7 +176,7 @@ site/Markdown artifacts, and deploys main to <https://noamcohen48.github.io/tap/
 version's release to be public: a missing tag or a draft is not enough. Release explicitly
 dispatches Docs after the public URL checks pass, because `GITHUB_TOKEN` release events do not
 start other workflows. This prevents publishing download links ahead of their assets.
-Website buttons and install snippets target `v0.2.0`, the version the unified pipeline will
+Website buttons and install snippets target `v0.3.0`, the version the unified pipeline will
 publish after main CI passes. The deployment gate keeps these links off the hosted site until
 the release is public. Product labels in the site
 are **Tap agent** and **Tap watcher**; CLI/package names stay unchanged.
@@ -191,6 +191,19 @@ are **Tap agent** and **Tap watcher**; CLI/package names stay unchanged.
 - Native builds and registry uploads require hosted CI.
 - Maven Central, Windows native builds, signed binaries and an offline installer remain
   outside this change.
+
+## Preparation: 0.3.0 (2026-11-22)
+
+Release preparation, not a published release or a tag. All version mirrors and the generated
+Python engine baseline are 0.3.0. The `tap.v1` API compatibility epoch is 2 (snapshot nodes'
+`window_type` became the server's `window_kind`), so 0.2.0 clients and servers refuse 0.3.0 ones;
+the device protocol stays 5.3. Agent/Studio/watcher require SDK 0.3.0 (the metadata test's floor).
+Verified before the bump on the API 34 emulator and the Samsung API 29 phone: the Kotlin fixture
+suite (47 passed, 2 skipped), the Python device suite (45 passed, 1 skipped; `test_motion` once
+measured 1.99 s of its 2 s and passed on the rerun) and a tap-agent smoke of key press modes,
+`ime-with-hard-keyboard` restore, window kinds, snapshot keyboard/bar views and `editable=true`.
+`:host:validation:deviceTest` and reboot checks were not run; main CI and the release workflow
+gate publication.
 
 ## Preparation: 0.2.0 (2026-11-20)
 

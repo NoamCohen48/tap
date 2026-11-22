@@ -28,7 +28,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     "release": [("tap-agent release", "released session 'agent' (detached emulator-5554)")],
     "server-info": [
         ("tap-agent server-info",
-         "daemon version     0.2.0\n"
+         "daemon version     0.3.0\n"
          "protocol version   5.3\n"
          "adb executable     adb\n"
          "state dir          /home/me/.tap\n"

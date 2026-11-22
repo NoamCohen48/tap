@@ -1,4 +1,4 @@
-"""Tools use SDK APIs introduced in 0.2.0, not just the original 0.1.0 API."""
+"""Tools use SDK APIs introduced in 0.3.0 (tap.v1 API epoch 2), not an older SDK."""
 import re
 import tomllib
 import unittest
@@ -18,7 +18,7 @@ class SdkDependencyTests(unittest.TestCase):
                 floor = re.fullmatch(r"tap-e2e>=(\d+)\.(\d+)\.(\d+)", sdk[0])
                 self.assertIsNotNone(floor, "Declare an explicit minimum compatible SDK")
                 assert floor is not None
-                self.assertGreaterEqual(tuple(map(int, floor.groups())), (0, 2, 0))
+                self.assertGreaterEqual(tuple(map(int, floor.groups())), (0, 3, 0))
 
 
 if __name__ == "__main__":
