@@ -769,6 +769,8 @@ async def test_mcp_tools_have_described_schemas(server):
             assert tool.description, tool.name
             jsonschema.Draft202012Validator.check_schema(tool.input_schema)
         assert "tap start" in (client.instructions or "")
+        condition = next(t for t in tools if t.name == "condition").input_schema["properties"]["name"]
+        assert [part["enum"] for part in condition["anyOf"] if "enum" in part] == [list(CONDITIONS)]  # from the one table
 
 
 @pytest.mark.anyio

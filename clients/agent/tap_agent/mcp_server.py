@@ -25,6 +25,7 @@ from pydantic import Field, StrictInt
 from . import render
 from .core import (
     APP_SETTLES,
+    CONDITIONS,
     EXIT_APP_DIED,
     EXIT_NO_DAEMON,
     EXIT_USAGE,
@@ -123,6 +124,7 @@ ExpectEvents = Annotated[
 ]
 EventTimeout = Annotated[float | None, Field(ge=0.001, le=120, description="How long expect_events waits after the step; default 10 s.")]
 Direction = Literal["up", "down", "left", "right"]
+ConditionName = Literal[CONDITIONS]  # pyright: ignore[reportInvalidTypeForm]  # the one condition table
 Session = Annotated[str, Field(description="Session name; omit for the server's default session.")]
 
 AsJson = Annotated[bool, Field(description="Structured JSON instead of text.")]
@@ -910,11 +912,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
     @mcp.tool(name="condition")
     async def condition(
         name: Annotated[
-            Literal[
-                "animations", "dark-mode", "font-scale", "density", "airplane-mode", "wifi", "mobile-data", "locale",
-                "stay-awake", "ime-with-hard-keyboard", "high-contrast-text", "color-inversion", "bold-text",
-            ]
-            | None,
+            ConditionName | None,
             Field(description="The condition to read or change; omit to read them all."),
         ] = None,
         value: Annotated[
@@ -926,8 +924,9 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         device: Device = "",
     ) -> CallToolResult:
         """Read the device conditions (animations, dark mode, font scale, display density, airplane
-        mode, Wi-Fi, mobile data, the device languages, stay awake while plugged in, high-contrast
-        text, colour inversion, bold text) or change one. A change lasts until release, which
+        mode, Wi-Fi, mobile data, the device languages, stay awake while plugged in, the soft
+        keyboard with a hardware keyboard, high-contrast text, colour inversion, bold text) or
+        change one. A change lasts until release, which
         restores what the device had, and the result is the value read back. Dark mode and the
         network switches need API 29+, bold text API 31+; the network switches are real (nothing
         is mocked)."""
