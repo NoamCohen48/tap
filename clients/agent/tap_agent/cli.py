@@ -385,7 +385,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--all", dest="all_captures", action="store_true", help="clean: every bundle")
     p.add_argument("--json", dest="as_json", action="store_true", help="list/show: structured JSON instead of text")
 
-    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS) + " (visible waits until the app owns the focused window)", on_device, expect)
+    p = verb("app", "app lifecycle: " + ", ".join(APP_ACTIONS) + " (visible waits until the app owns the focused window)", on_device, settle)
     p.add_argument("action", choices=APP_ACTIONS)
     p.add_argument("package", help="the app's package name, e.g. com.example.app")
     p.add_argument("argument", nargs="?", help="activity (launch), URI (open-link), APK path (install), permission (grant, revoke, granted) or languages (locale: fr-FR,en or system)")
@@ -578,7 +578,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "app-data":
         return agent.app_data(args.action, args.package, args.path, args.local, device, overwrite=args.overwrite)
     if v == "app":
-        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra, timeout=args.timeout, as_json=args.as_json)
+        return agent.app(args.action, args.package, args.argument, device, any_app=args.any_app, extras=args.extra, timeout=args.timeout, as_json=args.as_json, settle=settle)
     raise AssertionError(v)
 
 

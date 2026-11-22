@@ -1,8 +1,9 @@
 # A session, step by step
 
 Below is a real session on an API 34 emulator, run from the command line. Over MCP the same
-steps are tool calls with the same output, with one difference: MCP actions settle by default
-(the CLI's `--settle`) and return what changed; pass `settle=false` to skip it.
+steps are tool calls with the same output, with one difference: MCP actions, app launches
+included, settle by default (the CLI's `--settle`, at most 3 s) and return what changed; pass
+`settle=false` to skip it.
 
 ## Attach a device
 
@@ -237,7 +238,10 @@ string limits still apply. There is no XPath or raw command escape hatch.
 their ref is unchanged; validation state does not change a node's identity. That is usually
 enough to pick the next step without another
 snapshot. A screen that never goes quiet (a blinking cursor, a spinner) prints
-`(screen still changing after 10s)` with the difference so far. If Android reports no focused
+`(screen still changing after 10s)` with the difference so far; the settle after an action stops
+sooner, after 3 s, and adds that `settle` waits longer, so a moving screen
+does not hold every step. `app launch`, `cold-launch`, `foreground` and `open-link` take `--settle`
+too (MCP: by default). If Android reports no focused
 app, settling fails with an actionable error instead of sending an empty package name. Use
 `snapshot` to inspect that state; do not repeat an action just because its settling step failed.
 
