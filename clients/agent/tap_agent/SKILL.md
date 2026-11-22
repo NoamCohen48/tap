@@ -193,13 +193,13 @@ first, without consuming them; `text` is part of the toast in any case, as for `
 and `--expect toast:TEXT` (`--exact`: the whole toast, case included); `toast --wait [text] …` waits for a toast instead (one shown in
 the last 3.5 s counts; any app's unless `--package`) and prints its text and app. Reads print
 text and waits wait with `--wait` throughout: `toast`, `notification`, `deaths`. The driver retains 128 toasts with no age expiry until
-release/reuse or driver loss. Use `--after-seq N --stream ID` from its cursor for the next
+release/reuse or driver loss. Use `--after CURSOR`, the cursor it printed after `next:`, for the next
 read, and `--json` for structured data. Gaps, resets and truncated text are explicit.
 The cursor advances over filtered-out observations too; these are history, not current UI.
 
 `snapshot`, `settle` and `--settle` responses deliver and acknowledge unread toasts. CLI/MCP
 share the cursor under the same `TAP_AGENT_DIR` or output directory, per attachment.
-`toast` reads, including explicit `--after-seq N --stream ID` ones, never consume them.
+`toast` reads, including explicit `--after CURSOR` ones, never consume them.
 `snapshot --json` adds `toast_events`. Screen filters do
 not filter this inbox. A failed inbox read warns without hiding the screen or advancing the
 cursor. If a process dies after acknowledgement but before output arrives, use toast history

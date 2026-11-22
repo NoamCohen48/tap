@@ -74,7 +74,7 @@ case; `--exact` (MCP `exact`) asks for the whole text, case included. `--timeout
 
 CLI and MCP share the unread cursor when they use the same `TAP_AGENT_DIR` (or output
 directory). Each attachment has its own cursor; reads are serialized across processes.
-`toast --after-seq N --stream ID` reads an explicit cursor without acknowledging unread toasts;
+`toast --after CURSOR` (the cursor a read printed after `next:`) reads on from it without acknowledging unread toasts;
 MCP `toast` offers the same fields. Only snapshot/settle delivery advances the unread cursor.
 `toast --wait` (MCP `wait=true`) uses the 3.5-second wait lookback. Every event command reads
 by default and waits with `--wait`: `toast`, `notification` and `deaths`.

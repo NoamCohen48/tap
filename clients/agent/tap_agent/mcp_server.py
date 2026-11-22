@@ -682,8 +682,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         exact: Annotated[bool, Field(description="text is the whole toast, case included.")] = False,
         package: Annotated[str, Field(description="Only this package's toasts; omit for any app's.")] = "",
         wait: Annotated[bool, Field(description="Wait for a matching toast (one shown in the last 3.5 s counts) instead of reading.")] = False,
-        after_seq: Annotated[StrictInt, Field(ge=0, le=2**63 - 1, description="Read: exclusive sequence cursor.")] = 0,
-        stream: Annotated[str, Field(max_length=128, description="Read: stream ID from the previous read.")] = "",
+        after: Annotated[str, Field(max_length=160, description="Read: the toasts after the cursor a previous read printed (next: ..., JSON next).")] = "",
         as_json: Annotated[bool, Field(description="Read: structured observations and cursor metadata.")] = False,
         timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="With wait only: how long; omit for 10.")] = None,
         session: Session = "",
@@ -693,7 +692,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         inbox), or with wait=true wait for a toast."""
         return await call(
             session, lambda a: a.toast(text or None, device or None, exact=exact, package=package or None, timeout=timeout_seconds,
-                                      wait=wait, after_seq=after_seq, stream=stream, as_json=as_json)
+                                      wait=wait, after=after or None, as_json=as_json)
         )
 
     @mcp.tool(name="notification")

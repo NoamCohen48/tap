@@ -325,8 +325,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--exact", action="store_true", help="text is the whole toast, case included")
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
     p.add_argument("--wait", action="store_true", help="wait for a matching toast (one shown in the last 3.5 s counts)")
-    p.add_argument("--after-seq", type=int, default=0, help="read: exclusive sequence cursor (default 0)")
-    p.add_argument("--stream", default="", help="read: stream ID from the previous read")
+    p.add_argument("--after", metavar="CURSOR", help="read: the toasts after the cursor a previous read printed after next:")
     p.add_argument("--json", dest="as_json", action="store_true", help="read: structured observations and cursor metadata")
     p.add_argument("--timeout", type=_command_duration, help="with --wait only: at most 120s; default 10s")
 
@@ -529,7 +528,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
         )
     if v == "toast":
         return agent.toast(args.text, device, exact=args.exact, package=args.package, timeout=args.timeout,
-                           wait=args.wait, after_seq=args.after_seq, stream=args.stream, as_json=args.as_json)
+                           wait=args.wait, after=args.after, as_json=args.as_json)
     if v == "scroll":
         return agent.scroll(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
     if v == "swipe":

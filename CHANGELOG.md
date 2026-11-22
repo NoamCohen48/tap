@@ -8,6 +8,8 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `toast --after CURSOR` (MCP `after`) replaces `--after-seq N --stream ID`: a read ends
+  with `next: --after CURSOR` (JSON `next`), one opaque cursor as `history --after` takes.
 - tap-agent names "stop after this long" `--for` everywhere: `media-record start --for 20s`
   replaces `--max` (MCP `duration_seconds` replaces `max_seconds`), as `watch --for`.
   `watch --until-first KIND` takes its one kind (MCP `until_first="toast"`) instead of a flag
