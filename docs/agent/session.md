@@ -398,7 +398,9 @@ and unknown outcomes.
 `devices` includes API level, model/manufacturer and emulator/physical properties when available.
 `server-info` and `device-info` print the SDK's complete metadata as `name  value` lines (`--json`
 for the object); `device-info` is the whole device state in one read: display, screen and
-keyguard, keyboard, every condition and the foreground activity. `activity`, `screen`,
+keyguard, keyboard and the foreground activity, then every condition as `condition` prints it
+(`dark-mode off`, `density 420 dpi`). Its JSON has `foreground_activity` as `package_name` and
+`class_name` (null when none is resumed) and `foreground_activity_error` apart. `activity`, `screen`,
 `keyboard` and `condition` stay as quick reads of one part. With several devices,
 pass `--device SERIAL`; `detach --device SERIAL` releases only that device (including its temporary
 settings/files), leaving the session and other attachments alive. `release` still ends them all.

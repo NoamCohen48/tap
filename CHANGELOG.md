@@ -8,6 +8,11 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent `device-info --json` gives `foreground_activity` as `package_name` and `class_name`
+  (null when none is resumed) and a failed read in `foreground_activity_error`, instead of a
+  `"pkg/cls"` or `"unavailable: …"` string. Its text keys are hyphenated (`screen-on`,
+  `foreground-activity`) and its conditions read as `condition` prints them (`dark-mode off`,
+  `density 420 dpi`).
 - tap-agent `history keep` says "kept range" throughout (`keeping 'checkout'`, `stopped keeping`,
   `no kept ranges`, the `keeping` state), so it is not mistaken for `media-record`; history JSON
   names the range `kept` instead of `recording`. MCP `history_keep(action, name, long, as_json)`

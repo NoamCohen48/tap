@@ -43,7 +43,7 @@ def test_metadata_candidates_and_exported_calls(fake, agent):
     agent.attach("first")
     fake.devices.responder = lambda c: pb.CommandResult(device_info=pb.DeviceInfo(current_package="com.example")) if c.WhichOneof("op") == "device_info" else None
     assert json.loads(agent.device_info(as_json=True))["current_package"] == "com.example"
-    assert re.search(r"^current package +com\.example$", agent.device_info(), re.M)
+    assert re.search(r"^current-package +com\.example$", agent.device_info(), re.M)
     agent.snapshot(as_json=True)
     assert fake.devices.snapshot_requests[-1].selector_candidates
     agent.tap("id=save")
@@ -344,15 +344,24 @@ def test_private_outputs_appear_whole_or_not_at_all(tmp_path, monkeypatch):
 def test_device_info_includes_the_top_activity_in_text_and_json(fake, agent, monkeypatch, client):
     agent.attach("first")
     fake.devices.foreground = ("com.shop", "com.shop.CheckoutActivity")
-    assert re.search(r"^foreground activity +com\.shop/com\.shop\.CheckoutActivity$", agent.device_info(), re.M)
-    assert json.loads(agent.device_info(as_json=True))["foreground_activity"] == "com.shop/com.shop.CheckoutActivity"
+    text = agent.device_info()
+    assert re.search(r"^foreground-activity +com\.shop/com\.shop\.CheckoutActivity$", text, re.M)
+    # The conditions read as `condition` prints them: its names, on/off.
+    assert re.search(r"^dark-mode +off$", text, re.M) and re.search(r"^animations +(on|off)$", text, re.M)
+    assert not re.search(r"^(dark mode|animations enabled) ", text, re.M)
+    document = json.loads(agent.device_info(as_json=True))
+    assert document["foreground_activity"] == {"package_name": "com.shop", "class_name": "com.shop.CheckoutActivity"}
+    assert document["foreground_activity_error"] is None
     fake.devices.foreground = None
-    assert re.search(r"^foreground activity +none$", agent.device_info(), re.M)
-    assert json.loads(agent.device_info(as_json=True))["foreground_activity"] is None
+    assert re.search(r"^foreground-activity +none$", agent.device_info(), re.M)
+    document = json.loads(agent.device_info(as_json=True))
+    assert document["foreground_activity"] is None and document["foreground_activity_error"] is None
     def broken(request, timeout=None):
         raise TapError("activity read lost")
     monkeypatch.setattr(client.device_stub, "GetForegroundActivity", broken)
-    assert "foreground activity" in agent.device_info() and "unavailable: " in agent.device_info()
+    assert re.search(r"^foreground-activity +unavailable \(TapError: .*activity read lost", agent.device_info(), re.M)
+    document = json.loads(agent.device_info(as_json=True))
+    assert document["foreground_activity"] is None and "activity read lost" in document["foreground_activity_error"]
 
 
 def test_media_record_max_is_a_whole_second_duration():

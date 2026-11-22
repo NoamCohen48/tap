@@ -38,20 +38,21 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     ],
     "device-info": [
         ("tap-agent device-info",
-         "api level            34\n"
+         "api-level            34\n"
          "model                sdk_gphone64_x86_64\n"
-         "display width        1080\n"
-         "display height       2400\n"
-         "display rotation     NATURAL\n"
-         "current package      com.shop\n"
-         "screen on            yes\n"
-         "keyguard locked      no\n"
-         "keyboard shown       no\n"
-         "animations enabled   yes\n"
-         "dark mode            no\n"
-         "font scale           1\n"
-         "density dpi          420\n"
-         "foreground activity  com.shop/com.shop.CheckoutActivity"),
+         "display-width        1080\n"
+         "display-height       2400\n"
+         "display-rotation     NATURAL\n"
+         "current-package      com.shop\n"
+         "screen-on            yes\n"
+         "keyguard-locked      no\n"
+         "keyboard-shown       no\n"
+         "foreground-activity  com.shop/com.shop.CheckoutActivity\n"
+         "animations           on\n"
+         "dark-mode            off\n"
+         "font-scale           1\n"
+         "density              420 dpi\n"
+         "…"),
     ],
     "capabilities": [
         ("tap-agent capabilities",
