@@ -131,6 +131,13 @@ CONDITIONS = (
     "stay-awake", "ime-with-hard-keyboard", "high-contrast-text", "color-inversion", "bold-text",
 )
 """The device conditions `condition` reads or changes (restored on release)."""
+CONDITION_FIELDS = {
+    "animations": "animations_enabled", "dark-mode": "dark_mode", "font-scale": "font_scale", "density": "density_dpi",
+    "airplane-mode": "airplane_mode", "wifi": "wifi_enabled", "mobile-data": "mobile_data_enabled", "locale": "system_locales",
+    "stay-awake": "stay_awake", "ime-with-hard-keyboard": "show_ime_with_hard_keyboard",
+    "high-contrast-text": "high_contrast_text", "color-inversion": "color_inversion", "bold-text": "bold_text",
+}
+"""The `DeviceInfo` field each condition reads; `condition` and `device-info` print them alike."""
 
 # Exit codes shared by the CLI and reported in MCP error results.
 EXIT_OK = 0
@@ -682,21 +689,28 @@ class Agent:
 
     def device_info(self, device: str | None = None, *, as_json: bool = False) -> str:
         """The whole current device state, one ``name  value`` line each: the SDK device
-        information (display, current package, screen and keyguard, keyboard, every condition)
-        and the activity on top (``foreground activity``, ``none`` when none is resumed). With
-        ``as_json``: the SDK object plus ``foreground_activity``. A failed activity read is
-        reported in its place, never failing the rest."""
+        information (display, current package, screen and keyguard, keyboard) and the activity on
+        top (``foreground-activity``, ``none`` when none is resumed), then every condition as
+        ``condition`` prints it (``dark-mode off``). With ``as_json``: the SDK object plus
+        ``foreground_activity`` (``package_name`` and ``class_name``, or null) and
+        ``foreground_activity_error`` (why it could not be read, else null). A failed activity
+        read never fails the rest."""
         def step() -> str:
             d = self._device(device)
-            values = json_value(d.info())
+            info = d.info()
+            top, error = None, None
             try:
                 top = d.foreground_activity()
-                values["foreground_activity"] = None if top is None else f"{top.package_name}/{top.class_name}"
-            except TapError as error:
-                values["foreground_activity"] = f"unavailable: {type(error).__name__}"
+            except TapError as failure:
+                error = f"{type(failure).__name__}: {failure}"
+            values = json_value(info)
             if as_json:
-                return json_text(values)
-            shown = dict(values, foreground_activity=values["foreground_activity"] or "none")
+                return json_text(dict(values, foreground_activity=json_value(top), foreground_activity_error=error))
+            conditions = set(CONDITION_FIELDS.values())
+            shown = {key.replace("_", "-"): value for key, value in values.items() if key not in conditions}
+            shown["foreground-activity"] = (f"unavailable ({error})" if error is not None
+                else "none" if top is None else f"{top.package_name}/{top.class_name}")
+            shown.update((name, _condition_text(name, getattr(info, CONDITION_FIELDS[name]))) for name in CONDITIONS)
             return render.fields_text(shown)
         return self._run(step)
 
@@ -1275,30 +1289,10 @@ class Agent:
                 with sending():
                     change(d)
             info = d.info()
+            names = CONDITIONS if name is None else (name,)
             if as_json:
-                values = {
-                    "animations": info.animations_enabled, "dark-mode": info.dark_mode, "font-scale": info.font_scale,
-                    "density": info.density_dpi, "airplane-mode": info.airplane_mode, "wifi": info.wifi_enabled,
-                    "mobile-data": info.mobile_data_enabled, "locale": list(info.system_locales), "stay-awake": info.stay_awake,
-                    "ime-with-hard-keyboard": info.show_ime_with_hard_keyboard, "high-contrast-text": info.high_contrast_text,
-                    "color-inversion": info.color_inversion, "bold-text": info.bold_text,
-                }
-                return json_text({key: values[key] for key in (CONDITIONS if name is None else (name,))})
-            shown = {
-                "animations": "on" if info.animations_enabled else "off",
-                "dark-mode": "on" if info.dark_mode else "off",
-                "font-scale": f"{info.font_scale:g}",
-                "density": f"{info.density_dpi} dpi",
-                "airplane-mode": "on" if info.airplane_mode else "off",
-                "wifi": "on" if info.wifi_enabled else "off",
-                "mobile-data": "on" if info.mobile_data_enabled else "off",
-                "locale": ",".join(info.system_locales) or "unknown",
-                "stay-awake": "on" if info.stay_awake else "off",
-                "ime-with-hard-keyboard": _switch(info.show_ime_with_hard_keyboard),
-                "high-contrast-text": _switch(info.high_contrast_text),
-                "color-inversion": _switch(info.color_inversion),
-                "bold-text": "on" if info.bold_text else "off",
-            }
+                return json_text({key: getattr(info, CONDITION_FIELDS[key]) for key in names})
+            shown = {key: _condition_text(key, getattr(info, CONDITION_FIELDS[key])) for key in names}
             if name is None:
                 return "\n".join(f"{key} {shown[key]}" for key in CONDITIONS)
             return f"{name} {shown[name]}" + (" (restored on release)" if change is not None else "")
@@ -2062,6 +2056,17 @@ def _notification_line(n: Notification) -> str:
 
 def _switch(value: bool | None) -> str:
     return "unknown" if value is None else "on" if value else "off"
+
+
+def _condition_text(name: str, value: Any) -> str:
+    """A condition's value as ``condition`` prints it: on/off (unknown), a scale, dpi, tags."""
+    if name == "font-scale":
+        return f"{value:g}"
+    if name == "density":
+        return f"{value} dpi"
+    if name == "locale":
+        return ",".join(value) or "unknown"
+    return _switch(value)
 
 
 def _direction(name: str) -> Direction:
