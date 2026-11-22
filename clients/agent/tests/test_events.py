@@ -134,9 +134,14 @@ def test_watch_until_first_times_out_and_rejects_unknown_or_several_kinds(fake, 
             agent.watch_first(kinds, timeout=0.2)
         assert failure.value.exit_code == EXIT_USAGE
     parser = cli.parser()
-    for args in (["watch", "toast", "--until-first", "--for", "1s"], ["watch", "toast", "--until-first", "--json"]):
+    for args in (["watch", "--until-first", "toast", "--for", "1s"], ["watch", "--until-first", "toast", "--json"],
+                 ["watch", "window", "--until-first", "toast"]):
         with pytest.raises(UsageError):
             cli.run(parser.parse_args(args), agent)
+    assert parser.parse_args(["watch", "--until-first", "toast"]).until_first == "toast"
+    with pytest.raises(SystemExit):
+        parser.parse_args(["watch", "--until-first", "banana"])
+    assert cli.main(["watch"]) == EXIT_USAGE  # a stream needs a KIND
 
 
 def test_watch_streams_lines_until_the_device_is_detached(fake, agent):
@@ -238,8 +243,8 @@ async def test_mcp_tools(fake, server):
             fake.devices.feed_events([toast(5, "Loading"), toast(6, "Message sent")])
 
         threading.Thread(target=later, daemon=True).start()
-        result = await client.call_tool("watch", {"kinds": ["toast"], "until_first": True, "text": "sent", "timeout_seconds": 2})
+        result = await client.call_tool("watch", {"until_first": "toast", "text": "sent", "timeout_seconds": 2})
         assert not result.is_error and result.content[0].text == 'toast "Message sent" (com.shop)'
-        for wrong in ({"kinds": ["toast"]}, {"kinds": ["toast"], "until_first": True, "duration_seconds": 1},
+        for wrong in ({"kinds": ["toast"]}, {"until_first": "toast", "duration_seconds": 1}, {"until_first": "toast", "kinds": ["toast"]}, {"duration_seconds": 1},
                       {"kinds": ["toast"], "duration_seconds": 1, "text": "x"}):
             assert (await client.call_tool("watch", wrong)).is_error

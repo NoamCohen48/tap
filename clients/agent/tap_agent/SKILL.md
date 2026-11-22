@@ -250,7 +250,7 @@ help observe them.
 ```sh
 tap-agent tap @e7 --events toast,window      # also print events observed during the step
 tap-agent tap @e7 --expect toast:saved       # fail unless it shows a toast containing "saved"
-tap-agent watch window --until-first --package com.example --timeout 30s
+tap-agent watch --until-first window --package com.example --timeout 30s
 tap-agent watch toast window                 # stream, one line per event; Ctrl-C or --for 2m
 ```
 
@@ -263,7 +263,7 @@ Android may emit no event, a late event may arrive after collection ends, and st
 reported. Observed events can include unrelated activity; an expectation is not proof of causality. `--expect KIND[:TEXT]`
 waits up to `--event-timeout` (10 s) after the step; TEXT is part of the event, any case: a
 toast's message, a window's title or class, a click's label, an edit's text. Repeat it for
-several. `watch KIND --until-first [--text TEXT]` waits for the next one from now on: it cannot see an event
+several. `watch --until-first KIND [--text TEXT]` waits for the next one from now on: it cannot see an event
 that already happened, so for what your own step causes use `--expect` on that step. It is a
 step: the session runs one at a time, so nothing else of yours runs while it waits (`watch`
 does not hold the session). Typing raises `text` events per key; `fill` (text set in one step)
@@ -340,7 +340,7 @@ is the SDK snapshot with selector candidates; use the default view. `condition`,
 `action TARGET` (list), `devices`, `sessions` and `history keep list` too; `--json` with an
 action or a change (`screen on`, `condition wifi off`) is a usage error.
 
-`media-record start --max 10s` explicitly starts silent video through the daemon's scrcpy;
+`media-record start --for 10s` explicitly starts silent video through the daemon's scrcpy;
 `media-record stop [-o NEW_FILE]` verifies and saves it privately. Default limits: video 30s/16 MiB,
 audio-only 60s/3 MiB. Start can select `--audio-source output` (API 30+, mutes speakers), playback
 (API 33+, apps can opt out), or mic (captures microphone); `--no-video` selects audio only.

@@ -89,7 +89,7 @@ Tools with events/expect_events parameters observe toast, window, content, click
 text events, subscribing before input. Not every mutation supports them (scroll_until does not).
 expect_events=["toast:saved"] fails unless that event is observed within the budget, not proof
 of causality: unrelated events may arrive. Collection is finite, Android may emit no event and
-stream loss is reported. watch collects for a bounded time; watch(until_first=true) waits for the next event.
+stream loss is reported. watch collects for a bounded time; watch(until_first="toast") waits for the next event of a kind.
 CLI and MCP share histories through the same TAP_AGENT_DIR.
 Snapshots and settle append unread toast events, including ones that disappeared while you
 were thinking. toast reads retained toasts without consuming them; toast(wait=true) waits for one.
@@ -296,7 +296,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         action: Literal["start", "stop"],
         video: bool = True,
         audio_source: Annotated[Literal["output", "playback", "mic"] | None, Field(description="Start: output mutes speakers; mic captures the microphone.")] = None,
-        max_seconds: Annotated[StrictInt | None, Field(ge=1, le=60, description="Start: at most 30 with video or 60 audio-only.")] = None,
+        duration_seconds: Annotated[StrictInt | None, Field(ge=1, le=60, description="Start: stop after this many seconds, at most 30 with video or 60 audio-only.")] = None,
         path: Annotated[str, Field(description="Stop: additional new local output; a private canonical copy is retained.")] = "",
         session: Session = "",
         device: Device = "",
@@ -304,7 +304,7 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         """Explicit bounded recording of an agent-owned device. Start needs scrcpy; video-only
         by default, audio needs API 30+. Stop saves SDK-verified bytes privately. Never replay
         start/stop or relaunch an app on failure. Track/duration options are for start only."""
-        return await call(session, lambda a: a.recording(action, device or None, video=video, audio_source=audio_source, max_seconds=max_seconds, out=path or None))
+        return await call(session, lambda a: a.recording(action, device or None, video=video, audio_source=audio_source, max_seconds=duration_seconds, out=path or None))
 
     @mcp.tool(name="scroll_until")
     async def scroll_until(
@@ -853,10 +853,10 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
 
     @mcp.tool(name="watch", annotations=READ_ONLY)
     async def watch(
-        kinds: Annotated[list[EventKind], Field(min_length=1, description="The event kinds to collect (one with until_first).")],
+        kinds: Annotated[list[EventKind], Field(description="The event kinds to collect; none with until_first.")] = Field(default_factory=list),
         duration_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="How long to collect; required unless until_first.")] = None,
         package: Annotated[str, Field(description="Only this package's events; omit for any app's.")] = "",
-        until_first: Annotated[bool, Field(description="Wait for the first event of the one kind from now on and return it (an error after timeout_seconds).")] = False,
+        until_first: Annotated[EventKind | None, Field(description="Wait for the first event of this kind from now on and return it (an error after timeout_seconds).")] = None,
         text: Annotated[str, Field(description="With until_first: part of the event's text, any case: a toast's message, a window's title or class, a click's label, an edit's text; omit for any.")] = "",
         timeout_seconds: Annotated[float | None, Field(ge=0.001, le=120, description="With until_first: how long to wait (default 10).")] = None,
         session: Session = "",
@@ -869,16 +869,16 @@ def create_server(agent_for: Callable[[str], Agent] | None = None, default_sessi
         from before it). Read-only."""
         def step(a: Agent) -> str:
             if until_first:
-                if duration_seconds is not None:
-                    raise AgentError("until_first returns one event: it takes no duration_seconds", EXIT_USAGE)
-                return a.watch_first(kinds, text or None, device or None, package=package or None,
+                if duration_seconds is not None or kinds:
+                    raise AgentError("until_first returns one event of its kind: it takes no kinds or duration_seconds", EXIT_USAGE)
+                return a.watch_first(until_first, text or None, device or None, package=package or None,
                                      timeout=10.0 if timeout_seconds is None else timeout_seconds)
-            if duration_seconds is None:
-                raise AgentError("watch needs duration_seconds, or until_first", EXIT_USAGE)
+            if not kinds or duration_seconds is None:
+                raise AgentError("watch needs kinds and duration_seconds, or until_first KIND", EXIT_USAGE)
             if text or timeout_seconds is not None:
                 raise AgentError("text and timeout_seconds go with until_first", EXIT_USAGE)
             return "\n".join(a.watch(kinds, device or None, package=package or None, duration=duration_seconds)) or "(no events)"
-        return await call(session, report=until_first, step=step)
+        return await call(session, report=until_first is not None, step=step)
 
     @mcp.tool(name="settle", annotations=WRITES_FILES)
     async def settle(

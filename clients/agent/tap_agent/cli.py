@@ -161,7 +161,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=("start", "stop"))
     p.add_argument("--no-video", action="store_false", dest="video", help="start: audio only")
     p.add_argument("--audio-source", choices=("output", "playback", "mic"), help="start: output mutes speakers; mic captures microphone")
-    p.add_argument("--max", type=_whole_seconds, metavar="DURATION", help="start: stop after this long, whole seconds: 1s..30s with video, 1s..60s audio only")
+    p.add_argument("--for", dest="duration", type=_whole_seconds, metavar="DURATION", help="start: stop after this long, whole seconds: 1s..30s with video, 1s..60s audio only")
     p.add_argument("-o", "--out", help="stop: additional new output; a private canonical copy is retained")
 
     p = verb("snapshot", "print the screen, one node per line with its ref", on_device)
@@ -341,12 +341,12 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--button", help="open: press the action button with this title instead")
     p.add_argument("--timeout", type=_command_duration, default=10.0, help="command/wait budget, at most 120s; default 10s")
 
-    p = verb("watch", "print device events as they happen, one per line, until stopped (Ctrl-C), --for ends or the device is detached; or --until-first", on_device)
-    p.add_argument("kinds", nargs="+", metavar="KIND", help=f"event kinds, each or comma lists: {', '.join(EVENT_KINDS)}")
+    p = verb("watch", "print device events as they happen, one per line, until stopped (Ctrl-C), --for ends or the device is detached; or --until-first KIND", on_device)
+    p.add_argument("kinds", nargs="*", metavar="KIND", help=f"event kinds, each or comma lists: {', '.join(EVENT_KINDS)} (none with --until-first)")
     p.add_argument("--package", help="only this package's events (default: any app's)")
     p.add_argument("--for", dest="duration", type=_duration, default=None, metavar="DURATION", help="stop after this long (default: until stopped)")
     p.add_argument("--json", dest="as_json", action="store_true", help="one JSON object per line")
-    p.add_argument("--until-first", action="store_true", help="wait for the first event of one KIND from now on, print it and stop (exit 1 on --timeout)")
+    p.add_argument("--until-first", choices=EVENT_KINDS, metavar="KIND", help="wait for the first event of this kind from now on, print it and stop (exit 1 on --timeout)")
     p.add_argument("--text", help="with --until-first: part of the event's text, any case: a toast's message, a window's title or class, a click's label, an edit's text")
     p.add_argument("--timeout", type=_command_duration, default=None, help="with --until-first: at most 120s; default 10s")
 
@@ -380,7 +380,7 @@ def parser() -> argparse.ArgumentParser:
     since = p.add_mutually_exclusive_group()
     since.add_argument("--last", metavar="DURATION", help="taking: only the last DURATION of history (default: all that is kept); list: bundles taken in it")
     since.add_argument("--from", dest="start", metavar="TIME", help="taking: history from this ISO time with a time zone; list: bundles taken since")
-    p.add_argument("-L", dest="long", action="store_true", help="list: id, folder, parts and failed parts")
+    p.add_argument("-L", "--long", dest="long", action="store_true", help="list: id, folder, parts and failed parts")
     p.add_argument("--older-than", metavar="DURATION", help="clean: every bundle taken longer ago than DURATION")
     p.add_argument("--all", dest="all_captures", action="store_true", help="clean: every bundle")
     p.add_argument("--json", dest="as_json", action="store_true", help="list/show: structured JSON instead of text")
@@ -411,7 +411,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("action", choices=("read", "mark", "redact", "keep"), nargs="?", default="read")
     p.add_argument("value", nargs="?", help="mark NAME, redact REGEX, or keep start|stop|list|clean")
     p.add_argument("name", nargs="?", help="keep start/stop/clean: the kept range's name (or its id, as `history keep list -L` shows it)")
-    p.add_argument("-L", dest="long", action="store_true", help="keep list: state, id, connection, times and disk use")
+    p.add_argument("-L", "--long", dest="long", action="store_true", help="keep list: state, id, connection, times and disk use")
     p.add_argument("-d", "--device", dest="history_devices", action="append", default=[], metavar="SERIAL", help="only these devices (repeatable); for mark/redact, these held devices")
     p.add_argument("--kept", metavar="NAME", help="only a kept range (`history keep start`), also after its session ended")
     start = p.add_argument_group("where to start (one; default: the newest entries)")
@@ -483,7 +483,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
             raise UsageError("--timeout needs --wait")
         return agent.deaths(device, package=args.package, all_apps=args.all_apps, trace=args.trace, as_json=args.as_json)
     if v == "media-record":
-        return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.max, out=args.out)
+        return agent.recording(args.action, device, video=args.video, audio_source=args.audio_source, max_seconds=args.duration, out=args.out)
     if v == "snapshot":
         return agent.snapshot(device, args.level or render.DEFAULT, as_json=args.as_json,
                               package=args.package, window=args.window, keyboard=args.keyboard,
@@ -558,9 +558,9 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
     if v == "wait":
         return agent.wait(args.target, device, args.state or "visible", args.timeout, value=args.value, until=args.until)
     if v == "watch":  # --until-first; a plain watch streams from main
-        if args.duration is not None or args.as_json:
-            raise UsageError("--until-first prints one event: it takes no --for or --json")
-        return agent.watch_first(args.kinds, args.text, device, package=args.package,
+        if args.duration is not None or args.as_json or args.kinds:
+            raise UsageError("--until-first KIND prints one event: it takes no other KIND, --for or --json")
+        return agent.watch_first(args.until_first, args.text, device, package=args.package,
                                  timeout=DEFAULT_WAIT if args.timeout is None else args.timeout)
     if v == "settle":
         return agent.settle(device, full=args.full, timeout=args.timeout, package=args.package, stable_for=args.stable_for, signal=args.signal)
@@ -613,6 +613,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.verb == "watch" and not args.until_first:
             if args.text is not None or args.timeout is not None:
                 raise UsageError("--text and --timeout go with --until-first")
+            if not args.kinds:
+                raise UsageError(f"watch needs a KIND ({', '.join(EVENT_KINDS)}), or --until-first KIND")
             for line in agent.watch(args.kinds, getattr(args, "device", None), package=args.package, duration=args.duration, as_json=args.as_json):
                 print(line, flush=True)
             return EXIT_OK

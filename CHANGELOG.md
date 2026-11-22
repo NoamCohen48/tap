@@ -8,6 +8,10 @@ name the components affected. Earlier releases used independent version lines. T
 
 ### Engine
 
+- tap-agent names "stop after this long" `--for` everywhere: `media-record start --for 20s`
+  replaces `--max` (MCP `duration_seconds` replaces `max_seconds`), as `watch --for`.
+  `watch --until-first KIND` takes its one kind (MCP `until_first="toast"`) instead of a flag
+  beside a kind list that had to hold exactly one, and `-L` has the long form `--long`.
 - tap-agent MCP `condition` takes its names from the CLI's condition table, so the two cannot
   drift; its description now names the soft keyboard with a hardware keyboard.
 - tap-agent's settle after an action (`--settle`, MCP's default) stops after 3 s instead of 10 s
@@ -103,7 +107,7 @@ name the components affected. Earlier releases used independent version lines. T
 - tap-agent no longer fails a step whose input was sent when the `--settle` after it fails (for
   example with no focused app): the output reports `! not settled (...)` instead, so the step
   is not mistaken for one that did not run.
-- tap-agent `media-record start --max DURATION` (whole seconds, e.g. `20s`) replaces
+- tap-agent `media-record start --for DURATION` (whole seconds, e.g. `20s`) replaces
   `--max-seconds N`, like every other time option.
 - tap-agent `device-info` also reports the foreground activity (`foreground_activity` in
   `--json`), so one read shows the whole device state.

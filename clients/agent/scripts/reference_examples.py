@@ -132,7 +132,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
          "\tat com.shop.CheckoutActivity.onPay(CheckoutActivity.kt:41)"),
     ],
     "media-record": [
-        ("tap-agent media-record start --max 20s", "recording started"),
+        ("tap-agent media-record start --for 20s", "recording started"),
         ("tap-agent media-record stop -o checkout.mp4", "saved recording to checkout.mp4"),
     ],
     # Acting on elements
@@ -251,7 +251,7 @@ EXAMPLES: dict[str, list[tuple[str, str]]] = {
     "watch": [
         ("tap-agent watch toast window --for 10s",
          'toast "Card saved" (com.shop)\nwindow state com.shop.ReceiptActivity "Receipt" (com.shop)'),
-        ("tap-agent watch window --until-first --package com.shop --timeout 5s",
+        ("tap-agent watch --until-first window --package com.shop --timeout 5s",
          'window state com.shop.ReceiptActivity "Receipt" (com.shop)'),
     ],
     # Agent setup
