@@ -169,7 +169,9 @@ async def test_mcp_queries_and_budget_schema_match_core(fake, agent):
     async with Client(create_server(lambda _: agent), mode="legacy") as client:
         tools = {tool.name: tool for tool in (await client.list_tools()).tools}
         for name in ("wait_for", "settle", "toast", "notification", "permission"):
-            assert tools[name].input_schema["properties"]["timeout_seconds"]["maximum"] == 120
+            budget = tools[name].input_schema["properties"]["timeout_seconds"]
+            # An optional budget (toast's goes with wait only) is anyOf a bounded number and null.
+            assert [part.get("maximum") for part in budget.get("anyOf", [budget]) if part.get("type") == "number"] == [120], name
         assert set(tools["wait_for"].input_schema["properties"]["state"]["enum"]) == set(WAIT_STATES)
         result = await client.call_tool("exists", {"target": "enabled=true"})
         assert not result.is_error

@@ -1412,19 +1412,23 @@ class Agent:
         self,
         text: str | None = None,
         device: str | None = None,
-        contains: bool = False,
+        exact: bool = False,
         package: str | None = None,
-        timeout: float = DEFAULT_WAIT,
+        timeout: float | None = None,
         *, wait: bool = False, after_seq: int = 0, stream: str = "", as_json: bool = False,
     ) -> str:
         """Reads the retained toast observations immediately, oldest first, of any app (only
-        ``package``'s when given) whose text matches ``text`` exactly, or contains it with
-        ``contains``; ``after_seq``/``stream`` form a non-consuming cursor. History is not current
-        UI state. With ``wait``: waits instead for a matching toast shown in the last 3.5 s or
-        arriving within ``timeout``."""
-        command_timeout(timeout)
-        if contains and text is None:
-            raise AgentError("toast --contains needs a text", EXIT_USAGE)
+        ``package``'s when given) whose text contains ``text``, ignoring case (the rule
+        ``watch --text`` and ``--expect toast:TEXT`` use), or equals it with ``exact``;
+        ``after_seq``/``stream`` form a non-consuming cursor. History is not current UI state.
+        With ``wait``: waits instead for a matching toast shown in the last 3.5 s or arriving
+        within ``timeout`` (default ``DEFAULT_WAIT``)."""
+        timeout = command_timeout(timeout)
+        if timeout is not None and not wait:
+            raise AgentError("toast --timeout goes with --wait", EXIT_USAGE)
+        timeout = DEFAULT_WAIT if timeout is None else timeout
+        if exact and text is None:
+            raise AgentError("toast --exact needs a text", EXIT_USAGE)
         _integer(after_seq, "after_seq", 0, 2**63 - 1)
         if not isinstance(stream, str) or len(stream) > 128:
             raise AgentError("stream must be a string of at most 128 characters", EXIT_USAGE)
@@ -1436,11 +1440,13 @@ class Agent:
             if not wait:
                 page = d.toast_history(after_seq, stream_id=stream)
                 kept = tuple(e for e in page.events if (package is None or e.toast.package_name == package)
-                             and (text is None or (text in e.toast.text if contains else text == e.toast.text)))
+                             and (text is None or _toast_matches(text, e.toast.text, exact)))
                 page = replace(page, events=kept)
                 return json_text(page) if as_json else _toast_history_text(page)
-            mode = MatchMode.CONTAINS if contains else MatchMode.EXACT
-            seen = d.await_toast(text, mode, package_name=package, timeout=timeout)
+            if text is None or exact:
+                seen = d.await_toast(text, MatchMode.EXACT, package_name=package, timeout=timeout)
+            else:  # MatchMode has no ignore-case; an RE2 pattern says "contains, any case"
+                seen = d.await_toast(_any_case_part(text), MatchMode.REGEX, package_name=package, timeout=timeout)
             return f"toast {seen.text!r} from {seen.package_name}"
 
         return self._run(step)
@@ -1933,6 +1939,19 @@ class Agent:
             return json_text(running) if as_json else f"{name} is {'running' if running else 'not running'}"
 
         return self._run(step)
+
+
+def _toast_matches(text: str, seen: str, exact: bool) -> bool:
+    """``toast``'s rule: ``text`` is part of the toast ignoring case, or with ``exact`` all of it."""
+    return text == seen if exact else text.casefold() in seen.casefold()
+
+
+_RE2_SPECIAL = frozenset("\\.+*?()|[]{}^$")
+
+
+def _any_case_part(text: str) -> str:
+    """An RE2 full-match pattern for a text that contains ``text`` in any case, across lines."""
+    return "(?is).*" + "".join("\\" + c if c in _RE2_SPECIAL else c for c in text) + ".*"
 
 
 def _device_action(command: str, action: str | None, actions: tuple[str, ...], settle: bool, as_json: bool = False) -> str | None:

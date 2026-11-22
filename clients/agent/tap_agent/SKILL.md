@@ -188,8 +188,9 @@ field brings up no keyboard on an emulator, try `condition ime-with-hard-keyboar
 hides it (nothing is pressed when none shows); `submit <target>` runs the field's keyboard
 action key (Search, Go, Send, Done; Android 11+), and the field must have input focus, so tap
 it first. `clipboard` prints the device clipboard, `clipboard <text>` sets it.
-`toast [text] [--contains] [--package PKG]` reads retained observations immediately, oldest
-first, without consuming them; `toast --wait [text] …` waits for a toast instead (one shown in
+`toast [text] [--exact] [--package PKG]` reads retained observations immediately, oldest
+first, without consuming them; `text` is part of the toast in any case, as for `watch --text`
+and `--expect toast:TEXT` (`--exact`: the whole toast, case included); `toast --wait [text] …` waits for a toast instead (one shown in
 the last 3.5 s counts; any app's unless `--package`) and prints its text and app. Reads print
 text and waits wait with `--wait` throughout: `toast`, `notification`, `deaths`. The driver retains 128 toasts with no age expiry until
 release/reuse or driver loss. Use `--after-seq N --stream ID` from its cursor for the next

@@ -418,12 +418,14 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 9. `--json` on the remaining reads.
    Status: done (eleven reads; `--json` with an action or a change is a usage error).
 10. One toast text rule: part of the text, ignoring case, `--exact` for exact.
+   Status: done (the wait sends an RE2 `(?is)` pattern: `MatchMode` has no ignore-case).
 11. `history keep` says "kept range", not "recording"; MCP `history_keep` is its own tool.
 12. `device-info --json`: the foreground activity as package and class, its error apart; text
     keys and on/off spelled as `condition` spells them.
 13. MCP's implicit settle is bounded at 3 s; `app` launches settle too.
 14. `type [TARGET] TEXT`: target first when there are two arguments, as `fill`.
 15. `toast --timeout` without `--wait` is a usage error.
+   Status: done, with the toast text rule.
 16. Optional: one name for "stop after" (`--for`), one opaque toast cursor (`--after`), `-L` has
     `--long`, `watch --until-first KIND`, `capture --name NAME` and list filters of their own,
     `accepts=` words (`long-tap`, no `check`), MCP `condition` from the condition table.

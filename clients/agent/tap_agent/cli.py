@@ -321,14 +321,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--json", dest="as_json", action="store_true", help="list: package_name, choices and accuracies")
 
     p = verb("toast", "read retained toasts (oldest first, never consumes), or --wait for one", on_device)
-    p.add_argument("text", nargs="?", help="the toast's text (omit for any toast)")
-    p.add_argument("--contains", action="store_true", help="text is only part of the toast")
+    p.add_argument("text", nargs="?", help="part of the toast's text, any case (omit for any toast)")
+    p.add_argument("--exact", action="store_true", help="text is the whole toast, case included")
     p.add_argument("--package", help="only this package's toasts (default: any app's)")
     p.add_argument("--wait", action="store_true", help="wait for a matching toast (one shown in the last 3.5 s counts)")
     p.add_argument("--after-seq", type=int, default=0, help="read: exclusive sequence cursor (default 0)")
     p.add_argument("--stream", default="", help="read: stream ID from the previous read")
     p.add_argument("--json", dest="as_json", action="store_true", help="read: structured observations and cursor metadata")
-    p.add_argument("--timeout", type=_command_duration, default=10.0, help="with --wait: at most 120s; default 10s")
+    p.add_argument("--timeout", type=_command_duration, help="with --wait only: at most 120s; default 10s")
 
     p = verb("notification", "list the device's notifications, --wait for one, or open or dismiss one (read as data; the shade stays closed)", on_device, settle)
     p.add_argument("action", choices=NOTIFICATION_ACTIONS, nargs="?", help="omit to list (or --wait)")
@@ -528,7 +528,7 @@ def run(args: argparse.Namespace, agent: Agent) -> str:
             button=args.button, timeout=args.timeout, settle=settle, wait=args.wait, as_json=args.as_json,
         )
     if v == "toast":
-        return agent.toast(args.text, device, contains=args.contains, package=args.package, timeout=args.timeout,
+        return agent.toast(args.text, device, exact=args.exact, package=args.package, timeout=args.timeout,
                            wait=args.wait, after_seq=args.after_seq, stream=args.stream, as_json=args.as_json)
     if v == "scroll":
         return agent.scroll(args.target, args.direction, device, settle=settle, percent=args.percent, timeout=args.timeout)
