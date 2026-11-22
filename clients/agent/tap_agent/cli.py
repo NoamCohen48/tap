@@ -205,8 +205,8 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument("--sensitive", action="store_true", help="a secret: the session log and export never hold the text")
 
     p = verb("type", "type into the focused field, or into TARGET after tapping it and waiting for its focus", on_device, settle)
-    p.add_argument("text")
-    p.add_argument("target", nargs="?", help="optional: " + TARGET_HELP)
+    p.add_argument("target", nargs="?", help="optional, first as for fill: " + TARGET_HELP)
+    p.add_argument("text", help="the characters to type (alone: into the focused field)")
     p.add_argument("--no-await-focus", action="store_false", dest="await_focus", help="with a target: explicitly skip its SDK focus wait")
     p.add_argument("--timeout", type=_command_duration, help="per tap/type budget, at most 120s (not an overall deadline)")
     p.add_argument("--focus-timeout", type=_command_duration, help="target focus wait budget; SDK default 10s, at most 120s")

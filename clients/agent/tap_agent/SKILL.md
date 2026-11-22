@@ -133,7 +133,7 @@ the device, and says so.
 `tap <target> --duration 2500ms [--timeout 5s]` (physical hold; implies long press),
 `tap <target> --outside-panel` (a touch outside the dialog, menu, drawer or sheet that holds the
 target, such as its title, to test that an outside touch closes it; `--allow-reach-below` lets it
-land on the screen under a panel that passes touches through), `fill <target> <text>` (replaces the text), `type <text> [target]`
+land on the screen under a panel that passes touches through), `fill <target> <text>` (replaces the text), `type [target] <text>`
 (key events into the focused field; add `--sensitive` to either for a password or token, which keeps it out of the log and export), `clear`, `scroll <target> up|down|left|right` (`down`
 reveals content below: the finger moves up), `swipe <target> --finger up|down|left|right` (the
 finger's direction, so `--finger up` scrolls down), `fling <target> <direction>` (as `scroll`,
@@ -279,7 +279,7 @@ background sync) while you keep using the session. MCP `watch` collects for `dur
 `scroll`/`swipe --percent 40 --timeout 3s` control distance/budget. Use
 `scroll-until CONTAINER DESTINATION --max-scrolls 12 --percent 50 --timeout 15s` for the bounded
 SDK descendant loop; this is not end-of-list detection or a replay policy. All element inputs
-accept `--timeout` (up to 120s). `type TEXT id=input --focus-timeout 2s --timeout 3s`
+accept `--timeout` (up to 120s). `type id=input TEXT --focus-timeout 2s --timeout 3s`
 uses SDK tap/focus-wait/type: input budgets are per step, focus has its separate wait (default
 10s); `--no-await-focus` explicitly skips it. Focus alone does not prove IME readiness; observe
 the app/keyboard explicitly when needed. Keep `--sensitive` for secrets.

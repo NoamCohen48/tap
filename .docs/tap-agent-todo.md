@@ -354,6 +354,9 @@ flag, because `type` usually goes to the focused field.
 Do: `type TEXT [TARGET]`: the focused field without a target, else the target after its focus
 wait. Remove `--target`. Update MCP, docs and tests.
 
+Revised by the API review (item 14 below): `type [TARGET] TEXT`, target first as for `fill`, since
+`type id=email text=Hi` typed the literal `id=email` into the `text=Hi` field.
+
 ## `device-info`: the whole device state
 
 Status: done (the soft-keyboard setting joins it with that condition).
@@ -427,6 +430,7 @@ one commit each, in this order. Breaking changes are fine (proto, SDK, CLI, MCP)
 13. MCP's implicit settle is bounded at 3 s; `app` launches settle too.
     Status: done (`AFTER_INPUT_SETTLE_TIMEOUT`, `APP_SETTLES`; the CLI's `--settle` too).
 14. `type [TARGET] TEXT`: target first when there are two arguments, as `fill`.
+    Status: done.
 15. `toast --timeout` without `--wait` is a usage error.
    Status: done, with the toast text rule.
 16. Optional: one name for "stop after" (`--for`), one opaque toast cursor (`--after`), `-L` has

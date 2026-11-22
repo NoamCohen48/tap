@@ -105,8 +105,8 @@ name the components affected. Earlier releases used independent version lines. T
   `--max-seconds N`, like every other time option.
 - tap-agent `device-info` also reports the foreground activity (`foreground_activity` in
   `--json`), so one read shows the whole device state.
-- tap-agent `type TEXT [TARGET]` takes its optional target as a positional, like `fill` and
-  `clear`, instead of `--target`.
+- tap-agent `type [TARGET] TEXT` takes its optional target first, as `fill TARGET TEXT` does, in
+  place of `--target`; with one argument it types into the focused field.
 - tap-agent `record start|stop|list|clean NAME` (MCP `record`) moves under `history keep
   start|stop|list|clean NAME` (MCP `history` with `action="keep"`, `value`, `name`, `long`), and
   `history --recording NAME` is now `history --kept NAME`, so "recording" means only
